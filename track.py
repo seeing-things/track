@@ -95,6 +95,8 @@ class Tracker:
     def do_iteration(self):
         if self.running:
             threading.Timer(self.loop_period_s, self.do_iteration).start()
+        else:
+            return
         
         elapsed_time = time.time() - self.start_time
         self.time_list.append(elapsed_time)
@@ -175,13 +177,17 @@ if __name__ == "__main__":
             tle.append(line)
     target = ephem.readtle(tle[0], tle[1], tle[2])
 
+    tracker = Tracker(args.scope, observer, target)
+    tracker.start()
+
     try:
-        tracker = Tracker(args.scope, observer, target)
-        tracker.start()
-    except KeyboardInterrupt:
-        print "you pressed CTRL-C"
+        print('Press Enter to quit.')
+        raw_input()
         tracker.stop()
-        sys.exit()
+        print('Goodbye!')
+    except KeyboardInterrupt:
+        tracker.stop()
+        print('Goodbye!')
 
     #proc = multiprocessing.Process(None, plot_process, args=(q,))
     #proc.start()
