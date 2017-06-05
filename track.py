@@ -143,8 +143,8 @@ if __name__ == "__main__":
     try:
         print('Press Enter to quit.')
         raw_input()
-        tracker.stop()
-        print('Goodbye!')
     except KeyboardInterrupt:
+        pass
+    finally:
         tracker.stop()
         print('Goodbye!')
