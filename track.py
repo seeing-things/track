@@ -98,56 +98,58 @@ class Tracker:
         else:
             return
         
-        elapsed_time = time.time() - self.start_time
-        self.time_list.append(elapsed_time)
+        try:
+            elapsed_time = time.time() - self.start_time
+            self.time_list.append(elapsed_time)
 
-        # get current coordinates of the target
-        # not using ephem.now() because it rounds time to the nearest second
-        self.observer.date = ephem.Date(datetime.datetime.utcnow())
-        self.target.compute(self.observer)
-        #print('Az: %s Alt: %s' % (target.az, target.alt))
-        target_az_deg = self.target.az * 180.0 / math.pi
-        target_alt_deg = self.target.alt * 180.0 / math.pi
-        #print('target: ' + str(target_az_deg) + ', ' + str(target_alt_deg))
+            # get current coordinates of the target
+            # not using ephem.now() because it rounds time to the nearest second
+            self.observer.date = ephem.Date(datetime.datetime.utcnow())
+            self.target.compute(self.observer)
+            #print('Az: %s Alt: %s' % (target.az, target.alt))
+            target_az_deg = self.target.az * 180.0 / math.pi
+            target_alt_deg = self.target.alt * 180.0 / math.pi
+            #print('target: ' + str(target_az_deg) + ', ' + str(target_alt_deg))
 
-        # get current position of telescope (degrees)
-        (scope_az_deg, scope_alt_deg) = self.scope.get_azel()
-        print('scope: ' + str(scope_az_deg) + ', ' + str(scope_alt_deg))
-        self.scope_az_list.append(scope_az_deg)
-        self.scope_alt_list.append(scope_alt_deg)
-         
-        # compute pointing errors in degrees
-        error_az = wrap_error(target_az_deg - scope_az_deg)
-        error_alt = wrap_error(target_alt_deg - scope_alt_deg)
-        #self.error_az_list.append(error_az)
-        #self.error_alt_list.append(error_alt)
-        # JUSTIN TEMP: use arcseconds rather than degrees
-        self.error_az_list.append(error_az * 60.0 * 60.0)
-        self.error_alt_list.append(error_alt * 60.0 * 60.0)
+            # get current position of telescope (degrees)
+            (scope_az_deg, scope_alt_deg) = self.scope.get_azel()
+            print('scope: ' + str(scope_az_deg) + ', ' + str(scope_alt_deg))
+            self.scope_az_list.append(scope_az_deg)
+            self.scope_alt_list.append(scope_alt_deg)
+             
+            # compute pointing errors in degrees
+            error_az = wrap_error(target_az_deg - scope_az_deg)
+            error_alt = wrap_error(target_alt_deg - scope_alt_deg)
+            #self.error_az_list.append(error_az)
+            #self.error_alt_list.append(error_alt)
+            # JUSTIN TEMP: use arcseconds rather than degrees
+            self.error_az_list.append(error_az * 60.0 * 60.0)
+            self.error_alt_list.append(error_alt * 60.0 * 60.0)
 
-        #print('' + str(elapsed_time) + ', ' + str(error_az) + ', ' + str(error_alt))
+            #print('' + str(elapsed_time) + ', ' + str(error_az) + ', ' + str(error_alt))
 
-        # loop filters -- outputs are new slew rates in degrees/second
-        prop_az = self.prop_gain * error_az
-        prop_alt = self.prop_gain * error_alt
-        self.int_az = clamp(self.int_az + self.int_gain * error_az, self.slew_limit)
-        self.int_alt = clamp(self.int_alt + self.int_gain * error_alt, self.slew_limit)
-        slew_az = clamp(prop_az + self.int_az, self.slew_limit)
-        slew_alt = clamp(prop_alt + self.int_alt, self.slew_limit)
+            # loop filters -- outputs are new slew rates in degrees/second
+            prop_az = self.prop_gain * error_az
+            prop_alt = self.prop_gain * error_alt
+            self.int_az = clamp(self.int_az + self.int_gain * error_az, self.slew_limit)
+            self.int_alt = clamp(self.int_alt + self.int_gain * error_alt, self.slew_limit)
+            slew_az = clamp(prop_az + self.int_az, self.slew_limit)
+            slew_alt = clamp(prop_alt + self.int_alt, self.slew_limit)
+            
+            # enforce altitude limits
+            if scope_alt_deg >= self.alt_max_limit and slew_alt > 0.0:
+                slew_alt = 0.0
+                self.int_alt = 0.0
+            elif scope_alt_deg <= self.alt_min_limit and slew_alt < 0.0:
+                slew_alt = 0.0
+                self.int_alt = 0.0 
+
+            # update slew rates (arcseconds per second)
+            self.scope.slew_var(slew_az * 3600.0, slew_alt * 3600.0)
         
-        # enforce altitude limits
-        if scope_alt_deg >= self.alt_max_limit and slew_alt > 0.0:
-            slew_alt = 0.0
-            self.int_alt = 0.0
-        elif scope_alt_deg <= self.alt_min_limit and slew_alt < 0.0:
-            slew_alt = 0.0
-            self.int_alt = 0.0 
-
-        # update slew rates (arcseconds per second)
-        self.scope.slew_var(slew_az * 3600.0, slew_alt * 3600.0)
-
-        if self.running == False:
-            self.scope.slew_var(0, 0)
+        except:
+            self.stop()
+            raise
 
         #q.put((self.time_list, self.error_az_list, self.error_alt_list))
 
