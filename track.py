@@ -5,11 +5,8 @@ import ephem
 import time
 import datetime
 import math
-import urllib2
 import nexstar
 import threading
-import multiprocessing
-import matplotlib.pyplot as plt
 import argparse
 
 def clamp(x, limit):
@@ -17,32 +14,6 @@ def clamp(x, limit):
 
 def wrap_error(e):
     return (e + 180.0) % 360.0 - 180.0
-
-def plot_process(q):
-    
-    # open a plot figure and set it up
-    plt.ion()
-    fig = plt.figure()
-    ax = fig.add_subplot(211)
-    plt.axis([0, 100, 0, 100])
-    ax.plot([0, 100], [0, 100], 'k-')
-    line1, = ax.plot([0], [0], 'r-') # Returns a tuple of line targetects, thus the comma
-    plt.grid()
-    ax2 = fig.add_subplot(212)
-    plt.axis([0, 100, -10.0, 10.0])
-    ax2.plot([0, 100], [0, 0], 'k-')
-    line_error_az, = ax2.plot([0], [0], 'r-')
-    line_error_alt, = ax2.plot([0], [0], 'b-')
-    plt.grid()
-
-    while True:
-        result = q.get()
-        line_error_az.set_xdata(result[0])
-        line_error_az.set_ydata(result[1])
-        line_error_alt.set_xdata(result[0])
-        line_error_alt.set_ydata(result[2])
-        fig.canvas.draw()
-
 
 class Tracker:
 
@@ -151,8 +122,6 @@ class Tracker:
             self.stop()
             raise
 
-        #q.put((self.time_list, self.error_az_list, self.error_alt_list))
-
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -162,9 +131,6 @@ if __name__ == "__main__":
     parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
     parser.add_argument('--elevation', required=True, help='elevation of observer (m)', type=float)
     args = parser.parse_args()
-
-    #global q
-    #q = multiprocessing.Queue()
 
     # Create a PyEphem Observer object
     observer = ephem.Observer()
@@ -190,9 +156,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         tracker.stop()
         print('Goodbye!')
-
-    #proc = multiprocessing.Process(None, plot_process, args=(q,))
-    #proc.start()
-
-    #while True:
-    #    time.sleep(0.5)
