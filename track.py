@@ -76,7 +76,8 @@ class NexStarMount(TelescopeMount):
             rate_alt = 0.0
             hit_limit = True
 
-        self.nexstar.slew_var(rate_az, rate_alt)
+        # slew_var argument units are arcseconds per second
+        self.nexstar.slew_var(rate_az * 3600.0, rate_alt * 3600.0)
 
         if hit_limit:
             raise self.AltitudeLimitException('Altitude limit exceeded')
@@ -197,9 +198,9 @@ class Tracker:
             # loop filter -- outputs are new slew rates in degrees/second
             (slew_rate_az, slew_rate_alt) = self.loop_filter.update(error_az, error_alt)
 
-            # update mount slew rates (arcseconds per second)
+            # update mount slew rates
             try:
-                self.mount.slew(slew_rate_az * 3600.0, slew_rate_alt * 3600.0)
+                self.mount.slew(slew_rate_az, slew_rate_alt)
             except self.mount.AltitudeLimitException:
                 self.loop_filter.int_alt = 0.0
         
