@@ -18,6 +18,7 @@ def clamp(x, limit):
 def wrap_error(e):
     return (e + 180.0) % 360.0 - 180.0
 
+
 class ErrorSource:
     __metaclass__ = abc.ABCMeta
 
@@ -27,6 +28,64 @@ class ErrorSource:
     def compute_error(self):
         pass
 
+
+class TelescopeMount:
+    __metaclass__ = abc.ABCMeta
+
+    class AltitudeLimitException(Exception):
+        pass
+
+    # Returns the current position of the mount as a tuple containing
+    # (azimuth, altitude) in degrees.
+    @abc.abstractmethod
+    def get_azel(self):
+        pass
+
+    # Sets the slew rate of the mount in degrees per second. May raise
+    # an AltitudeLimitException if the mount altitude position is at a limit
+    # and the requested altitude slew rate is not away from the limit.
+    @abc.abstractmethod
+    def slew(self, rate_az, rate_alt):
+        pass
+
+    # Returns the maximum supported slew rate in degrees per second
+    @abc.abstractmethod
+    def get_max_slew_rate(self):
+        pass
+
+
+class NexStarMount(TelescopeMount):
+
+    def __init__(self, device_name, alt_min_limit=-10.0, alt_max_limit=67.0):
+        self.nexstar = nexstar.NexStar(device_name)
+        self.alt_min_limit = alt_min_limit
+        self.alt_max_limit = alt_max_limit
+
+    def get_azel(self):
+        return self.nexstar.get_azel()
+
+    def slew(self, rate_az, rate_alt):
+
+        # enforce altitude limits
+        hit_limit = False
+        (mount_az_deg, mount_alt_deg) = self.get_azel()
+        if mount_alt_deg >= self.alt_max_limit and rate_alt > 0.0:
+            rate_alt = 0.0
+            hit_limit = True
+        elif mount_alt_deg <= self.alt_min_limit and rate_alt < 0.0:
+            rate_alt = 0.0
+            hit_limit = True
+
+        self.nexstar.slew_var(rate_az, rate_alt)
+
+        if hit_limit:
+            raise self.AltitudeLimitException('Altitude limit exceeded')
+
+    # This value was determined experimentally using the NexStar 130SLT
+    def get_max_slew_rate(self):
+        return 16319.0 / 3600.0
+
+
 class BlindErrorSource(ErrorSource):
 
     def __init__(self, mount, observer, target):
@@ -35,7 +94,7 @@ class BlindErrorSource(ErrorSource):
         self.observer = observer
         self.target = target
 
-        # NexStar object
+        # TelescopeMount object
         self.mount = mount
 
     def compute_error(self):
@@ -55,6 +114,7 @@ class BlindErrorSource(ErrorSource):
         error_alt = wrap_error(target_alt_deg - scope_alt_deg)
 
         return (error_az, error_alt)
+
 
 # Two independent proportional plus integral (PI) loop filters, one for 
 # azimuth and another for altitude.
@@ -91,30 +151,27 @@ class LoopFilter:
         slew_rate_alt = clamp(prop_alt + self.int_alt, self.rate_limit)
         return (slew_rate_az, slew_rate_alt)
 
+
+# Main tracking loop class
 class Tracker:
 
-    def __init__(self, scope_device, observer, target):
-
-        # define some limits
-        self.slew_rate_limit = 16319.0 / 3600.0
-        self.alt_min_limit = -10.0
-        self.alt_max_limit = 67.0
+    def __init__(self, mount, error_source, update_period, loop_bandwidth, damping_factor):
 
         # update rate of control loop
-        self.loop_period_s = 0.25
+        self.update_period = update_period
 
         self.loop_filter = LoopFilter(
-            bandwidth = 0.5, 
-            damping_factor = math.sqrt(2.0)/2.0, 
-            update_period = self.loop_period_s, 
-            rate_limit = self.slew_rate_limit
+            bandwidth = loop_bandwidth, 
+            damping_factor = damping_factor, 
+            update_period = update_period, 
+            rate_limit = mount.get_max_slew_rate()
         )
 
-        # Create connection to telescope
-        self.scope = nexstar.NexStar(scope_device)
+        # object of type TelescopeMount
+        self.mount = mount
 
-        # Create error source object
-        self.error_source = BlindErrorSource(self.scope, observer, target)
+        # object of type ErrorSource
+        self.error_source = error_source
 
 
     def start(self):
@@ -127,7 +184,7 @@ class Tracker:
 
     def do_iteration(self):
         if self.running:
-            threading.Timer(self.loop_period_s, self.do_iteration).start()
+            threading.Timer(self.update_period, self.do_iteration).start()
         else:
             return
         
@@ -139,18 +196,12 @@ class Tracker:
 
             # loop filter -- outputs are new slew rates in degrees/second
             (slew_rate_az, slew_rate_alt) = self.loop_filter.update(error_az, error_alt)
-            
-            # enforce altitude limits
-            (scope_az_deg, scope_alt_deg) = self.scope.get_azel()
-            if scope_alt_deg >= self.alt_max_limit and slew_rate_alt > 0.0:
-                slew_rate_alt = 0.0
-                self.loop_filter.int_alt = 0.0
-            elif scope_alt_deg <= self.alt_min_limit and slew_rate_alt < 0.0:
-                slew_rate_alt = 0.0
-                self.loop_filter.int_alt = 0.0 
 
-            # update slew rates (arcseconds per second)
-            self.scope.slew_var(slew_rate_az * 3600.0, slew_rate_alt * 3600.0)
+            # update mount slew rates (arcseconds per second)
+            try:
+                self.mount.slew(slew_rate_az * 3600.0, slew_rate_alt * 3600.0)
+            except self.mount.AltitudeLimitException:
+                self.loop_filter.int_alt = 0.0
         
         except:
             self.stop()
@@ -166,6 +217,9 @@ if __name__ == "__main__":
     parser.add_argument('--elevation', required=True, help='elevation of observer (m)', type=float)
     args = parser.parse_args()
 
+    # Create object with base type TelescopeMount
+    mount = NexStarMount(args.scope)
+
     # Create a PyEphem Observer object
     observer = ephem.Observer()
     observer.lat = args.lat
@@ -179,7 +233,16 @@ if __name__ == "__main__":
             tle.append(line)
     target = ephem.readtle(tle[0], tle[1], tle[2])
 
-    tracker = Tracker(args.scope, observer, target)
+    # Create object with base type ErrorSource
+    error_source = BlindErrorSource(mount, observer, target)
+
+    tracker = Tracker(
+        mount = mount, 
+        error_source = error_source, 
+        update_period = 0.25,
+        loop_bandwidth = 0.5,
+        damping_factor = math.sqrt(2.0) / 2.0
+    )
     tracker.start()
 
     try:
