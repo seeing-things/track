@@ -5,8 +5,6 @@ import mounts
 import error
 import argparse
 
-import time
-
 parser = argparse.ArgumentParser()
 parser.add_argument('--camera', help='device name of tracking camera', default='/dev/video0')
 parser.add_argument('--camera-res', help='camera resolution in arcseconds per pixel', required=True, type=float)
