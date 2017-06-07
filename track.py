@@ -10,8 +10,12 @@ def clamp(x, limit):
 class ErrorSource:
     __metaclass__ = abc.ABCMeta
 
-    # returns the pointing error as a tuple of (az, alt) in degrees where the 
-    # azimuth range is [0,360) and the altitude range is [-180,180)
+    class NoSignalException(Exception):
+        pass
+
+    # Returns the pointing error as a tuple of (az, alt) in degrees where the 
+    # azimuth range is [0,360) and the altitude range is [-180,180).
+    # May raise a NoSignalException if the error cannot be computed.
     @abc.abstractmethod
     def compute_error(self):
         pass
@@ -118,7 +122,10 @@ class Tracker:
             elapsed_time = time.time() - self.start_time
 
             # get current pointing error
-            (error_az, error_alt) = self.error_source.compute_error()
+            try:
+                (error_az, error_alt) = self.error_source.compute_error()
+            except ErrorSource.NoSignalException:
+                return
 
             # loop filter -- outputs are new slew rates in degrees/second
             (slew_rate_az, slew_rate_alt) = self.loop_filter.update(error_az, error_alt)
@@ -126,7 +133,7 @@ class Tracker:
             # update mount slew rates
             try:
                 self.mount.slew(slew_rate_az, slew_rate_alt)
-            except self.mount.AltitudeLimitException:
+            except TelescopeMount.AltitudeLimitException:
                 self.loop_filter.int_alt = 0.0
         
         except:
