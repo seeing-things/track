@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import track
+import mounts
+import error
 import ephem
 import math
 import argparse
@@ -14,7 +16,7 @@ parser.add_argument('--elevation', required=True, help='elevation of observer (m
 args = parser.parse_args()
 
 # Create object with base type TelescopeMount
-mount = track.NexStarMount(args.scope)
+mount = mounts.NexStarMount(args.scope)
 
 # Create a PyEphem Observer object
 observer = ephem.Observer()
@@ -30,7 +32,7 @@ with open(args.tle) as tlefile:
 target = ephem.readtle(tle[0], tle[1], tle[2])
 
 # Create object with base type ErrorSource
-error_source = track.BlindErrorSource(mount, observer, target)
+error_source = error.BlindErrorSource(mount, observer, target)
 
 tracker = track.Tracker(
     mount = mount, 
