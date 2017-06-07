@@ -4,7 +4,6 @@ import track
 import mounts
 import error
 import ephem
-import math
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -13,6 +12,9 @@ parser.add_argument('--scope', help='serial device for connection to telescope',
 parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
 parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
 parser.add_argument('--elevation', required=True, help='elevation of observer (m)', type=float)
+parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.5, type=float)
+parser.add_argument('--loop-damping', help='control loop damping factor', default=0.5, type=float)
+parser.add_argument('--loop-period', help='control loop period', default=0.25, type=float)
 args = parser.parse_args()
 
 # Create object with base type TelescopeMount
@@ -37,9 +39,9 @@ error_source = error.BlindErrorSource(mount, observer, target)
 tracker = track.Tracker(
     mount = mount, 
     error_source = error_source, 
-    update_period = 0.25,
-    loop_bandwidth = 0.5,
-    damping_factor = math.sqrt(2.0) / 2.0
+    update_period = args.loop_period,
+    loop_bandwidth = args.loop_bw,
+    damping_factor = args.loop_damping
 )
 tracker.start()
 

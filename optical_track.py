@@ -3,7 +3,6 @@
 import track
 import mounts
 import error
-import math
 import argparse
 
 import time
@@ -12,6 +11,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--camera', help='device name of tracking camera', default='/dev/video0')
 parser.add_argument('--camera-res', help='camera resolution in arcseconds per pixel', required=True, type=float)
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
+parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.5, type=float)
+parser.add_argument('--loop-damping', help='control loop damping factor', default=0.5, type=float)
+parser.add_argument('--loop-period', help='control loop period', default=0.25, type=float)
 args = parser.parse_args()
 
 # Create object with base type TelescopeMount
@@ -23,9 +25,9 @@ error_source = error.OpticalErrorSource(args.camera, args.camera_res)
 tracker = track.Tracker(
     mount = mount, 
     error_source = error_source, 
-    update_period = 0.25,
-    loop_bandwidth = 0.5,
-    damping_factor = math.sqrt(2.0) / 2.0
+    update_period = args.loop_period,
+    loop_bandwidth = args.loop_bw,
+    damping_factor = args.loop_damping
 )
 tracker.start()
 
