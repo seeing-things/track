@@ -101,9 +101,8 @@ class OpticalErrorSource(ErrorSource):
 
         keypoints = self.detector.detect(thresh)
 
+        # display the original frame with keypoints circled in red
         frame_with_keypoints = cv2.drawKeypoints(frame, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-
-        # Display the resulting frame
         cv2.imshow('frame', frame_with_keypoints)
         cv2.waitKey(1)
 
