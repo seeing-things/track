@@ -71,14 +71,14 @@ class OpticalErrorSource(ErrorSource):
         cv2.createTrackbar('C', 'frame', 3, 255, self.do_nothing)
 
     # validator for block size trackbar
-    def block_size_validate(x):
+    def block_size_validate(self, x):
         if x % 2 == 0:
             cv2.setTrackbarPos('block size', 'frame', x + 1)
         elif x < 3:
             cv2.setTrackbarPos('block size', 'frame', 3)
 
     # validator for OpenCV trackbar
-    def do_nothing(x):
+    def do_nothing(self, x):
         pass
 
     def compute_error(self):
