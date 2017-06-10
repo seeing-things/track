@@ -5,6 +5,7 @@ import math
 import cv2
 import numpy as np
 import exceptions
+import time
 
 # wraps an angle in degrees to the range [-180,+180)
 def wrap_error(e):
@@ -43,6 +44,11 @@ class BlindErrorSource(ErrorSource):
 class OpticalErrorSource(ErrorSource):
 
     def __init__(self, device_name, arcsecs_per_pixel):
+
+        # Calls to VideoCapture grab() that take longer than this many seconds
+        # before returning are assumed to be getting current frames from the
+        # camera rather than stale frames from a buffer.
+        self.MIN_GRAB_TIME = 0.01
 
         self.degrees_per_pixel = arcsecs_per_pixel / 3600.0
         self.camera = cv2.VideoCapture(device_name)
@@ -83,8 +89,29 @@ class OpticalErrorSource(ErrorSource):
 
     def compute_error(self):
 
-        ret, frame = self.camera.read()
+        '''
+        This is an ugly hack to ensure that the most recent frame from the 
+        camera is processed rather than a stale frame waiting in a buffer.
+        The OpenCV VideoCapture API does not provide any means of managing
+        the buffer directly. Experimentation has shown that the time to
+        execute grab() is many times faster when the next frame is buffered
+        compared to waiting for a brand new frame from the camera. Thus when
+        the elapsed time exceeds a threshold it is very likely that the
+        buffer has been emptied and the next frame is actually current.
 
+        An alternative to this approach would be to spawn a thread to 
+        continually read from the camera in the background but it's a pain 
+        to kill threads in Python when the program ends so that method was 
+        intentionally avoided.
+        '''
+        while True:
+            start = time.time()
+            ret = self.camera.grab()
+            if time.time() - start > self.MIN_GRAB_TIME:
+                break
+
+        # get the latest camera frame available
+        ret, frame = self.camera.read()
         if not ret:
             raise exceptions.IOError('Could not get frame from camera')
 
