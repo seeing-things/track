@@ -1,5 +1,4 @@
 import time
-import threading
 import abc
 
 # return value limited to the range [-limit,+limit]
@@ -103,39 +102,33 @@ class Tracker:
         # object of type ErrorSource
         self.error_source = error_source
 
+    def run(self):
+    
+        num_iterations = 0
 
-    def start(self):
-        self.start_time = time.time()
-        self.running = True
-        self.do_iteration()
+        while True:
+            start_time = time.time()
 
-    def stop(self):
-        self.running = False
-
-    def do_iteration(self):
-        if self.running:
-            threading.Timer(self.update_period, self.do_iteration).start()
-        else:
-            return
-        
-        try:
-            elapsed_time = time.time() - self.start_time
-
-            # get current pointing error
             try:
+                # get current pointing error
                 (error_az, error_alt) = self.error_source.compute_error()
-            except ErrorSource.NoSignalException:
-                return
 
-            # loop filter -- outputs are new slew rates in degrees/second
-            (slew_rate_az, slew_rate_alt) = self.loop_filter.update(error_az, error_alt)
+                # loop filter -- outputs are new slew rates in degrees/second
+                (slew_rate_az, slew_rate_alt) = self.loop_filter.update(error_az, error_alt)
 
-            # update mount slew rates
-            try:
+                # update mount slew rates
                 self.mount.slew(slew_rate_az, slew_rate_alt)
+
+            except ErrorSource.NoSignalException:
+                pass
             except TelescopeMount.AltitudeLimitException:
                 self.loop_filter.int_alt = 0.0
-        
-        except:
-            self.stop()
-            raise
+            finally:
+                num_iterations += 1
+
+                elapsed_time = time.time() - start_time
+
+                if elapsed_time > self.update_period:
+                    print('Warning: Can''t keep up! Actual loop period this iteration: ' + str(elapsed_time))
+                else:
+                    time.sleep(self.update_period - elapsed_time)

@@ -27,13 +27,9 @@ tracker = track.Tracker(
     loop_bandwidth = args.loop_bw,
     damping_factor = args.loop_damping
 )
-tracker.start()
 
 try:
-    print('Press Enter to quit.')
-    raw_input()
+    tracker.run()
 except KeyboardInterrupt:
-    pass
-finally:
-    tracker.stop()
     print('Goodbye!')
+    pass
