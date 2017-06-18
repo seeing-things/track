@@ -102,29 +102,42 @@ class Tracker:
         # object of type ErrorSource
         self.error_source = error_source
 
+        self.error_az = None
+        self.error_alt = None
+        self.slew_rate_az = 0
+        self.slew_rate_alt = 0
+        self.num_iterations = 0
+
+    # stopping condition for control loop (can override in child class)
+    # returns True if tracking should stop
+    def _stopping_condition(self):
+        return False
+
     def run(self):
-    
-        num_iterations = 0
 
         while True:
             start_time = time.time()
 
             try:
+                if self._stopping_condition():
+                    return
+
                 # get current pointing error
-                (error_az, error_alt) = self.error_source.compute_error()
+                (self.error_az, self.error_alt) = self.error_source.compute_error()
 
                 # loop filter -- outputs are new slew rates in degrees/second
-                (slew_rate_az, slew_rate_alt) = self.loop_filter.update(error_az, error_alt)
+                (self.slew_rate_az, self.slew_rate_alt) = self.loop_filter.update(self.error_az, self.error_alt)
 
                 # update mount slew rates
-                self.mount.slew(slew_rate_az, slew_rate_alt)
+                self.mount.slew(self.slew_rate_az, self.slew_rate_alt)
 
             except ErrorSource.NoSignalException:
-                pass
+                self.error_az = None
+                self.error_alt = None
             except TelescopeMount.AltitudeLimitException:
                 self.loop_filter.int_alt = 0.0
             finally:
-                num_iterations += 1
+                self.num_iterations += 1
 
                 elapsed_time = time.time() - start_time
 
