@@ -10,6 +10,8 @@ class NexStarMount(TelescopeMount):
         self.alt_min_limit = alt_min_limit
         self.alt_max_limit = alt_max_limit
         self.max_slew_rate = max_slew_rate
+        self.slew_rate_az = 0
+        self.slew_rate_alt = 0
 
     def get_azel(self):
         return self.nexstar.get_azel()
@@ -29,8 +31,18 @@ class NexStarMount(TelescopeMount):
         # slew_var argument units are arcseconds per second
         self.nexstar.slew_var(rate_az * 3600.0, rate_alt * 3600.0)
 
+        # NexStar has no command to query the slew rate so cache the commanded
+        # rates to allow get_slew_rate() method
+        self.slew_rate_az = rate_az
+        self.slew_rate_alt = rate_alt
+
         if hit_limit:
             raise self.AltitudeLimitException('Altitude limit exceeded')
+
+        return (rate_az, rate_alt)
+
+    def get_slew_rate(self):
+        return (self.slew_rate_az, self.slew_rate_alt)
 
     def get_max_slew_rate(self):
         return self.max_slew_rate

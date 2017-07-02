@@ -39,6 +39,13 @@ class TelescopeMount:
     def slew(self, rate_az, rate_alt):
         pass
 
+    # Get the current slew rate in degrees per second. The return value
+    # is a tuple where the first element is the azimuth rate and the second
+    # value is the altitude rate.
+    @abc.abstractmethod
+    def get_slew_rate(self):
+        pass
+
     # Returns the maximum supported slew rate in degrees per second
     @abc.abstractmethod
     def get_max_slew_rate(self):
