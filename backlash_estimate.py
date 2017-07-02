@@ -4,11 +4,13 @@ import track
 import mounts
 import error
 import argparse
+import time
+import numpy as np
 
 class TrackUntilConverged(track.Tracker):
 
-    ERROR_THRESHOLD = 0.01
-    MIN_ITERATIONS = 40
+    ERROR_THRESHOLD = 50.0 / 3600.0
+    MIN_ITERATIONS = 5
 
     def _stopping_condition(self):
         try:
@@ -33,9 +35,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--camera', help='device name of tracking camera', default='/dev/video0')
 parser.add_argument('--camera-res', help='camera resolution in arcseconds per pixel', required=True, type=float)
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
-parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.5, type=float)
-parser.add_argument('--loop-damping', help='control loop damping factor', default=0.5, type=float)
-parser.add_argument('--loop-period', help='control loop period', default=0.25, type=float)
+parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.1, type=float)
+parser.add_argument('--loop-damping', help='control loop damping factor', default=2.0, type=float)
+parser.add_argument('--loop-period', help='control loop period', default=0.5, type=float)
 args = parser.parse_args()
 
 # Create object with base type TelescopeMount
@@ -55,73 +57,27 @@ tracker = TrackUntilConverged(
 try:
 
     MOVEMENT_THRESHOLD_DEG = 20.0 / 3600.0
-    SLEW_STOP_SLEEP = 1
-    SLEW_RATE_ARCSECS_PER_SEC = 60.0
-    SLEW_RATE_DEG_PER_SEC = SLEW_RATE_ARCSECS_PER_SEC / 3600.0
+    SLEW_STOP_SLEEP = 1.0
+    FAST_SLEW_RATE = 60.0 / 3600.0
+    SLOW_SLEW_RATE = 30.0 / 3600.0
     MIN_INCREMENT = 1.0 / 3600.0
 
-    """
-    Establish upper bound on the backlash
-    """
+    backlash_estimates = []
 
-    print('Attempting to center object in FOV')
+    for i in range(5):
 
-    # center the object in the FOV
-    tracker.run()
-    mount.slew(0, 0)
-
-    print('Object has been centered. Slewing in azimuth until movement detected...')
-
-    # slew in azimuth until movement is detected
-    mount.slew(SLEW_RATE_DEG_PER_SEC, 0)
-    while True:
-        error_az, error_alt = error_source.compute_error()
-        if abs(error_az) > MOVEMENT_THRESHOLD_DEG:
-            mount.slew(0, 0)
-            time.sleep(SLEW_STOP_SLEEP)
-            break
-
-    # record position
-    init_error_az, init_error_alt = error_source.compute_error()
-    init_az, init_alt = mount.get_azel()
-
-    print('Movement detected. Optical azimuth position error is ' + str(init_error_az * 3600.0) + ' arcseconds')
-    print('Slewing in other direction until movement detected...')
-
-    # slew in azimuth the other direction until movement is detected
-    mount.slew(-SLEW_RATE_DEG_PER_SEC, 0)
-    while True:
-        error_az, error_alt = error_source.compute_error()
-        if abs(error_az - init_error_az) > MOVEMENT_THRESHOLD_DEG:
-            mount.slew(0, 0)
-            time.sleep(SLEW_STOP_SLEEP)
-            break
-
-    az, alt = mount.get_azel()
-    backlash_upper_bound = abs(az - init_az)
-
-    print('Movement detected. Upper bound on azimuth backlash is ' + str(backlash_upper_bound * 3600.0) + ' arcseconds.')
-    print('Starting binary search for true backlash value.')
-
-    """
-    Binary search for the true backlash
-    """
-    backlash_test_val = backlash_upper_bound / 2.0
-    backlash_increment = backlash_test_val / 2.0
-
-    while True:
-
-        print('Start of iteration. Backlash test value: ' + str(backlash_test_val * 3600.0) + ' arcseconds.')
+        print('Start iteration ' + str(i))
         print('Centering object in FOV...')
 
         # center the object in the FOV
+        tracker.low_error_iterations = 0
         tracker.run()
         mount.slew(0, 0)
 
-        print('Object centered. Slewing until movement detected...')
+        print('Object has been centered. Slewing in azimuth until movement detected...')
 
         # slew in azimuth until movement is detected
-        mount.slew(SLEW_RATE_DEG_PER_SEC, 0)
+        mount.slew(FAST_SLEW_RATE, 0)
         while True:
             error_az, error_alt = error_source.compute_error()
             if abs(error_az) > MOVEMENT_THRESHOLD_DEG:
@@ -129,39 +85,29 @@ try:
                 time.sleep(SLEW_STOP_SLEEP)
                 break
 
-        # record starting position
+        # record position
         init_error_az, init_error_alt = error_source.compute_error()
         init_az, init_alt = mount.get_azel()
 
-        print('Movement detected. Slewing in opposite direction by test amount...')
+        print('Movement detected. Optical azimuth position error is ' + str(init_error_az * 3600.0) + ' arcseconds')
+        print('Slewing in other direction until movement detected...')
 
-        # slew in other direction by test amount
-        mount.slew(-SLEW_RATE_DEG_PER_SEC, 0)
+        # slew in azimuth the other direction until movement is detected
+        mount.slew(-SLOW_SLEW_RATE, 0)
         while True:
-            az, alt = mount.get_azel()
-            if abs(az - init_az) >= backlash_test_val:
+            error_az, error_alt = error_source.compute_error()
+            if abs(error_az - init_error_az) > MOVEMENT_THRESHOLD_DEG:
+                az, alt = mount.get_azel()
                 mount.slew(0, 0)
                 break
 
-        print('Mount reports that it moved ' + str(abs(az - init_az) * 3600.0) + ' arcseconds.')
-        print('Optical change in target position was ' + str(abs(error_az - init_error_az) * 3600.0) + ' arcseconds')
+        backlash_estimages.append(abs(error.wrap_error(az - init_az)))
 
-        error_az, error_alt = error_source.compute_error()
+        print('Movement detected. Estimate of azimuth backlash is ' + str(backlash_estimates[-1] * 3600.0) + ' arcseconds.')
 
-        if abs(error_az - init_error_az) > MOVEMENT_THRESHOLD_DEG:
-            print('Movement detected. Decreasing backlash test value by ' + str(backlash_increment * 3600.0) + ' arcseconds.')
-            backlash_test_val -= backlash_increment
-        else:
-            print('Movement not detected. Increasing backlash test value by ' + str(backlash_increment * 3600.0) + ' arcseconds.')
-            backlash_test_val += backlash_increment
-
-        backlash_increment /= 2.0
-
-        if backlash_increment < MIN_INCREMENT:
-            backlash_az = backlash_test_val
-            break
-
-    print('Search completed. Backlash estimated as ' + str(backlash_az * 3600.0) + ' arcseconds.')
+    print('Iterations completed.')
+    print('Mean backlash: ' + str(np.mean(backlash_estimates)) + ' arcseconds')
+    print('Standard deviation: ' + str(np.std(backlash_estimates)) + ' arcseconds')
 
 except KeyboardInterrupt:
     print('Goodbye!')
