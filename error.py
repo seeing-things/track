@@ -35,10 +35,11 @@ class BlindErrorSource(ErrorSource):
         (scope_az_deg, scope_alt_deg) = self.mount.get_azalt()
          
         # compute pointing errors in degrees
-        error_az = wrap_error(target_az_deg - scope_az_deg)
-        error_alt = wrap_error(target_alt_deg - scope_alt_deg)
+        error = {}
+        error['az'] = wrap_error(target_az_deg - scope_az_deg)
+        error['alt'] = wrap_error(target_alt_deg - scope_alt_deg)
 
-        return (error_az, error_alt)
+        return error
 
 
 class OpticalErrorSource(ErrorSource):
@@ -133,7 +134,6 @@ class OpticalErrorSource(ErrorSource):
         cv2.imshow('frame', frame_with_keypoints)
         cv2.waitKey(1)
 
-        print('num keypoints: ' + str(len(keypoints)))
         if not keypoints:
             raise self.NoSignalException('No target identified')
 
@@ -144,9 +144,8 @@ class OpticalErrorSource(ErrorSource):
         error_y_deg = error_y_px * self.degrees_per_pixel
 
         # FIXME: need to do proper coordinate transformation based on orientation of camera!
-        error_az = error_x_deg
-        error_alt = error_y_deg
+        error = {}
+        error['az'] = error_x_deg
+        error['alt'] = error_y_deg
 
-        print('error: ' + str((error_az, error_alt)))
-
-        return (error_az, error_alt)
+        return error

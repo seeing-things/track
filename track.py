@@ -12,9 +12,11 @@ class ErrorSource:
     class NoSignalException(Exception):
         pass
 
-    # Returns the pointing error as a tuple of (az, alt) in degrees where the 
-    # azimuth range is [0,360) and the altitude range is [-180,180).
-    # May raise a NoSignalException if the error cannot be computed.
+    # Returns the pointing error as a dict with entries for each axis. For an
+    # Az-Alt mount, the expected entries would have keys 'az' and 'alt'. The
+    # error values have units of degrees. Azimuth range is [0,360) and 
+    # altitude range is [-180,180). May raise a NoSignalException if the 
+    # error cannot be computed.
     @abc.abstractmethod
     def compute_error(self):
         pass
@@ -92,13 +94,14 @@ class Tracker:
         # update rate of control loop
         self.update_period = update_period
 
-        self.loop_filter_az = LoopFilter(
+        self.loop_filter = {}
+        self.loop_filter['az'] = LoopFilter(
             bandwidth = loop_bandwidth, 
             damping_factor = damping_factor, 
             update_period = update_period, 
             rate_limit = mount.get_max_slew_rate()
         )
-        self.loop_filter_alt = LoopFilter(
+        self.loop_filter['alt'] = LoopFilter(
             bandwidth = loop_bandwidth, 
             damping_factor = damping_factor, 
             update_period = update_period, 
@@ -111,10 +114,8 @@ class Tracker:
         # object of type ErrorSource
         self.error_source = error_source
 
-        self.error_az = None
-        self.error_alt = None
-        self.slew_rate_az = 0
-        self.slew_rate_alt = 0
+        self.error = {'az': None, 'alt': None}
+        self.slew_rate = {'az': 0.0, 'alt': 0.0}
         self.num_iterations = 0
 
     # stopping condition for control loop (can override in child class)
@@ -135,21 +136,17 @@ class Tracker:
                     return
 
                 # get current pointing error
-                (self.error_az, self.error_alt) = self.error_source.compute_error()
+                self.error = self.error_source.compute_error()
 
-                if 'az' in axes:
-                    self.slew_rate_az = self.loop_filter_az.update(self.error_az)
-                    self.mount.slew('az', self.slew_rate_az)
-
-                if 'alt' in axes:
-                    self.slew_rate_alt = self.loop_filter_alt.update(self.error_alt)
-                    self.mount.slew('alt', self.slew_rate_alt)
+                for axis in axes:
+                    self.slew_rate[axis] = self.loop_filter[axis].update(self.error[axis])
+                    self.mount.slew(axis, self.slew_rate[axis])
 
             except ErrorSource.NoSignalException:
-                self.error_az = None
-                self.error_alt = None
+                self.error['az'] = None
+                self.error['alt'] = None
             except TelescopeMount.AltitudeLimitException:
-                self.loop_filter_alt.int = 0.0
+                self.loop_filter['alt'].int = 0.0
             finally:
                 self.num_iterations += 1
 
