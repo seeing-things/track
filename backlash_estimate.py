@@ -72,16 +72,17 @@ try:
         # center the object in the FOV
         tracker.low_error_iterations = 0
         tracker.run()
-        mount.slew(0, 0)
+        track_rate_az, track_rate_alt = tracker.get_slew_rate()
+        mount.slew(0, track_rate_alt)
 
         print('Object has been centered. Slewing in azimuth until movement detected...')
 
         # slew in azimuth until movement is detected
-        mount.slew(FAST_SLEW_RATE, 0)
+        mount.slew(FAST_SLEW_RATE, track_rate_alt)
         while True:
             error_az, error_alt = error_source.compute_error()
             if abs(error_az) > MOVEMENT_THRESHOLD_DEG:
-                mount.slew(0, 0)
+                mount.slew(0, track_rate_alt)
                 time.sleep(SLEW_STOP_SLEEP)
                 break
 
@@ -93,12 +94,12 @@ try:
         print('Slewing in other direction until movement detected...')
 
         # slew in azimuth the other direction until movement is detected
-        mount.slew(-SLOW_SLEW_RATE, 0)
+        mount.slew(-SLOW_SLEW_RATE, track_rate_alt)
         while True:
             error_az, error_alt = error_source.compute_error()
             if abs(error_az - init_error_az) > MOVEMENT_THRESHOLD_DEG:
                 az, alt = mount.get_azel()
-                mount.slew(0, 0)
+                mount.slew(0, track_rate_alt)
                 break
 
         backlash_estimages.append(abs(error.wrap_error(az - init_az)))
