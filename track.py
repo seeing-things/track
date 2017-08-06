@@ -29,31 +29,33 @@ class TelescopeMount:
     # Returns the current position of the mount as a tuple containing
     # (azimuth, altitude) in degrees.
     @abc.abstractmethod
-    def get_azel(self):
+    def get_azalt(self):
         pass
 
     # Sets the slew rate of the mount in degrees per second. May raise
     # an AltitudeLimitException if the mount altitude position is at a limit
     # and the requested altitude slew rate is not away from the limit.
+    # The axis argument is a string which may take values such as 'az' and
+    # 'alt' for an Az-Alt mount.
     @abc.abstractmethod
-    def slew(self, rate_az, rate_alt):
+    def slew(self, axis, rate):
         pass
 
-    # Get the current slew rate in degrees per second. The return value
-    # is a tuple where the first element is the azimuth rate and the second
-    # value is the altitude rate.
+    # Get the current slew rate in degrees per second. For mounts that do not
+    # support a slew rate readback command, this function may return a cached
+    # value from the most recently commanded slew rate. The axis argument is
+    # a string.
     @abc.abstractmethod
-    def get_slew_rate(self):
+    def get_slew_rate(self, axis):
         pass
 
-    # Returns the maximum supported slew rate in degrees per second
+    # Returns the maximum supported slew rate in degrees per second.
     @abc.abstractmethod
     def get_max_slew_rate(self):
         pass
 
 
-# Two independent proportional plus integral (PI) loop filters, one for 
-# azimuth and another for altitude.
+# Proportional plus integral (PI) loop filter
 class LoopFilter:
     def __init__(self, bandwidth, damping_factor, update_period, rate_limit):
         
@@ -64,28 +66,22 @@ class LoopFilter:
         self.prop_gain = 4.0 * damping_factor / denom * bt / k0
         self.int_gain = 4.0 / denom**2.0 * bt**2.0 / k0
 
-        # init control loop integrators
-        self.int_az = 0.0
-        self.int_alt = 0.0
+        # initialize control loop integrator
+        self.int = 0.0
 
         self.rate_limit = rate_limit
 
-    # returns new slew rates as a tuple (slew_az, slew_alt) in [phase units] 
-    # per second, where [phase units] are the same as the units of the input
-    # error values
-    def update(self, error_az, error_alt):
+    # Returns new slew rate in [phase units] per second, where [phase units] 
+    # are the same as the units of the input error value.
+    def update(self, error):
         # proportional term
-        prop_az = self.prop_gain * error_az
-        prop_alt = self.prop_gain * error_alt
+        prop = self.prop_gain * error
 
         # integral term
-        self.int_az = clamp(self.int_az + self.int_gain * error_az, self.rate_limit)
-        self.int_alt = clamp(self.int_alt + self.int_gain * error_alt, self.rate_limit)
+        self.int = clamp(self.int + self.int_gain * error, self.rate_limit)
 
-        # output is the sum of proportional and integral terms subject to rate limit
-        slew_rate_az = clamp(prop_az + self.int_az, self.rate_limit)
-        slew_rate_alt = clamp(prop_alt + self.int_alt, self.rate_limit)
-        return (slew_rate_az, slew_rate_alt)
+        # new slew rate is the sum of P and I terms subject to rate limit
+        return clamp(prop + self.int, self.rate_limit)
 
 
 # Main tracking loop class
@@ -96,7 +92,13 @@ class Tracker:
         # update rate of control loop
         self.update_period = update_period
 
-        self.loop_filter = LoopFilter(
+        self.loop_filter_az = LoopFilter(
+            bandwidth = loop_bandwidth, 
+            damping_factor = damping_factor, 
+            update_period = update_period, 
+            rate_limit = mount.get_max_slew_rate()
+        )
+        self.loop_filter_alt = LoopFilter(
             bandwidth = loop_bandwidth, 
             damping_factor = damping_factor, 
             update_period = update_period, 
@@ -120,7 +122,10 @@ class Tracker:
     def _stopping_condition(self):
         return False
 
-    def run(self):
+    # The axes argument is a list of strings indicating which axes should be 
+    # under active tracking control. The slew rate on any axis not included
+    # in the list will not be commanded by the control loop.
+    def run(self, axes=['az', 'alt']):
 
         while True:
             start_time = time.time()
@@ -132,17 +137,19 @@ class Tracker:
                 # get current pointing error
                 (self.error_az, self.error_alt) = self.error_source.compute_error()
 
-                # loop filter -- outputs are new slew rates in degrees/second
-                (self.slew_rate_az, self.slew_rate_alt) = self.loop_filter.update(self.error_az, self.error_alt)
+                if 'az' in axes:
+                    self.slew_rate_az = self.loop_filter_az.update(self.error_az)
+                    self.mount.slew('az', self.slew_rate_az)
 
-                # update mount slew rates
-                self.mount.slew(self.slew_rate_az, self.slew_rate_alt)
+                if 'alt' in axes:
+                    self.slew_rate_alt = self.loop_filter_alt.update(self.error_alt)
+                    self.mount.slew('alt', self.slew_rate_alt)
 
             except ErrorSource.NoSignalException:
                 self.error_az = None
                 self.error_alt = None
             except TelescopeMount.AltitudeLimitException:
-                self.loop_filter.int_alt = 0.0
+                self.loop_filter_alt.int = 0.0
             finally:
                 self.num_iterations += 1
 

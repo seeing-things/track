@@ -10,39 +10,41 @@ class NexStarMount(TelescopeMount):
         self.alt_min_limit = alt_min_limit
         self.alt_max_limit = alt_max_limit
         self.max_slew_rate = max_slew_rate
-        self.slew_rate_az = 0
-        self.slew_rate_alt = 0
+        self.cached_slew_rate = {}
+        self.cached_slew_rate['az'] = 0.0
+        self.cached_slew_rate['alt'] = 0.0
 
-    def get_azel(self):
-        return self.nexstar.get_azel()
+    def get_azalt(self):
+        return self.nexstar.get_azalt()
 
-    def slew(self, rate_az, rate_alt):
+    # Command the mount to slew at a paritcular rate in degrees per second in
+    # the azimuth ('az') or altitude ('alt') axis. Throws 
+    # AltitudeLimitException if slewing in the altitude axis and the 
+    # altitude limits have been exceeded. When this occurs, the altitude
+    # rate will be forced to zero unless the slew direction is away from the 
+    # limit.
+    def slew(self, axis, rate):
+        assert axis in ['az', 'alt']
 
         # enforce altitude limits
-        hit_limit = False
-        (mount_az_deg, mount_alt_deg) = self.get_azel()
-        if mount_alt_deg >= self.alt_max_limit and rate_alt > 0.0:
-            rate_alt = 0.0
-            hit_limit = True
-        elif mount_alt_deg <= self.alt_min_limit and rate_alt < 0.0:
-            rate_alt = 0.0
-            hit_limit = True
-
+        if axis == 'alt':
+            hit_limit = False
+            (mount_az_deg, mount_alt_deg) = self.get_azalt()
+            if ((mount_alt_deg >= self.alt_max_limit and rate > 0.0) 
+            or (mount_alt_deg <= self.alt_min_limit and rate < 0.0)):
+                self.nexstar.slew_var('alt', 0.0)
+                raise self.AltitudeLimitException('Altitude limit exceeded')
+            
         # slew_var argument units are arcseconds per second
-        self.nexstar.slew_var(rate_az * 3600.0, rate_alt * 3600.0)
+        self.nexstar.slew_var(axis, rate * 3600.0)
 
         # NexStar has no command to query the slew rate so cache the commanded
-        # rates to allow get_slew_rate() method
-        self.slew_rate_az = rate_az
-        self.slew_rate_alt = rate_alt
+        # rate to allow get_slew_rate() method
+        self.cached_slew_rate[axis] = rate
 
-        if hit_limit:
-            raise self.AltitudeLimitException('Altitude limit exceeded')
-
-        return (rate_az, rate_alt)
-
-    def get_slew_rate(self):
-        return (self.slew_rate_az, self.slew_rate_alt)
+    def get_slew_rate(self, axis):
+        assert axis in ['az', 'alt']
+        return self.cached_slew_rate[axis]
 
     def get_max_slew_rate(self):
         return self.max_slew_rate
