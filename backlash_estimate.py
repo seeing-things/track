@@ -61,54 +61,70 @@ try:
     FAST_SLEW_RATE = 60.0 / 3600.0
     SLOW_SLEW_RATE = 30.0 / 3600.0
     MIN_INCREMENT = 1.0 / 3600.0
+    NUM_ITERATIONS = 5
 
-    backlash_estimates = []
+    backlash_estimates = {}
+    for axis in ['az', 'alt']:
 
-    for i in range(5):
+        backlash_estimates[axis] = []
 
-        print('Start iteration ' + str(i))
-        print('Centering object in FOV...')
+        for i in range(NUM_ITERATIONS):
 
-        # center the object in the FOV
-        tracker.low_error_iterations = 0
-        tracker.run()
-        track_rate_az, track_rate_alt = tracker.get_slew_rate()
-        mount.slew(0, track_rate_alt)
+            print('Start iteration ' + str(i) + ' of ' + str(NUM_ITERATIONS))
+            print('Centering object in FOV...')
 
-        print('Object has been centered. Slewing in azimuth until movement detected...')
+            # center the object in the FOV
+            tracker.low_error_iterations = 0
+            tracker.run()
+            
+            # Mount is still slewing until commanded to do otherwise.
+            # Intentionally allowing the axis not under test to continue to slew
+            # at the tracking rate so the object is less likely to drift out 
+            # of the FOV on that axis during the test.
 
-        # slew in azimuth until movement is detected
-        mount.slew(FAST_SLEW_RATE, track_rate_alt)
-        while True:
-            error_az, error_alt = error_source.compute_error()
-            if abs(error_az) > MOVEMENT_THRESHOLD_DEG:
-                mount.slew(0, track_rate_alt)
-                time.sleep(SLEW_STOP_SLEEP)
-                break
+            print('Object has been centered. Slewing in ' + axis + ' until movement detected...')
 
-        # record position
-        init_error_az, init_error_alt = error_source.compute_error()
-        init_az, init_alt = mount.get_azel()
+            # slew in axis under test until movement is detected
+            mount.slew(axis, FAST_SLEW_RATE)
+            while True:
+                error = error_source.compute_error()
+                if abs(error[axis]) > MOVEMENT_THRESHOLD_DEG:
+                    mount.slew(axis, 0.0)
+                    time.sleep(SLEW_STOP_SLEEP)
+                    break
 
-        print('Movement detected. Optical azimuth position error is ' + str(init_error_az * 3600.0) + ' arcseconds')
-        print('Slewing in other direction until movement detected...')
+            # record position
+            init_error = error_source.compute_error()
+            init_az, init_alt = mount.get_azalt()
 
-        # slew in azimuth the other direction until movement is detected
-        mount.slew(-SLOW_SLEW_RATE, track_rate_alt)
-        while True:
-            error_az, error_alt = error_source.compute_error()
-            if abs(error_az - init_error_az) > MOVEMENT_THRESHOLD_DEG:
-                az, alt = mount.get_azel()
-                mount.slew(0, track_rate_alt)
-                break
+            print('Movement detected. Optical position error is ' + str(init_error[axis] * 3600.0) + ' arcseconds')
+            print('Slewing in other direction until movement detected...')
 
-        backlash_estimages.append(abs(error.wrap_error(az - init_az)))
+            # slew the other direction until movement is detected
+            mount.slew(axis, -SLOW_SLEW_RATE)
+            while True:
+                error = error_source.compute_error()
+                if abs(error[axis] - init_error[axis]) > MOVEMENT_THRESHOLD_DEG:
+                    az, alt = mount.get_azalt()
+                    mount.slew(axis, 0.0)
+                    break
 
-        print('Movement detected. Estimate of azimuth backlash is ' + str(backlash_estimates[-1] * 3600.0) + ' arcseconds.')
+            if axis == 'az':
+                backlash_estimates[axis].append(abs(error.wrap_error(az - init_az)))
+            elif axis == 'alt':
+                backlash_estimates[axis].append(abs(error.wrap_error(alt - init_alt)))
+            else:
+                raise ValueError('axis value is not az or alt')
 
-    print('Iterations completed.')
-    print('Mean backlash: ' + str(np.mean(backlash_estimates)) + ' arcseconds')
-    print('Standard deviation: ' + str(np.std(backlash_estimates)) + ' arcseconds')
+            print('Movement detected. Estimate of backlash is ' + str(backlash_estimates[axis][-1] * 3600.0) + ' arcseconds.')
+
+        print('Iterations for ' + axis + ' axis completed.')
+        print('Mean backlash: ' + str(np.mean(backlash_estimates)) + ' arcseconds')
+        print('Standard deviation: ' + str(np.std(backlash_estimates)) + ' arcseconds')
+
+    # stop the mount
+    for axis in axes:
+        mount.slew(axis, 0.0)
 
 except KeyboardInterrupt:
     print('Goodbye!')
