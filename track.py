@@ -43,14 +43,6 @@ class TelescopeMount:
     def slew(self, axis, rate):
         pass
 
-    # Get the current slew rate in degrees per second. For mounts that do not
-    # support a slew rate readback command, this function may return a cached
-    # value from the most recently commanded slew rate. The axis argument is
-    # a string.
-    @abc.abstractmethod
-    def get_slew_rate(self, axis):
-        pass
-
     # Returns the maximum supported slew rate in degrees per second.
     @abc.abstractmethod
     def get_max_slew_rate(self):

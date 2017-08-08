@@ -123,8 +123,8 @@ try:
         print('Standard deviation: ' + str(np.std(backlash_estimates)) + ' arcseconds')
 
     # stop the mount
-    for axis in axes:
-        mount.slew(axis, 0.0)
+    mount.slew('az', 0.0)
+    mount.slew('alt', 0.0)
 
 except KeyboardInterrupt:
     print('Goodbye!')
