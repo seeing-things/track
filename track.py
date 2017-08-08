@@ -117,8 +117,12 @@ class Tracker:
 
     # The axes argument is a list of strings indicating which axes should be 
     # under active tracking control. The slew rate on any axis not included
-    # in the list will not be commanded by the control loop.
+    # in the list will not be commanded by the control loop. If an empty list
+    # is passed, the function returns immediately.
     def run(self, axes=['az', 'alt']):
+        
+        if len(axes) == 0:
+            return
 
         while True:
             start_time = time.time()
@@ -148,3 +152,27 @@ class Tracker:
                     print('Warning: Can''t keep up! Actual loop period this iteration: ' + str(elapsed_time))
                 else:
                     time.sleep(self.update_period - elapsed_time)
+
+class TrackUntilConverged(Tracker):
+
+    ERROR_THRESHOLD = 50.0 / 3600.0
+    MIN_ITERATIONS = 5
+
+    def run(self, axes=['az', 'alt']):
+        self.low_error_iterations = 0
+        super(TrackUntilConverged, self).run(axes)
+
+    def _stopping_condition(self):
+        try:
+            if abs(self.error['az']) > self.ERROR_THRESHOLD or abs(self.error['alt']) > self.ERROR_THRESHOLD:
+                self.low_error_iterations = 0
+                return False
+        except TypeError:
+            return False
+        
+        self.low_error_iterations += 1
+
+        if self.low_error_iterations >= self.MIN_ITERATIONS:
+            return True
+        else:
+            return False

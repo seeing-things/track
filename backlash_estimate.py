@@ -7,30 +7,6 @@ import argparse
 import time
 import numpy as np
 
-class TrackUntilConverged(track.Tracker):
-
-    ERROR_THRESHOLD = 50.0 / 3600.0
-    MIN_ITERATIONS = 5
-
-    def _stopping_condition(self):
-        try:
-            if abs(self.error_az) > self.ERROR_THRESHOLD or abs(self.error_alt) > self.ERROR_THRESHOLD:
-                self.low_error_iterations = 0
-                return False
-        except TypeError:
-            return False
-        
-        try:
-            self.low_error_iterations += 1
-        except AttributeError:
-            self.low_error_iterations = 1
-
-        if self.low_error_iterations >= self.MIN_ITERATIONS:
-            return True
-        else:
-            return False
-
-
 parser = argparse.ArgumentParser()
 parser.add_argument('--camera', help='device name of tracking camera', default='/dev/video0')
 parser.add_argument('--camera-res', help='camera resolution in arcseconds per pixel', required=True, type=float)
@@ -46,7 +22,7 @@ mount = mounts.NexStarMount(args.scope)
 # Create object with base type ErrorSource
 error_source = error.OpticalErrorSource(args.camera, args.camera_res)
 
-tracker = TrackUntilConverged(
+tracker = track.TrackUntilConverged(
     mount = mount, 
     error_source = error_source, 
     update_period = args.loop_period,
@@ -74,7 +50,6 @@ try:
             print('Centering object in FOV...')
 
             # center the object in the FOV
-            tracker.low_error_iterations = 0
             tracker.run()
             
             # Mount is still slewing until commanded to do otherwise.
