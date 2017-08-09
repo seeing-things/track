@@ -6,7 +6,7 @@ def clamp(x, limit):
     return max(min(limit, x), -limit)
 
 
-class ErrorSource:
+class ErrorSource(object):
     __metaclass__ = abc.ABCMeta
 
     class NoSignalException(Exception):
@@ -22,7 +22,7 @@ class ErrorSource:
         pass
 
 
-class TelescopeMount:
+class TelescopeMount(object):
     __metaclass__ = abc.ABCMeta
 
     class AltitudeLimitException(Exception):
@@ -50,7 +50,7 @@ class TelescopeMount:
 
 
 # Proportional plus integral (PI) loop filter
-class LoopFilter:
+class LoopFilter(object):
     def __init__(self, bandwidth, damping_factor, update_period, rate_limit):
         
         # compute loop filter gains
@@ -79,7 +79,7 @@ class LoopFilter:
 
 
 # Main tracking loop class
-class Tracker:
+class Tracker(object):
 
     def __init__(self, mount, error_source, update_period, loop_bandwidth, damping_factor):
 
