@@ -156,7 +156,7 @@ class Tracker(object):
 class TrackUntilConverged(Tracker):
 
     ERROR_THRESHOLD = 50.0 / 3600.0
-    MIN_ITERATIONS = 5
+    MIN_ITERATIONS = 20
 
     def run(self, axes=['az', 'alt']):
         self.low_error_iterations = 0
