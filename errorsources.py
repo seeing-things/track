@@ -138,8 +138,8 @@ class OpticalErrorSource(ErrorSource):
             raise self.NoSignalException('No target identified')
 
         # error is distance of first keypoint from center frame
-        error_x_px = keypoints[0].pt[0] - self.frame_center[0]
-        error_y_px = self.frame_center[1] - keypoints[0].pt[1]
+        error_x_px = keypoints[0].pt[0] - self.frame_center_px[0]
+        error_y_px = self.frame_center_px[1] - keypoints[0].pt[1]
         error_x_deg = error_x_px * self.degrees_per_pixel
         error_y_deg = error_y_px * self.degrees_per_pixel
 

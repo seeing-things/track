@@ -2,7 +2,7 @@
 
 import track
 import mounts
-import error
+import errorsources
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -18,7 +18,7 @@ args = parser.parse_args()
 mount = mounts.NexStarMount(args.scope)
 
 # Create object with base type ErrorSource
-error_source = error.OpticalErrorSource(args.camera, args.camera_res)
+error_source = errorsources.OpticalErrorSource(args.camera, args.camera_res)
 
 tracker = track.Tracker(
     mount = mount, 

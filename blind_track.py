@@ -2,7 +2,7 @@
 
 import track
 import mounts
-import error
+import errorsources
 import ephem
 import argparse
 
@@ -40,7 +40,7 @@ with open(args.tle) as tlefile:
 target = ephem.readtle(tle[0], tle[1], tle[2])
 
 # Create object with base type ErrorSource
-error_source = error.BlindErrorSource(mount, observer, target)
+error_source = errorsources.BlindErrorSource(mount, observer, target)
 
 tracker = track.Tracker(
     mount = mount, 

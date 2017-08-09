@@ -2,7 +2,7 @@
 
 import track
 import mounts
-import error
+import errorsources
 import argparse
 import time
 import numpy as np
@@ -20,7 +20,7 @@ args = parser.parse_args()
 mount = mounts.NexStarMount(args.scope)
 
 # Create object with base type ErrorSource
-error_source = error.OpticalErrorSource(args.camera, args.camera_res)
+error_source = errorsources.OpticalErrorSource(args.camera, args.camera_res)
 
 tracker = track.TrackUntilConverged(
     mount = mount, 
@@ -84,7 +84,7 @@ try:
                     mount.slew(axis, 0.0)
                     break
 
-            backlash_estimates[axis].append(abs(error.wrap_error(position[axis] - init_position[axis])))
+            backlash_estimates[axis].append(abs(errorsources.wrap_error(position[axis] - init_position[axis])))
 
             print('Movement detected. Estimate of backlash is ' + str(backlash_estimates[axis][-1] * 3600.0) + ' arcseconds.')
 
