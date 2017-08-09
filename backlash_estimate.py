@@ -89,8 +89,8 @@ try:
             print('Movement detected. Estimate of backlash is ' + str(backlash_estimates[axis][-1] * 3600.0) + ' arcseconds.')
 
         print('Iterations for ' + axis + ' axis completed.')
-        print('Mean backlash: ' + str(np.mean(backlash_estimates)) + ' arcseconds')
-        print('Standard deviation: ' + str(np.std(backlash_estimates)) + ' arcseconds')
+        print('Mean backlash: ' + str(np.mean(backlash_estimates[axis]) * 3600.0) + ' arcseconds')
+        print('Standard deviation: ' + str(np.std(backlash_estimates[axis]) * 3600.0) + ' arcseconds')
 
     # stop the mount
     mount.slew('az', 0.0)
