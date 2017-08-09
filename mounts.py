@@ -60,15 +60,22 @@ class NexStarMount(TelescopeMount):
         self.backlash = {'az': 0.0, 'alt': 0.0}
         self.aligned_slew_dir = {'az': +1, 'alt': +1}
 
-    def get_azalt(self):
+    def get_azalt(self, remove_backlash=True):
         """Gets the current position of the mount.
 
         Gets the current position coordinates of the mount in azimuth-altitude
         format. The values reported will be corrected to account for backlash
         if the set_backlash function has been called with non-zero correction
-        factors. The correction value is added or subtracted from the raw 
-        mount-reported position when the last commanded slew direction is 
-        opposite of the final approach direction used during alignment.
+        factors and remove_backlash is set to True. The correction value is 
+        added or subtracted from the raw mount-reported position when the 
+        last commanded slew direction is opposite of the final approach 
+        direction used during alignment. Note that this correction algorithm
+        does not attempt to handle the special case where the mount drive is 
+        in the deadband region.
+
+        Args:
+            remove_backlash: When true, backlash compensation is applied.
+                Otherwise the uncorrected position is returned.
 
         Returns:
             A dict with keys 'az' and 'alt' where the values are the azimuth
@@ -77,13 +84,14 @@ class NexStarMount(TelescopeMount):
         """
         (az, alt) = self.nexstar.get_azalt()
         
-        if self.last_slew_dir['az'] != self.aligned_slew_dir['az']:
-            az += backlash['az'] * self.aligned_slew_dir['az']
-            az = az % 360.0
+        if remove_backlash:
+            if self.last_slew_dir['az'] != self.aligned_slew_dir['az']:
+                az += backlash['az'] * self.aligned_slew_dir['az']
+                az = az % 360.0
 
-        if self.last_slew_dir['alt'] != self.aligned_slew_dir['alt']:
-            alt += backlash['alt'] * self.aligned_slew_dir['alt']
-            alt = (alt + 180.0) % 360.0 - 180.0
+            if self.last_slew_dir['alt'] != self.aligned_slew_dir['alt']:
+                alt += backlash['alt'] * self.aligned_slew_dir['alt']
+                alt = (alt + 180.0) % 360.0 - 180.0
 
         return {'az': az, 'alt': alt}
 
