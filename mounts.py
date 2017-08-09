@@ -86,11 +86,11 @@ class NexStarMount(TelescopeMount):
         
         if remove_backlash:
             if self.last_slew_dir['az'] != self.aligned_slew_dir['az']:
-                az += backlash['az'] * self.aligned_slew_dir['az']
+                az += self.backlash['az'] * self.aligned_slew_dir['az']
                 az = az % 360.0
 
             if self.last_slew_dir['alt'] != self.aligned_slew_dir['alt']:
-                alt += backlash['alt'] * self.aligned_slew_dir['alt']
+                alt += self.backlash['alt'] * self.aligned_slew_dir['alt']
                 alt = (alt + 180.0) % 360.0 - 180.0
 
         return {'az': az, 'alt': alt}
@@ -148,9 +148,9 @@ class NexStarMount(TelescopeMount):
         # enforce altitude limits
         if axis == 'alt':
             hit_limit = False
-            (mount_az_deg, mount_alt_deg) = self.get_azalt()
-            if ((mount_alt_deg >= self.alt_max_limit and rate > 0.0) or
-                (mount_alt_deg <= self.alt_min_limit and rate < 0.0)):
+            position = self.get_azalt()
+            if ((position['alt'] >= self.alt_max_limit and rate > 0.0) or
+                (position['alt'] <= self.alt_min_limit and rate < 0.0)):
                 self.nexstar.slew_var('alt', 0.0)
                 raise self.AltitudeLimitException('Altitude limit exceeded')
             
