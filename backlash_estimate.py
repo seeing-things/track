@@ -51,6 +51,8 @@ try:
 
             # center the object in the FOV
             tracker.run()
+
+            init_error = error_source.compute_error()
             
             # Mount is still slewing until commanded to do otherwise.
             # Intentionally allowing the axis not under test to continue to slew
@@ -63,7 +65,7 @@ try:
             mount.slew(axis, FAST_SLEW_RATE)
             while True:
                 error = error_source.compute_error()
-                if abs(error[axis]) > MOVEMENT_THRESHOLD_DEG:
+                if abs(error[axis] - init_error[axis]) > MOVEMENT_THRESHOLD_DEG:
                     mount.slew(axis, 0.0)
                     time.sleep(SLEW_STOP_SLEEP)
                     break
