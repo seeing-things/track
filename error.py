@@ -57,9 +57,9 @@ class OpticalErrorSource(ErrorSource):
         if not self.camera.isOpened():
             raise exceptions.IOError('Could not open camera')
 
-        frame_width = self.camera.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)
-        frame_height = self.camera.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)
-        self.frame_center = (frame_width / 2.0, frame_height / 2.0)
+        self.frame_width_px = self.camera.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)
+        self.frame_height_px = self.camera.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)
+        self.frame_center_px = (self.frame_width_px / 2.0, self.frame_height_px / 2.0)
         
         # initialize blob detector
         params = cv2.SimpleBlobDetector_Params()
