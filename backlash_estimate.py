@@ -70,7 +70,7 @@ try:
 
             # record position
             init_error = error_source.compute_error()
-            init_az, init_alt = mount.get_azalt()
+            init_position = mount.get_azalt()
 
             print('Movement detected. Optical position error is ' + str(init_error[axis] * 3600.0) + ' arcseconds')
             print('Slewing in other direction until movement detected...')
@@ -80,16 +80,11 @@ try:
             while True:
                 error = error_source.compute_error()
                 if abs(error[axis] - init_error[axis]) > MOVEMENT_THRESHOLD_DEG:
-                    az, alt = mount.get_azalt()
+                    position = mount.get_azalt()
                     mount.slew(axis, 0.0)
                     break
 
-            if axis == 'az':
-                backlash_estimates[axis].append(abs(error.wrap_error(az - init_az)))
-            elif axis == 'alt':
-                backlash_estimates[axis].append(abs(error.wrap_error(alt - init_alt)))
-            else:
-                raise ValueError('axis value is not az or alt')
+            backlash_estimates[axis].append(abs(error.wrap_error(position[axis] - init_position[axis])))
 
             print('Movement detected. Estimate of backlash is ' + str(backlash_estimates[axis][-1] * 3600.0) + ' arcseconds.')
 

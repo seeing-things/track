@@ -28,8 +28,8 @@ class TelescopeMount:
     class AltitudeLimitException(Exception):
         pass
 
-    # Returns the current position of the mount as a tuple containing
-    # (azimuth, altitude) in degrees.
+    # Returns the current position of the mount as a dict containing
+    # keys 'az' and 'alt' with values in degrees.
     @abc.abstractmethod
     def get_azalt(self):
         pass

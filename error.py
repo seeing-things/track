@@ -32,12 +32,12 @@ class BlindErrorSource(ErrorSource):
         target_alt_deg = self.target.alt * 180.0 / math.pi
 
         # get current position of telescope (degrees)
-        (scope_az_deg, scope_alt_deg) = self.mount.get_azalt()
+        mount_position_deg = self.mount.get_azalt()
          
         # compute pointing errors in degrees
         error = {}
-        error['az'] = wrap_error(target_az_deg - scope_az_deg)
-        error['alt'] = wrap_error(target_alt_deg - scope_alt_deg)
+        error['az'] = wrap_error(target_az_deg - mount_position_deg['az'])
+        error['alt'] = wrap_error(target_alt_deg - mount_position_deg['alt'])
 
         return error
 

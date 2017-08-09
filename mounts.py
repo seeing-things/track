@@ -71,9 +71,9 @@ class NexStarMount(TelescopeMount):
         opposite of the final approach direction used during alignment.
 
         Returns:
-            A tuple where the first value is the azimuth position and the 
-            second value is the altitude position in degrees. The azimuth
-            range is [0,360) and the altitude range is [-180,+180).
+            A dict with keys 'az' and 'alt' where the values are the azimuth
+            and altitude positions in degrees. The azimuth range is [0,360) and
+            the altitude range is [-180,+180).
         """
         (az, alt) = self.nexstar.get_azalt()
         
@@ -85,7 +85,7 @@ class NexStarMount(TelescopeMount):
             alt += backlash['alt'] * self.aligned_slew_dir['alt']
             alt = (alt + 180.0) % 360.0 - 180.0
 
-        return (az, alt)
+        return {'az': az, 'alt': alt}
 
     def set_backlash(self, axis, aligned_slew_dir, backlash):
         """Sets the backlash compensation in one axis.
