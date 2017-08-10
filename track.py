@@ -110,10 +110,20 @@ class Tracker(object):
         self.slew_rate = {'az': 0.0, 'alt': 0.0}
         self.num_iterations = 0
 
+        self.callback = None
+
+        self.stop = False
+
     # stopping condition for control loop (can override in child class)
     # returns True if tracking should stop
     def _stopping_condition(self):
-        return False
+        return self.stop
+
+    # Registers a callback function to be called near the end of each loop
+    # iteration. The callback function is called with no arguments. Pass
+    # None as the argument value to un-register.
+    def register_callback(self, callback):
+        self.callback = callback
 
     # The axes argument is a list of strings indicating which axes should be 
     # under active tracking control. The slew rate on any axis not included
@@ -121,6 +131,8 @@ class Tracker(object):
     # is passed, the function returns immediately.
     def run(self, axes=['az', 'alt']):
         
+        self.stop =  False
+
         if len(axes) == 0:
             return
 
@@ -144,12 +156,16 @@ class Tracker(object):
             except TelescopeMount.AltitudeLimitException:
                 self.loop_filter['alt'].int = 0.0
             finally:
+
+                if self.callback is not None:
+                    self.callback()
+
                 self.num_iterations += 1
 
                 elapsed_time = time.time() - start_time
 
                 if elapsed_time > self.update_period:
-                    print('Warning: Can''t keep up! Actual loop period this iteration: ' + str(elapsed_time))
+                    print('Warning: Can\'t keep up! Actual loop period this iteration: ' + str(elapsed_time))
                 else:
                     time.sleep(self.update_period - elapsed_time)
 
@@ -163,6 +179,10 @@ class TrackUntilConverged(Tracker):
         super(TrackUntilConverged, self).run(axes)
 
     def _stopping_condition(self):
+        
+        if self.stop:
+            return True
+
         try:
             if abs(self.error['az']) > self.ERROR_THRESHOLD or abs(self.error['alt']) > self.ERROR_THRESHOLD:
                 self.low_error_iterations = 0
