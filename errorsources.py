@@ -130,8 +130,10 @@ class OpticalErrorSource(ErrorSource):
         keypoints = self.detector.detect(thresh)
 
         # display the original frame with keypoints circled in red
-        frame_with_keypoints = cv2.drawKeypoints(frame, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-        cv2.imshow('frame', frame_with_keypoints)
+        frame_annotated = cv2.drawKeypoints(frame, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        cv2.line(frame_annotated, (int(self.frame_center_px[0]), 0), (int(self.frame_center_px[0]), int(self.frame_height_px) - 1), (100,0,0), 1)
+        cv2.line(frame_annotated, (0, int(self.frame_center_px[1])), (int(self.frame_width_px) - 1, int(self.frame_center_px[1])), (100,0,0), 1)
+        cv2.imshow('frame', frame_annotated)
         cv2.waitKey(1)
 
         if not keypoints:
