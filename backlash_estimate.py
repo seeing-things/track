@@ -139,6 +139,8 @@ try:
             tracker.register_callback(stop_at_half_frame_callback)
             tracker.run(axes=[other_axis])
             tracker.register_callback(None)
+            mount.slew(axis, 0.0)
+            time.sleep(SLEW_STOP_SLEEP)
             error_stop = error_source.compute_error()
             position_stop = mount.get_azalt()
             time_elapsed = time.time() - time_start
@@ -157,7 +159,7 @@ try:
                 'alt': uncorrected_motion['alt'] - predicted_sidereal_motion['alt'],
             }
             mount_pos_change_predict = np.absolute(corrected_motion['az'] + 1j*corrected_motion['alt']) / camera_to_mount_rate
-            mount_pos_change = abs(position_stop[axis] - position_start[axis])
+            mount_pos_change = abs(errorsources.wrap_error(position_stop[axis] - position_start[axis]))
             backlash_estimates[axis].append(abs(mount_pos_change - mount_pos_change_predict))
             print('\telapsed time: ' + str(time_elapsed))
             print('\tuncorrected motion: ' + str(uncorrected_motion))
