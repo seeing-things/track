@@ -63,9 +63,8 @@ try:
         for i in range(NUM_ITERATIONS):
 
             print('Start iteration ' + str(i) + ' of ' + str(NUM_ITERATIONS))
-            print('Centering object in FOV...')
 
-            # center the object in the FOV
+            print('Centering object in FOV...')
             tracker.run()
 
             # Continue tracking for a bit to estimate variance of object's
@@ -91,8 +90,8 @@ try:
             position_stop = mount.get_azalt()
             time_elapsed = time.time() - time_start
             slew_rate_est = {
-                'az': (position_stop['az'] - position_start['az']) / time_elapsed,
-                'alt': (position_stop['alt'] - position_start['alt']) / time_elapsed
+                'az': (errorsources.wrap_error(position_stop['az'] - position_start['az'])) / time_elapsed,
+                'alt': (errorsources.wrap_error(position_stop['alt'] - position_start['alt'])) / time_elapsed
             }
             print('\taz tracking mean (arcseconds): ' + str(tracking_mean['az'] * 3600.0))
             print('\talt tracking mean (arcseconds): ' + str(tracking_mean['alt'] * 3600.0))
