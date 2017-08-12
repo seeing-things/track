@@ -29,7 +29,7 @@ mount = mounts.NexStarMount(args.scope)
 # Create object with base type ErrorSource
 error_source = errorsources.OpticalErrorSource(args.camera, args.camera_res)
 
-tracker = track.TrackUntilConverged(
+tracker = track.Tracker(
     mount = mount, 
     error_source = error_source, 
     update_period = args.loop_period,
@@ -56,6 +56,27 @@ def stop_beyond_deadband_callback():
     position_stop = mount.get_azalt(remove_backlash=False)
     position_change = abs(errorsources.wrap_error(position_stop[other_axis] - position_start[other_axis]))
     if position_change >= 1.25 * backlash:
+        tracker.stop = True
+
+def track_until_converged_callback():
+    ERROR_THRESHOLD = 20.0 / 3600.0
+    MIN_ITERATIONS = 50
+
+    try:
+        if (abs(tracker.error['az']) > ERROR_THRESHOLD or
+            abs(tracker.error['alt']) > ERROR_THRESHOLD):
+            tracker.low_error_iterations = 0
+            return
+    except TypeError:
+        return
+    
+    try:
+        tracker.low_error_iterations += 1
+    except NameError:
+        tracker.low_error_iterations = 1
+
+    if tracker.low_error_iterations >= MIN_ITERATIONS:
+        tracker.low_error_iterations = 0
         tracker.stop = True
 
 try:
@@ -86,7 +107,9 @@ try:
     # determine which axes are slewing in the same direction as the desired 
     # approach direction
     print('Centering object and measuring tracking slew rates and directions...')
+    tracker.register_callback(track_until_converged_callback)
     tracker.run()
+    tracker.register_callback(None)
     rates = tracker.slew_rate
     track_axes = []
     if ((rates['az'] > 0.0 and args.align_dir_az == +1) or
@@ -102,13 +125,7 @@ try:
     # case a: Slewing in the desired approach direction in both axes to track
     # object. Just keep doing this indefinitely.
     if len(track_axes) == 2:
-        tracker = track.Tracker(
-            mount = mount, 
-            error_source = error_source, 
-            update_period = args.loop_period,
-            loop_bandwidth = args.loop_bw,
-            damping_factor = args.loop_damping
-        )
+        print('Press ALIGN on hand controller at any time. Press CTRL-C to quit.')
         tracker.run(track_axes)
 
     # case b: One axis is slewing in the desired approach direction but the 
@@ -169,7 +186,9 @@ try:
         print('\tapparent motion direction (degrees): ' + str(apparent_motion_angle))
 
         print('Centering object...')
+        tracker.register_callback(track_until_converged_callback)
         tracker.run()
+        tracker.register_callback(None)
 
         # move object away from center of frame such that its apparent sidereal
         # motion will be towards center

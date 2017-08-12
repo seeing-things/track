@@ -22,7 +22,7 @@ mount = mounts.NexStarMount(args.scope)
 # Create object with base type ErrorSource
 error_source = errorsources.OpticalErrorSource(args.camera, args.camera_res)
 
-tracker = track.TrackUntilConverged(
+tracker = track.Tracker(
     mount = mount, 
     error_source = error_source, 
     update_period = args.loop_period,
@@ -32,15 +32,25 @@ tracker = track.TrackUntilConverged(
 
 error_lists = {'az': [], 'alt': []}
 
-def tracker_callback():
+def stats_callback():
     error_lists['az'].append(tracker.error['az'])
     error_lists['alt'].append(tracker.error['alt'])
+    if time.time() - time_start >= 30:
+        tracker.stop = True
 
 def stop_at_half_frame_callback():
     if tracker.error['az'] is not None:
         if (abs(tracker.error['az']) > HALF_FRAME_ERROR_MAG or 
             abs(tracker.error['alt']) > HALF_FRAME_ERROR_MAG):
                 tracker.stop = True
+
+def apparent_motion_callback():
+    if tracker.error['az'] is not None:
+        if (abs(tracker.error['az']) > HALF_FRAME_ERROR_MAG or 
+            abs(tracker.error['alt']) > HALF_FRAME_ERROR_MAG):
+                tracker.stop = True
+    if time.time() - time_start > 30.0:
+        tracker.stop = True
 
 def stop_at_frame_edge_callback():
     if tracker.error['az'] is not None:
@@ -56,6 +66,27 @@ def stop_at_inner_half_callback():
 
 def stop_after_30_seconds():
     if time.time() - time_start > 30.0:
+        tracker.stop = True
+
+def track_until_converged_callback():
+    ERROR_THRESHOLD = 20.0 / 3600.0
+    MIN_ITERATIONS = 50
+
+    try:
+        if (abs(tracker.error['az']) > ERROR_THRESHOLD or 
+            abs(tracker.error['alt']) > ERROR_THRESHOLD):
+            tracker.low_error_iterations = 0
+            return
+    except TypeError:
+        return
+    
+    try:
+        tracker.low_error_iterations += 1
+    except NameError:
+        tracker.low_error_iterations = 1
+
+    if tracker.low_error_iterations >= MIN_ITERATIONS:
+        tracker.low_error_iterations = 0
         tracker.stop = True
 
 try:
@@ -90,7 +121,9 @@ try:
             print('Start iteration ' + str(i) + ' of ' + str(NUM_ITERATIONS))
 
             print('Centering object in FOV...')
+            tracker.register_callback(track_until_converged_callback)
             tracker.run()
+            tracker.register_callback(None)
 
             # Continue tracking for a bit to estimate variance of object's
             # apparent position due to mount jitter, seeing, tracking loop 
@@ -101,7 +134,7 @@ try:
             error_lists['alt'] = []
             position_start = mount.get_azalt()
             time_start = time.time()
-            tracker.register_callback(tracker_callback)
+            tracker.register_callback(stats_callback)
             tracker.run()
             tracker.register_callback(None)
             tracking_mean = {
@@ -132,7 +165,7 @@ try:
             time.sleep(SLEW_STOP_SLEEP)
             error_start = error_source.compute_error(OPTICAL_ERROR_RETRIES)
             time_start = time.time()
-            tracker.register_callback(stop_at_half_frame_callback)
+            tracker.register_callback(apparent_motion_callback)
             tracker.run(axes=[other_axis])
             tracker.register_callback(None)
             error_stop = error_source.compute_error(OPTICAL_ERROR_RETRIES)

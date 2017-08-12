@@ -168,31 +168,3 @@ class Tracker(object):
                     print('Warning: Can\'t keep up! Actual loop period this iteration: ' + str(elapsed_time))
                 else:
                     time.sleep(self.update_period - elapsed_time)
-
-class TrackUntilConverged(Tracker):
-
-    ERROR_THRESHOLD = 20.0 / 3600.0
-    MIN_ITERATIONS = 50
-
-    def run(self, axes=['az', 'alt']):
-        self.low_error_iterations = 0
-        super(TrackUntilConverged, self).run(axes)
-
-    def _stopping_condition(self):
-        
-        if self.stop:
-            return True
-
-        try:
-            if abs(self.error['az']) > self.ERROR_THRESHOLD or abs(self.error['alt']) > self.ERROR_THRESHOLD:
-                self.low_error_iterations = 0
-                return False
-        except TypeError:
-            return False
-        
-        self.low_error_iterations += 1
-
-        if self.low_error_iterations >= self.MIN_ITERATIONS:
-            return True
-        else:
-            return False
