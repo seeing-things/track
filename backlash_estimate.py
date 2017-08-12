@@ -37,19 +37,44 @@ def tracker_callback():
     error_lists['alt'].append(tracker.error['alt'])
 
 def stop_at_half_frame_callback():
-    if (abs(tracker.error['az']) > HALF_FRAME_ERROR_MAG or 
-        abs(tracker.error['alt']) > HALF_FRAME_ERROR_MAG):
-            tracker.stop = True
+    if tracker.error['az'] is not None:
+        if (abs(tracker.error['az']) > HALF_FRAME_ERROR_MAG or 
+            abs(tracker.error['alt']) > HALF_FRAME_ERROR_MAG):
+                tracker.stop = True
+
+def stop_at_frame_edge_callback():
+    if tracker.error['az'] is not None:
+        if (abs(tracker.error['az']) > NEAR_FRAME_EDGE_ERROR_MAG or 
+            abs(tracker.error['alt']) > NEAR_FRAME_EDGE_ERROR_MAG):
+                tracker.stop = True
+
+def stop_at_inner_half_callback():
+    if tracker.error['az'] is not None:
+        if (abs(tracker.error['az']) < HALF_FRAME_ERROR_MAG and 
+            abs(tracker.error['alt']) < HALF_FRAME_ERROR_MAG):
+                tracker.stop = True
+
+def stop_after_30_seconds():
+    if time.time() - time_start > 30.0:
+        tracker.stop = True
 
 try:
 
-    SLEW_STOP_SLEEP = 3.0
-    SLOW_SLEW_RATE = 15.0 / 3600.0
+    SLEW_STOP_SLEEP = 1.0
+    SLOW_SLEW_RATE = 30.0 / 3600.0
     NUM_ITERATIONS = 5
+    OPTICAL_ERROR_RETRIES = 10
     # If the magnitude of the error is larger than this value, the object
     # is more than 50% of the distance from the center of the frame to the
     # nearest edge.
     HALF_FRAME_ERROR_MAG = 0.5 * 0.5 * error_source.degrees_per_pixel * min(
+        error_source.frame_height_px, 
+        error_source.frame_width_px
+    )
+    # If the magnitude of the error is larger than this value, the object
+    # is more than 80% of the distance from the center of the frame to the
+    # nearest edge.
+    NEAR_FRAME_EDGE_ERROR_MAG = 0.8 * 0.5 * error_source.degrees_per_pixel * min(
         error_source.frame_height_px, 
         error_source.frame_width_px
     )
@@ -71,7 +96,7 @@ try:
             # apparent position due to mount jitter, seeing, tracking loop 
             # noise, and other effects. Also estimate the slew rate of the
             # mount.
-            print('Estimating steady state tracking variance...')
+            print('Estimating steady state tracking rates and stats...')
             error_lists['az'] = []
             error_lists['alt'] = []
             position_start = mount.get_azalt()
@@ -105,12 +130,12 @@ try:
             print('Estimating object apparent motion while tracking in single axis...')
             mount.slew(axis, 0.0)
             time.sleep(SLEW_STOP_SLEEP)
-            error_start = error_source.compute_error()
+            error_start = error_source.compute_error(OPTICAL_ERROR_RETRIES)
             time_start = time.time()
             tracker.register_callback(stop_at_half_frame_callback)
             tracker.run(axes=[other_axis])
             tracker.register_callback(None)
-            error_stop = error_source.compute_error()
+            error_stop = error_source.compute_error(OPTICAL_ERROR_RETRIES)
             time_elapsed = time.time() - time_start
             apparent_motion = {
                 'az': (error_stop['az'] - error_start['az']) / time_elapsed,
@@ -125,22 +150,28 @@ try:
             camera_to_mount_rate = np.absolute(apparent_motion['az'] + 1j*apparent_motion['alt']) / slew_rate_est[axis]
             print('\tcamera to mount rate ratio: ' + str(camera_to_mount_rate))
 
-            # center the object in the FOV
-            print('Tracking object until converged...')
-            tracker.run()
-
-            # slew opposite tracking direction until object is near edge of frame
-            print('Slewing in opposite of tracking direction in ' + str(axis) + '...')
-            error_start = error_source.compute_error()
-            position_start = mount.get_azalt()
-            time_start = time.time()
-            mount.slew(axis, -mount.last_slew_dir[axis] * SLOW_SLEW_RATE)
-            tracker.register_callback(stop_at_half_frame_callback)
+            # slew to one side
+            print('Slewing in one direction in ' + str(axis) + ' until object near edge of frame...')
+            mount.slew(axis, SLOW_SLEW_RATE)
+            tracker.register_callback(stop_at_frame_edge_callback)
             tracker.run(axes=[other_axis])
             tracker.register_callback(None)
             mount.slew(axis, 0.0)
             time.sleep(SLEW_STOP_SLEEP)
-            error_stop = error_source.compute_error()
+
+            # slew opposite tracking direction until object is near edge of frame
+            print('Slewing in opposite direction in ' + str(axis) + '...')
+            error_start = error_source.compute_error(OPTICAL_ERROR_RETRIES)
+            position_start = mount.get_azalt()
+            time_start = time.time()
+            mount.slew(axis, -SLOW_SLEW_RATE)
+            tracker.register_callback(stop_at_inner_half_callback)
+            tracker.run(axes=[other_axis])
+            tracker.register_callback(stop_at_frame_edge_callback)
+            tracker.run(axes=[other_axis])
+            tracker.register_callback(None)
+            mount.slew(axis, 0.0)
+            error_stop = error_source.compute_error(OPTICAL_ERROR_RETRIES)
             position_stop = mount.get_azalt()
             time_elapsed = time.time() - time_start
 
@@ -161,11 +192,11 @@ try:
             mount_pos_change = abs(errorsources.wrap_error(position_stop[axis] - position_start[axis]))
             backlash_estimates[axis].append(abs(mount_pos_change - mount_pos_change_predict))
             print('\telapsed time: ' + str(time_elapsed))
-            print('\tuncorrected motion: ' + str(uncorrected_motion))
-            print('\tpredicted sidereal motion: ' + str(predicted_sidereal_motion))
-            print('\tcorrected motion: ' + str(corrected_motion))
-            print('\tpredicted change in mount position: ' + str(mount_pos_change_predict))
-            print('\tmount reported change in position: ' + str(mount_pos_change))
+            print('\tuncorrected motion: ' + str(uncorrected_motion['az'] * 3600.0) + ', ' + str(uncorrected_motion['alt'] * 3600.0))
+            print('\tpredicted sidereal motion: ' + str(predicted_sidereal_motion['az'] * 3600.0) + ', ' + str(predicted_sidereal_motion['alt'] * 3600.0))
+            print('\tcorrected motion: ' + str(corrected_motion['az'] * 3600.0) + ', ' + str(corrected_motion['alt'] * 3600.0) )
+            print('\tpredicted change in mount position: ' + str(mount_pos_change_predict * 3600.0))
+            print('\tmount reported change in position: ' + str(mount_pos_change * 3600.0))
 
             print('Estimate of backlash deadband is ' + str(backlash_estimates[axis][-1] * 3600.0) + ' arcseconds.')
 
