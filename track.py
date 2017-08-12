@@ -18,7 +18,7 @@ class ErrorSource(object):
     # altitude range is [-180,180). May raise a NoSignalException if the 
     # error cannot be computed.
     @abc.abstractmethod
-    def compute_error(self):
+    def compute_error(self, retries=0):
         pass
 
 

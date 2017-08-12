@@ -22,7 +22,7 @@ class BlindErrorSource(ErrorSource):
         # TelescopeMount object
         self.mount = mount
 
-    def compute_error(self):
+    def compute_error(self, retries=0):
 
         # get current coordinates of the target in degrees
         # not using ephem.now() because it rounds time to the nearest second
@@ -88,66 +88,71 @@ class OpticalErrorSource(ErrorSource):
     def do_nothing(self, x):
         pass
 
-    def compute_error(self):
+    def compute_error(self, retries=0):
 
-        '''
-        This is an ugly hack to ensure that the most recent frame from the 
-        camera is processed rather than a stale frame waiting in a buffer.
-        The OpenCV VideoCapture API does not provide any means of managing
-        the buffer directly. Experimentation has shown that the time to
-        execute grab() is many times faster when the next frame is buffered
-        compared to waiting for a brand new frame from the camera. Thus when
-        the elapsed time exceeds a threshold it is very likely that the
-        buffer has been emptied and the next frame is actually current.
-
-        An alternative to this approach would be to spawn a thread to 
-        continually read from the camera in the background but it's a pain 
-        to kill threads in Python when the program ends so that method was 
-        intentionally avoided.
-        '''
         while True:
-            start = time.time()
-            ret = self.camera.grab()
-            if time.time() - start > self.MIN_GRAB_TIME:
-                break
+            '''
+            This is an ugly hack to ensure that the most recent frame from the 
+            camera is processed rather than a stale frame waiting in a buffer.
+            The OpenCV VideoCapture API does not provide any means of managing
+            the buffer directly. Experimentation has shown that the time to
+            execute grab() is many times faster when the next frame is buffered
+            compared to waiting for a brand new frame from the camera. Thus when
+            the elapsed time exceeds a threshold it is very likely that the
+            buffer has been emptied and the next frame is actually current.
 
-        # get the latest camera frame available
-        ret, frame = self.camera.read()
-        if not ret:
-            raise exceptions.IOError('Could not get frame from camera')
+            An alternative to this approach would be to spawn a thread to 
+            continually read from the camera in the background but it's a pain 
+            to kill threads in Python when the program ends so that method was 
+            intentionally avoided.
+            '''
+            while True:
+                start = time.time()
+                ret = self.camera.grab()
+                if time.time() - start > self.MIN_GRAB_TIME:
+                    break
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            # get the latest camera frame available
+            ret, frame = self.camera.read()
+            if not ret:
+                raise exceptions.IOError('Could not get frame from camera')
 
-        thresh = cv2.adaptiveThreshold(
-            gray,
-            255,
-            cv2.ADAPTIVE_THRESH_MEAN_C,
-            cv2.THRESH_BINARY,
-            cv2.getTrackbarPos('block size', 'frame'),
-            cv2.getTrackbarPos('C', 'frame')
-        )
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        keypoints = self.detector.detect(thresh)
+            thresh = cv2.adaptiveThreshold(
+                gray,
+                255,
+                cv2.ADAPTIVE_THRESH_MEAN_C,
+                cv2.THRESH_BINARY,
+                cv2.getTrackbarPos('block size', 'frame'),
+                cv2.getTrackbarPos('C', 'frame')
+            )
 
-        # display the original frame with keypoints circled in red
-        frame_annotated = cv2.drawKeypoints(frame, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-        cv2.line(frame_annotated, (int(self.frame_center_px[0]), 0), (int(self.frame_center_px[0]), int(self.frame_height_px) - 1), (100,0,0), 1)
-        cv2.line(frame_annotated, (0, int(self.frame_center_px[1])), (int(self.frame_width_px) - 1, int(self.frame_center_px[1])), (100,0,0), 1)
-        cv2.imshow('frame', frame_annotated)
-        cv2.waitKey(1)
+            keypoints = self.detector.detect(thresh)
 
-        if not keypoints:
-            raise self.NoSignalException('No target identified')
+            # display the original frame with keypoints circled in red
+            frame_annotated = cv2.drawKeypoints(frame, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            cv2.line(frame_annotated, (int(self.frame_center_px[0]), 0), (int(self.frame_center_px[0]), int(self.frame_height_px) - 1), (100,0,0), 1)
+            cv2.line(frame_annotated, (0, int(self.frame_center_px[1])), (int(self.frame_width_px) - 1, int(self.frame_center_px[1])), (100,0,0), 1)
+            cv2.imshow('frame', frame_annotated)
+            cv2.waitKey(1)
 
-        # error is distance of first keypoint from center frame
-        error_x_px = keypoints[0].pt[0] - self.frame_center_px[0]
-        error_y_px = self.frame_center_px[1] - keypoints[0].pt[1]
-        error_x_deg = error_x_px * self.degrees_per_pixel
-        error_y_deg = error_y_px * self.degrees_per_pixel
+            if not keypoints:
+                if retries > 0:
+                    retries -= 1
+                    continue
+                else:
+                    raise self.NoSignalException('No target identified')
 
-        # FIXME: need to do proper coordinate transformation based on orientation of camera!
-        error = {}
-        error['az'] = error_x_deg
-        error['alt'] = error_y_deg
+            # error is distance of first keypoint from center frame
+            error_x_px = keypoints[0].pt[0] - self.frame_center_px[0]
+            error_y_px = self.frame_center_px[1] - keypoints[0].pt[1]
+            error_x_deg = error_x_px * self.degrees_per_pixel
+            error_y_deg = error_y_px * self.degrees_per_pixel
 
-        return error
+            # FIXME: need to do proper coordinate transformation based on orientation of camera!
+            error = {}
+            error['az'] = error_x_deg
+            error['alt'] = error_y_deg
+
+            return error
