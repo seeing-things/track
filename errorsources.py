@@ -4,7 +4,6 @@ import datetime
 import math
 import cv2
 import numpy as np
-import exceptions
 import time
 
 # wraps an angle in degrees to the range [-180,+180)
