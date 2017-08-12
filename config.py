@@ -1,6 +1,4 @@
-import configargparse as argparse
-
-DEFAULT_CFGFILES=[
+DEFAULT_FILES=[
     './track.cfg',
     '~/.track.cfg',
 ]

@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
-from config import *
+import config
+import configargparse
 import mounts
 import errorsources
 import time
 import numpy as np
 
-parser = argparse.ArgumentParser(default_config_files=DEFAULT_CFGFILES)
+parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 args = parser.parse_args()
 
