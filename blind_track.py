@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
+from config import *
 import track
 import mounts
 import errorsources
 import ephem
-import argparse
 
-parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser = argparse.ArgumentParser(default_config_files=DEFAULT_CFGFILES, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('tle', help='filename of two-line element (TLE) target ephemeris')
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
