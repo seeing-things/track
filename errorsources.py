@@ -113,7 +113,7 @@ class OpticalErrorSource(ErrorSource):
                     break
 
             # get the latest camera frame available
-            ret, frame = self.camera.read()
+            ret, frame = self.camera.retrieve()
             if not ret:
                 raise exceptions.IOError('Could not get frame from camera')
 
