@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-from config import *
+import config
+import configargparse
 import track
 import mounts
 import errorsources
@@ -10,7 +11,7 @@ import math
 import numpy as np
 
 
-parser = argparse.ArgumentParser(default_config_files=DEFAULT_CFGFILES)
+parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
 parser.add_argument('--camera', help='device name of tracking camera', default='/dev/video0')
 parser.add_argument('--camera-res', help='camera resolution in arcseconds per pixel', required=True, type=float)
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
