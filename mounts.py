@@ -115,7 +115,7 @@ class NexStarMount(TelescopeMount):
         """
         assert axis in ['az', 'alt']
         assert aligned_slew_dir in [-1, +1]
-        assert adjustment >= 0.0
+        assert backlash >= 0.0
         self.backlash[axis] = backlash
         self.aligned_slew_dir[axis] = aligned_slew_dir
 
