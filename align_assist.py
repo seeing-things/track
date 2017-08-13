@@ -51,7 +51,8 @@ def stop_at_frame_edge_callback():
                 tracker.stop = True
 
 def error_print_callback():
-    print('\terror (az,alt): ' + str(tracker.error['az'] * 3600.0) + ', ' + str(tracker.error['alt'] * 3600.0))
+    if tracker.error['az'] is not None:
+        print('\terror (az,alt): ' + str(tracker.error['az'] * 3600.0) + ', ' + str(tracker.error['alt'] * 3600.0))
 
 def stop_beyond_deadband_callback():
     position_stop = mount.get_azalt(remove_backlash=False)
