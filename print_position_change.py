@@ -2,7 +2,6 @@
 
 import argparse
 import mounts
-import time
 import errorsources
 
 parser = argparse.ArgumentParser()
@@ -15,7 +14,6 @@ mount = mounts.NexStarMount(args.scope)
 position_start = mount.get_azalt()
 
 while True:
-    #time.sleep(0.1)
     position = mount.get_azalt()
     position_change = {
         'az': errorsources.wrap_error(position['az'] - position_start['az']) * 3600.0,
