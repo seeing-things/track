@@ -5,6 +5,9 @@ import math
 import cv2
 import numpy as np
 import time
+import select
+import v4l2capture
+from PIL import Image
 
 # wraps an angle in degrees to the range [-180,+180)
 def wrap_error(e):
@@ -43,23 +46,25 @@ class BlindErrorSource(ErrorSource):
 
 class OpticalErrorSource(ErrorSource):
 
-    def __init__(self, device_name, arcsecs_per_pixel):
-
-        # Calls to VideoCapture grab() that take longer than this many seconds
-        # before returning are assumed to be getting current frames from the
-        # camera rather than stale frames from a buffer.
-        self.MIN_GRAB_TIME = 0.01
+    def __init__(self, device_name, arcsecs_per_pixel, wanted_width_px, wanted_height_px, num_buffers):
 
         self.degrees_per_pixel = arcsecs_per_pixel / 3600.0
-        self.camera = cv2.VideoCapture(device_name)
 
-        if not self.camera.isOpened():
-            raise exceptions.IOError('Could not open camera')
+        self.buf_max = num_buffers
+        self.buf_cur = 0
 
-        self.frame_width_px = self.camera.get(cv2.CAP_PROP_FRAME_WIDTH)
-        self.frame_height_px = self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        # try to set resolution to the desired W/H; also request RGB, not YUV
+        self.camera = v4l2capture.Video_device(device_name)
+        self.frame_width_px, self.frame_height_px = self.camera.set_format(wanted_width_px, wanted_height_px, 0)
+
+        # set up the camera for capturing frames
+        self.camera.create_buffers(num_buffers)
+        self.camera.queue_all_buffers()
+        self.camera.start()
+
+
         self.frame_center_px = (self.frame_width_px / 2.0, self.frame_height_px / 2.0)
-        
+
         # initialize blob detector
         params = cv2.SimpleBlobDetector_Params()
         params.filterByColor = False
@@ -76,6 +81,11 @@ class OpticalErrorSource(ErrorSource):
         cv2.createTrackbar('block size', 'frame', 7, 31, self.block_size_validate)
         cv2.createTrackbar('C', 'frame', 3, 255, self.do_nothing)
 
+    def __del__(self):
+        # clean up the camera frame capture resources
+        self.camera.stop()
+        self.camera.close()
+
     # validator for block size trackbar
     def block_size_validate(self, x):
         if x % 2 == 0:
@@ -90,31 +100,18 @@ class OpticalErrorSource(ErrorSource):
     def compute_error(self, retries=0):
 
         while True:
-            '''
-            This is an ugly hack to ensure that the most recent frame from the 
-            camera is processed rather than a stale frame waiting in a buffer.
-            The OpenCV VideoCapture API does not provide any means of managing
-            the buffer directly. Experimentation has shown that the time to
-            execute grab() is many times faster when the next frame is buffered
-            compared to waiting for a brand new frame from the camera. Thus when
-            the elapsed time exceeds a threshold it is very likely that the
-            buffer has been emptied and the next frame is actually current.
+            # wait for the camera to have a frame ready
+            select.select((self.camera,), (), ())
 
-            An alternative to this approach would be to spawn a thread to 
-            continually read from the camera in the background but it's a pain 
-            to kill threads in Python when the program ends so that method was 
-            intentionally avoided.
-            '''
-            while True:
-                start = time.time()
-                ret = self.camera.grab()
-                if time.time() - start > self.MIN_GRAB_TIME:
-                    break
+            frame_raw = self.camera.read()
+            frame_img = Image.frombytes('RGB', (self.frame_width_px, self.frame_height_px), frame_raw)
+            frame = cv2.cvtColor(np.array(frame_img), cv2.COLOR_RGB2BGR)
 
-            # get the latest camera frame available
-            ret, frame = self.camera.retrieve()
-            if not ret:
-                raise exceptions.IOError('Could not get frame from camera')
+            # keep track of the capture buffer state and requeue if neceeesary
+            self.buf_cur += 1
+            if self.buf_cur >= self.buf_max:
+                self.camera.queue_all_buffers()
+                self.buf_cur = 0
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
