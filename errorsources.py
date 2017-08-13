@@ -56,8 +56,8 @@ class OpticalErrorSource(ErrorSource):
         if not self.camera.isOpened():
             raise exceptions.IOError('Could not open camera')
 
-        self.frame_width_px = self.camera.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)
-        self.frame_height_px = self.camera.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)
+        self.frame_width_px = self.camera.get(cv2.CAP_PROP_FRAME_WIDTH)
+        self.frame_height_px = self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT)
         self.frame_center_px = (self.frame_width_px / 2.0, self.frame_height_px / 2.0)
         
         # initialize blob detector
@@ -70,7 +70,7 @@ class OpticalErrorSource(ErrorSource):
         params.minThreshold = 100
         params.maxThreshold = 200
         params.minDistBetweenBlobs = 200
-        self.detector = cv2.SimpleBlobDetector(params)
+        self.detector = cv2.SimpleBlobDetector_create(params)
 
         cv2.namedWindow('frame')
         cv2.createTrackbar('block size', 'frame', 7, 31, self.block_size_validate)
