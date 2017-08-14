@@ -78,9 +78,9 @@ def track_until_converged_callback():
     except TypeError:
         return
     
-    try:
+    if hasattr(tracker, 'low_error_iterations'):
         tracker.low_error_iterations += 1
-    except NameError:
+    else:
         tracker.low_error_iterations = 1
 
     if tracker.low_error_iterations >= MIN_ITERATIONS:
