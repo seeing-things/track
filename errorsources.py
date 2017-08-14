@@ -155,3 +155,49 @@ class OpticalErrorSource(ErrorSource):
             error['alt'] = error_y_deg
 
             return error
+
+
+class HybridErrorSource(ErrorSource):
+    def __init__(
+            self, 
+            mount, 
+            observer, 
+            target, 
+            camera, 
+            arcsecs_per_pixel,
+            max_divergence=2.0
+        ):
+        self.blind = BlindErrorSource(mount, observer, target)
+        self.optical = OpticalErrorSource(camera, arcsecs_per_pixel)
+        self.max_divergence = max_divergence
+
+        self.BLIND_STATE = 0
+        self.OPTICAL_STATE = 1
+        self.state = self.BLIND_STATE
+
+        print('Hybrid error source starting in blind tracking state')
+
+    def compute_error(self):
+        blind_error = self.blind.compute_error()
+
+        try:
+            optical_error = self.optical.compute_error()
+        except ErrorSource.NoSignalException:
+            if self.state == self.BLIND_STATE:
+                return blind_error
+            else:
+                raise
+
+        error_diff = {
+            'az': blind_error['az'] - optical_error['az'],
+            'alt': blind_error['alt'] - optical_error['alt'],
+        }
+        error_diff_mag = np.absolute(error_diff['az'] + 1j*error_diff['alt'])
+        if self.state == self.BLIND_STATE and error_diff_mag < self.max_divergence:
+            print('Solutions within ' + str(error_diff_mag) + ', switched to optical tracking')
+            self.state = self.OPTICAL_STATE
+        elif self.state == self.OPTICAL_STATE and error_diff_mag >= self.max_divergence:
+            print('Solutions diverged (' + str(error_diff_mag) + ' degrees apart), switching back to blind tracking')
+            self.state = self.BLIND_STATE
+
+        return blind_error if self.state == self.BLIND_STATE else optical_error
