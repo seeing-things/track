@@ -230,8 +230,8 @@ try:
                 'az': abs(errorsources.wrap_error(position['az'] - position_start['az'])),
                 'alt': abs(errorsources.wrap_error(position['alt'] - position_start['alt'])),
             }
-            if ((position_change['az'] >= 1.25 * args.backlash_az / 3600.0) and
-                (position_change['alt'] >= 1.25 * args.backlash_alt / 3600.0)):
+            if ((position_change['az'] >= args.backlash_az / 3600.0) and
+                (position_change['alt'] >= args.backlash_alt / 3600.0)):
                 break
         
         # move object such that its apparent motion vector intersects the
