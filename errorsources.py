@@ -62,7 +62,6 @@ class OpticalErrorSource(ErrorSource):
         self.camera.queue_all_buffers()
         self.camera.start()
 
-
         self.frame_center_px = (self.frame_width_px / 2.0, self.frame_height_px / 2.0)
 
         # initialize blob detector
@@ -82,9 +81,10 @@ class OpticalErrorSource(ErrorSource):
         cv2.createTrackbar('C', 'frame', 3, 255, self.do_nothing)
 
     def __del__(self):
-        # clean up the camera frame capture resources
-        self.camera.stop()
-        self.camera.close()
+        if hasattr(self, 'camera'):
+            # clean up the camera frame capture resources
+            self.camera.stop()
+            self.camera.close()
 
     # validator for block size trackbar
     def block_size_validate(self, x):
