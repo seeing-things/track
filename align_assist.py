@@ -60,6 +60,12 @@ def stop_beyond_deadband_callback():
     if position_change >= 1.25 * backlash:
         tracker.stop = True
 
+def stop_within_max_drift_time():
+    if tracker.error[other_axis] is not None:
+        time_to_center = abs(tracker.error[other_axis] / rates[other_axis])
+        if time_to_center < MAX_DRIFT_TIME:
+            tracker.stop = True
+
 def track_until_converged_callback():
     ERROR_THRESHOLD = 20.0 / 3600.0
     MIN_ITERATIONS = 50
@@ -90,6 +96,7 @@ try:
     ANGLE_THRESHOLD = 1.0
     WIDE_ANGLE_THRESHOLD = 10.0
     OPTICAL_ERROR_RETRIES = 10
+    MAX_DRIFT_TIME = 10.0
     # If the magnitude of the error is larger than this value, the object
     # is more than 50% of the distance from the center of the frame to the
     # nearest edge.
@@ -151,6 +158,14 @@ try:
         position_start = mount.get_azalt(remove_backlash=False)
         mount.slew(other_axis, SLOW_SLEW_RATE * align_dir)
         tracker.register_callback(stop_beyond_deadband_callback)
+        tracker.run(track_axes)
+        tracker.register_callback(None)
+
+        # Continue to slew until object is within about 10 seconds of crossing frame center. This 
+        # accelerates the alignment process when the object is moving very slowly in the 'other' 
+        # axis.
+        print('Waiting until object is within ' + str(MAX_DRIFT_TIME) + ' seconds of frame center...')
+        tracker.register_callback(stop_within_max_drift_time)
         tracker.run(track_axes)
         tracker.register_callback(None)
 
