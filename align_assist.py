@@ -17,7 +17,7 @@ parser.add_argument('--camera-res', help='camera resolution in arcseconds per pi
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.1, type=float)
 parser.add_argument('--loop-damping', help='control loop damping factor', default=2.0, type=float)
-parser.add_argument('--loop-period', help='control loop period', default=0.5, type=float)
+parser.add_argument('--loop-period', help='control loop period', default=0.3, type=float)
 parser.add_argument('--backlash-az', help='backlash in azimuth (arcseconds)', default=0.0, type=float)
 parser.add_argument('--backlash-alt', help='backlash in altitude (arcseconds)', default=0.0, type=float)
 parser.add_argument('--align-dir-az', help='azimuth alignment approach direction (-1 or +1)', default=+1, type=int)

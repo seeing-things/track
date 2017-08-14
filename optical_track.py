@@ -12,7 +12,7 @@ parser.add_argument('--camera-res', help='camera resolution in arcseconds per pi
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.1, type=float)
 parser.add_argument('--loop-damping', help='control loop damping factor', default=2.0, type=float)
-parser.add_argument('--loop-period', help='control loop period', default=0.5, type=float)
+parser.add_argument('--loop-period', help='control loop period', default=0.3, type=float)
 args = parser.parse_args()
 
 # Create object with base type TelescopeMount
