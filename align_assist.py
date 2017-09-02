@@ -24,8 +24,9 @@ parser.add_argument('--align-dir-az', help='azimuth alignment approach direction
 parser.add_argument('--align-dir-alt', help='altitude alignment approach direction (-1 or +1)', default=+1, type=int)
 args = parser.parse_args()
 
-# Create object with base type TelescopeMount
-mount = mounts.NexStarMount(args.scope)
+# Create object with base type TelescopeMount. Disable altitude limits because 
+# mount doesn't know its own alitude before alignment is completed.
+mount = mounts.NexStarMount(args.scope, alt_min_limit=-180, alt_max_limit=+180)
 
 # Create object with base type ErrorSource
 error_source = errorsources.OpticalErrorSource(args.camera, args.camera_res)
