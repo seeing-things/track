@@ -32,15 +32,15 @@ try:
         filename = axis + '.csv'
         with open(filename, 'wb') as csvfile:
             csvwriter = csv.writer(csvfile, delimiter=',')
-            position_start = mount.get_azalt(remove_backlash=False)
+            position_start = mount.get_azalt()
             time_start = time.time()
             for period in range(PERIODS):
                 print('Period ' + str(period + 1) + ' of ' + str(PERIODS))
                 print('Starting positive ' + axis + ' slew...')
                 mount.slew(axis, SLEW_RATE)
                 while True:
-                    position = mount.get_azalt(remove_backlash=False)
-                    position_corrected = mount.get_azalt(remove_backlash=True)
+                    position = mount.get_azalt()
+                    position_corrected = mount.remove_backlash(position, {'az':True, 'alt':True})
                     position_change = errorsources.wrap_error(position[axis] - position_start[axis])
                     position_change_corrected = errorsources.wrap_error(position_corrected[axis] - position_start[axis])
                     time_elapsed = time.time() - time_start
@@ -57,7 +57,7 @@ try:
                 position_change_prev = position_change
                 while True:
                     position = mount.get_azalt()
-                    position_corrected = mount.get_azalt(remove_backlash=True)
+                    position_corrected = mount.remove_backlash(position, {'az':True, 'alt':True})
                     position_change = errorsources.wrap_error(position[axis] - position_start[axis])
                     position_change_corrected = errorsources.wrap_error(position_corrected[axis] - position_start[axis])
                     time_elapsed = time.time() - time_start

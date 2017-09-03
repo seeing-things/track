@@ -58,7 +58,7 @@ def error_print_callback():
             + str(tracker.error['alt'] * 3600.0))
 
 def stop_beyond_deadband_callback():
-    position_stop = mount.get_azalt(remove_backlash=False)
+    position_stop = mount.get_azalt()
     position_change = abs(errorsources.wrap_error(
         position_stop[other_axis] - position_start[other_axis]
     ))
@@ -209,7 +209,7 @@ try:
 
         # slew in desired approach direction until backlash is removed
         print('Slewing in approach direction past backlash deadband...', end='')
-        position_start = mount.get_azalt(remove_backlash=False)
+        position_start = mount.get_azalt()
         mount.slew(other_axis, FAST_SLEW_RATE * align_dir)
         tracker.register_callback(stop_beyond_deadband_callback)
         tracker.run(track_axes)
@@ -257,13 +257,13 @@ try:
 
         # slew in desired approach direction until backlash is removed
         print('Slewing in approach direction past backlash deadband...', end='')
-        position_start = mount.get_azalt(remove_backlash=False)
+        position_start = mount.get_azalt()
         mount.slew('az', FAST_SLEW_RATE * args.align_dir_az)
         mount.slew('alt', FAST_SLEW_RATE * args.align_dir_alt)
         while True:
             # calling this so camera output is displayed, output not used
             error_source.compute_error()
-            position = mount.get_azalt(remove_backlash=False)
+            position = mount.get_azalt()
             position_change = {
                 'az': abs(errorsources.wrap_error(position['az'] - position_start['az'])),
                 'alt': abs(errorsources.wrap_error(position['alt'] - position_start['alt'])),
