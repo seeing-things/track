@@ -102,13 +102,14 @@ try:
 
     # Some of these constants make assumptions about specific hardware
     SLEW_STOP_SLEEP = 1.0
-    FAST_SLEW_RATE = 60.0 / 3600.0
+    FAST_SLEW_RATE = 120.0 / 3600.0
     SLOW_SLEW_RATE = 30.0 / 3600.0
     VERY_SLOW_SLEW_RATE = 5.0 / 3600.0
     ANGLE_THRESHOLD = 1.0
     WIDE_ANGLE_THRESHOLD = 10.0
     OPTICAL_ERROR_RETRIES = 10
-    MAX_DRIFT_TIME = 10.0
+    MAX_DRIFT_TIME = 30.0
+    MAX_MOTION_EST_TIME = 30.0
     FRAME_INSCRIBED_DIAMETER_DEG = error_source.degrees_per_pixel * min(
         error_source.frame_height_px, 
         error_source.frame_width_px
@@ -125,9 +126,9 @@ try:
     NEAR_FRAME_EDGE_ERROR_MAG = 0.8 * 0.5 * FRAME_INSCRIBED_DIAMETER_DEG
 
     # If the magnitude of the error is less than this value, the object
-    # is less than 10% of the distance from the center of the frame to the
+    # is less than 3% of the distance from the center of the frame to the
     # nearest edge.
-    NEAR_FRAME_CENTER_ERROR_MAG = 0.1 * 0.5 * FRAME_INSCRIBED_DIAMETER_DEG
+    NEAR_FRAME_CENTER_ERROR_MAG = 0.03 * 0.5 * FRAME_INSCRIBED_DIAMETER_DEG
 
     print('Centering object...')
     tracker.register_callback(track_until_centered_callback)
@@ -135,7 +136,7 @@ try:
     tracker.register_callback(None)
 
     # estimate object's apparent motion with mount stationary
-    print('Estimating object apparent motion with mount stationary...', end='')
+    print('Estimating object apparent motion with mount stationary...')
     mount.slew('az', 0.0)
     mount.slew('alt', 0.0)
     time.sleep(SLEW_STOP_SLEEP)
@@ -146,7 +147,7 @@ try:
         if (abs(error['az']) > HALF_FRAME_ERROR_MAG or 
             abs(error['alt']) > HALF_FRAME_ERROR_MAG):
             break
-        elif time.time() - time_start > MAX_DRIFT_TIME:
+        elif time.time() - time_start > MAX_MOTION_EST_TIME:
             break
     error_stop = error_source.compute_error(OPTICAL_ERROR_RETRIES)
     time_elapsed = time.time() - time_start
@@ -164,7 +165,6 @@ try:
     if ((apparent_motion['alt'] > 0.0 and args.align_dir_alt == +1) or
         (apparent_motion['alt'] < 0.0 and args.align_dir_alt == -1)):
         track_axes.append('alt')
-    print('done.')
     print('\taz apparent motion (arcsec/s): ' + str(apparent_motion['az'] * 3600.0))
     print('\talt apparent motion (arcsec/s): ' + str(apparent_motion['alt'] * 3600.0))
     print('\tapparent motion direction (degrees): ' + str(apparent_motion_angle))
@@ -174,11 +174,10 @@ try:
     # object. Just keep doing this indefinitely.
     if len(track_axes) == 2:
         print('Lucky you! Object is moving in approach direction in both axes.')
-        print('Waiting for tracking loop to converge...', end='')
+        print('Waiting for tracking loop to converge...')
         tracker.register_callback(track_until_converged_callback)
         tracker.run(track_axes)
         tracker.register_callback(None)
-        print('done.')
         print('Press ALIGN on hand controller at any time. Press CTRL-C to quit.')
         tracker.run(track_axes)
 
@@ -192,40 +191,36 @@ try:
         align_dir = args.align_dir_az if other_axis == 'az' else args.align_dir_alt
         backlash = (args.backlash_az if other_axis == 'az' else args.backlash_alt) / 3600.0
 
-        print('Waiting for tracking loop to converge...', end='')
+        print('Waiting for tracking loop to converge...')
         tracker.register_callback(track_until_converged_callback)
         tracker.run()
         tracker.register_callback(None)
-        print('done.')
 
         # move object away from center of frame such that its apparent sidereal
         # motion will be towards center
-        print('Moving object near edge of frame...', end='')
+        print('Moving object near edge of frame...')
         mount.slew(other_axis, FAST_SLEW_RATE * -align_dir)
         tracker.register_callback(stop_at_frame_edge_callback)
         tracker.run(track_axes)
         tracker.register_callback(None)
-        print('done.')
 
         # slew in desired approach direction until backlash is removed
-        print('Slewing in approach direction past backlash deadband...', end='')
+        print('Slewing in approach direction past backlash deadband...')
         position_start = mount.get_azalt()
         mount.slew(other_axis, FAST_SLEW_RATE * align_dir)
         tracker.register_callback(stop_beyond_deadband_callback)
         tracker.run(track_axes)
         tracker.register_callback(None)
-        print('done.')
 
         # Continue to slew until object is within about 10 seconds of crossing 
         # frame center. This accelerates the alignment process when the object 
         # is moving very slowly in the 'other' axis.
-        print('Waiting until object is within ' + str(MAX_DRIFT_TIME) 
-            + ' seconds of frame center...', end='')
+        print('Slewing until object is within ' + str(MAX_DRIFT_TIME) 
+            + ' seconds of frame center...')
         mount.slew(other_axis, SLOW_SLEW_RATE * align_dir)
         tracker.register_callback(stop_within_max_drift_time)
         tracker.run(track_axes)
         tracker.register_callback(None)
-        print('done.')
 
         # wait for object to drift back towards center.
         print('Press ALIGN on hand controller when object crosses frame center.')
@@ -237,15 +232,14 @@ try:
     # case c: Neither axis is slewing in the desired approach direction
     else:
 
-        print('Centering object...', end='')
+        print('Centering object...')
         tracker.register_callback(track_until_centered_callback)
         tracker.run()
         tracker.register_callback(None)
-        print('done.')
 
         # move object away from center of frame such that its apparent sidereal
         # motion will be towards center
-        print('Moving object near edge of frame...', end='')
+        print('Moving object near edge of frame...')
         mount.slew('az', FAST_SLEW_RATE * -args.align_dir_az)
         mount.slew('alt', FAST_SLEW_RATE * -args.align_dir_alt)
         while True:
@@ -253,10 +247,9 @@ try:
             if (abs(error['az']) > NEAR_FRAME_EDGE_ERROR_MAG or 
                 abs(error['alt']) > NEAR_FRAME_EDGE_ERROR_MAG):
                 break
-        print('done.')
 
         # slew in desired approach direction until backlash is removed
-        print('Slewing in approach direction past backlash deadband...', end='')
+        print('Slewing in approach direction past backlash deadband...')
         position_start = mount.get_azalt()
         mount.slew('az', FAST_SLEW_RATE * args.align_dir_az)
         mount.slew('alt', FAST_SLEW_RATE * args.align_dir_alt)
@@ -275,7 +268,6 @@ try:
             if ((position_change['az'] >= args.backlash_az / 3600.0) and
                 (position_change['alt'] >= args.backlash_alt / 3600.0)):
                 break
-        print('done.')
         
         # move object such that its apparent motion vector intersects the
         # center of the frame
@@ -316,7 +308,6 @@ try:
                 very_slow = True
                 mount.slew(active_axis, VERY_SLOW_SLEW_RATE * active_axis_align_dir)
             angle_diff_prev = angle_diff
-        print('Done.')
 
         # wait for object to drift back towards center.
         print('Press ALIGN on hand controller when object crosses frame center...')
