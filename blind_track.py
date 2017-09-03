@@ -78,12 +78,6 @@ if args.mode == 'solarsystem':
     else:
         raise Exception('The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name))
 
-# REMOVE ME REMOVE ME REMOVE ME
-#target.compute(observer)
-#print('astrometric geocentric RA/dec: {} {}'.format(target.a_ra, target.a_dec))
-#print('apparent topocentric RA/dec: {} {}'.format(target.g_ra, target.g_dec))
-#print('apparent az/alt: {} {}'.format(target.az, target.alt))
-
 # Create object with base type ErrorSource
 error_source = errorsources.BlindErrorSource(mount, observer, target)
 
