@@ -28,24 +28,68 @@ class TelescopeMount(object):
     class AltitudeLimitException(Exception):
         pass
 
-    # Returns the current position of the mount as a dict containing
-    # keys 'az' and 'alt' with values in degrees.
     @abc.abstractmethod
     def get_azalt(self):
+        """Gets the current position of the mount.
+
+        Returns:
+            A dict with keys 'az' and 'alt' where the values are the azimuth
+            and altitude positions in degrees. The azimuth range is [0,360) and
+            the altitude range is [-180,+180).
+        """
         pass
 
-    # Sets the slew rate of the mount in degrees per second. May raise
-    # an AltitudeLimitException if the mount altitude position is at a limit
-    # and the requested altitude slew rate is not away from the limit.
-    # The axis argument is a string which may take values such as 'az' and
-    # 'alt' for an Az-Alt mount.
+    @abc.abstractmethod
+    def get_aligned_slew_dir(self):
+        """Gets the slew directions used during alignment.
+
+        Returns:
+            A dict with keys 'az' and 'alt' where the values are +1 or -1 
+            indicating the slew direction used during alignment for that axis.
+        """
+        pass
+
+    @abc.abstractmethod
+    def remove_backlash(self, position, axes_to_adjust):
+        """Adjusts positions to compensate for backlash deadband.
+
+        Args:
+            position: A dict with keys 'az' and 'alt' with values corresponding
+                to the azimuth and altitude positions in degrees to be 
+                corrected.
+            axes_to_adjust: A dict with keys 'az' and 'alt' and values True
+                or False indicating which axes should be compensated.
+
+        Returns:
+            A dict with keys 'az' and 'alt' where the values are the azimuth
+            and altitude positions in degrees with corrections applied. The 
+            azimuth range is [0,360) and the altitude range is [-180,+180).
+        """
+        pass
+
     @abc.abstractmethod
     def slew(self, axis, rate):
+        """Command the mount to slew on one axis.
+
+        Commands the mount to slew at a paritcular rate in one axis.
+
+        Args:
+            axis: A string indicating the axis.
+            rate: A float giving the slew rate in degrees per second. The sign
+                of the value indicates the direction of the slew.
+
+        Raises:
+            AltitudeLimitException: Implementation dependent.
+        """
         pass
 
-    # Returns the maximum supported slew rate in degrees per second.
     @abc.abstractmethod
     def get_max_slew_rate(self):
+        """Get the max supported slew rate.
+
+        Returns:
+            The maximum supported slew rate in degrees per second.            
+        """
         pass
 
 

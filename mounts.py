@@ -33,7 +33,13 @@ class NexStarMount(TelescopeMount):
             direction or -1 to indicate the opposite.
     """
 
-    def __init__(self, device_name, alt_min_limit=-10.0, alt_max_limit=67.0, max_slew_rate=16319.0/3600.0):
+    def __init__(
+        self, 
+        device_name, 
+        alt_min_limit=-10.0, 
+        alt_max_limit=67.0, 
+        max_slew_rate=16319.0/3600.0
+    ):
         """Inits NexStarMount object.
 
         Initializes a NexStarMount object by constructing a nexstar.NexStar
@@ -56,26 +62,15 @@ class NexStarMount(TelescopeMount):
         self.alt_min_limit = alt_min_limit
         self.alt_max_limit = alt_max_limit
         self.max_slew_rate = max_slew_rate
-        self.last_slew_dir = {'az': +1, 'alt': +1}
         self.backlash = {'az': 0.0, 'alt': 0.0}
         self.aligned_slew_dir = {'az': +1, 'alt': +1}
 
-    def get_azalt(self, remove_backlash=True):
+    def get_azalt(self):
         """Gets the current position of the mount.
 
         Gets the current position coordinates of the mount in azimuth-altitude
-        format. The values reported will be corrected to account for backlash
-        if the set_backlash function has been called with non-zero correction
-        factors and remove_backlash is set to True. The correction value is 
-        added or subtracted from the raw mount-reported position when the 
-        last commanded slew direction is opposite of the final approach 
-        direction used during alignment. Note that this correction algorithm
-        does not attempt to handle the special case where the mount drive is 
-        in the deadband region.
-
-        Args:
-            remove_backlash: When true, backlash compensation is applied.
-                Otherwise the uncorrected position is returned.
+        format. The positions returned are as reported by the mount with no 
+        corrections applied.
 
         Returns:
             A dict with keys 'az' and 'alt' where the values are the azimuth
@@ -83,15 +78,52 @@ class NexStarMount(TelescopeMount):
             the altitude range is [-180,+180).
         """
         (az, alt) = self.nexstar.get_azalt()
-        
-        if remove_backlash:
-            if self.last_slew_dir['az'] != self.aligned_slew_dir['az']:
-                az += self.backlash['az'] * self.aligned_slew_dir['az']
-                az = az % 360.0
+        return {'az': az, 'alt': alt}
 
-            if self.last_slew_dir['alt'] != self.aligned_slew_dir['alt']:
-                alt += self.backlash['alt'] * self.aligned_slew_dir['alt']
-                alt = (alt + 180.0) % 360.0 - 180.0
+    def get_aligned_slew_dir(self):
+        """Gets the slew directions used during alignment.
+
+        Returns:
+            A dict with keys 'az' and 'alt' where the values are +1 or -1 
+            indicating the slew direction used during alignment for that axis.
+        """
+        return self.aligned_slew_dir
+
+    def remove_backlash(self, position, axes_to_adjust):
+        """Adjusts positions to compensate for backlash deadband.
+
+        The position in a given axis will be corrected to remove the backlash 
+        deadband if the set_backlash function has been called with a non-zero 
+        correction factor and the axis appears in the axes_to_compensate list.
+        It is the responsibility of the caller to decide when backlash 
+        compensation should be applied. Generally compensation should only be 
+        applied when the mount is slewing against the direction used during 
+        alignment. No attempt is made to handle the special case where the mount
+        is within the deadband region.
+
+        Args:
+            position: A dict with keys 'az' and 'alt' with values corresponding
+                to the azimuth and altitude positions in degrees to be 
+                corrected.
+            axes_to_adjust: A dict with keys 'az' and 'alt' and values True
+                or False indicating which axes should be compensated.
+
+        Returns:
+            A dict with keys 'az' and 'alt' where the values are the azimuth
+            and altitude positions in degrees with corrections applied. The 
+            azimuth range is [0,360) and the altitude range is [-180,+180).
+        """
+
+        az = position['az']
+        alt = position['alt']
+
+        if axes_to_adjust['az']:
+            az += self.backlash['az'] * self.aligned_slew_dir['az']
+            az = az % 360.0
+
+        if axes_to_adjust['alt']:
+            alt += self.backlash['alt'] * self.aligned_slew_dir['alt']
+            alt = (alt + 180.0) % 360.0 - 180.0
 
         return {'az': az, 'alt': alt}
 
@@ -156,9 +188,6 @@ class NexStarMount(TelescopeMount):
             
         # slew_var argument units are arcseconds per second
         self.nexstar.slew_var(axis, rate * 3600.0)
-
-        # cached to allow backlash compensation in get_azalt()
-        self.last_slew_dir[axis] = +1 if rate >= 0.0 else -1
 
     def get_max_slew_rate(self):
         return self.max_slew_rate

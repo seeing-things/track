@@ -27,16 +27,40 @@ class BlindErrorSource(ErrorSource):
         # not using ephem.now() because it rounds time to the nearest second
         self.observer.date = ephem.Date(datetime.datetime.utcnow())
         self.target.compute(self.observer)
-        target_az_deg = self.target.az * 180.0 / math.pi
-        target_alt_deg = self.target.alt * 180.0 / math.pi
+        target_position_prev = {
+            'az': self.target.az * 180.0 / math.pi,
+            'alt': self.target.alt * 180.0 / math.pi
+        }
 
         # get current position of telescope (degrees)
-        mount_position_deg = self.mount.get_azalt()
+        mount_position = self.mount.get_azalt()
+
+        # get coordinates of target a second time to determine direction of motion
+        self.observer.date = ephem.Date(datetime.datetime.utcnow())
+        self.target.compute(self.observer)
+        target_position = {
+            'az': self.target.az * 180.0 / math.pi,
+            'alt': self.target.alt * 180.0 / math.pi
+        }
+
+        target_motion_direction = {
+            'az': np.sign(wrap_error(target_position['az'] - target_position_prev['az'])),
+            'alt': np.sign(wrap_error(target_position['alt'] - target_position_prev['alt'])),
+        }
+
+        # compensate for backlash if object is moving against the slew 
+        # direction used during alignment
+        align_dir = mount.get_align_dir()
+        axes_to_adjust = {
+            'az': align_dir['az'] != target_motion_direction['az'],
+            'alt': align_dir['alt'] != target_motion_direction['alt'],
+        }
+        mount_position = mount.remove_backlash(mount_position, axes_to_adjust)
          
         # compute pointing errors in degrees
         error = {}
-        error['az'] = wrap_error(target_az_deg - mount_position_deg['az'])
-        error['alt'] = wrap_error(target_alt_deg - mount_position_deg['alt'])
+        error['az'] = wrap_error(target_position['az'] - mount_position['az'])
+        error['alt'] = wrap_error(target_position['alt'] - mount_position['alt'])
 
         return error
 
