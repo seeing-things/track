@@ -101,6 +101,12 @@ def track_until_centered_callback():
             abs(tracker.error['alt']) < NEAR_FRAME_CENTER_ERROR_MAG):
             tracker.stop = True
 
+def stats_callback():
+    error_lists['az'].append(tracker.error['az'])
+    error_lists['alt'].append(tracker.error['alt'])
+    if time.time() - time_start >= STAT_TRACK_TIME:
+        tracker.stop = True
+
 try:
 
     # Some of these constants make assumptions about specific hardware
@@ -113,6 +119,7 @@ try:
     OPTICAL_ERROR_RETRIES = 10
     MAX_DRIFT_TIME = 30.0
     MAX_MOTION_EST_TIME = 30.0
+    STAT_TRACK_TIME = 30.0
     FRAME_INSCRIBED_DIAMETER_DEG = error_source.degrees_per_pixel * min(
         error_source.frame_height_px, 
         error_source.frame_width_px
@@ -133,30 +140,37 @@ try:
     # nearest edge.
     NEAR_FRAME_CENTER_ERROR_MAG = 0.03 * 0.5 * FRAME_INSCRIBED_DIAMETER_DEG
 
-    print('Centering object...')
-    tracker.register_callback(track_until_centered_callback)
+    print('Tracking object until converged...')
+    tracker.register_callback(track_until_converged_callback)
     tracker.run()
     tracker.register_callback(None)
 
-    # estimate object's apparent motion with mount stationary
-    print('Estimating object apparent motion with mount stationary...')
-    mount.slew('az', 0.0)
-    mount.slew('alt', 0.0)
-    time.sleep(SLEW_STOP_SLEEP)
-    error_start = error_source.compute_error(OPTICAL_ERROR_RETRIES)
+    # Continue tracking to estimate apparent motion of the object.
+    print('Estimating object motion...')
+    error_lists['az'] = []
+    error_lists['alt'] = []
+    position_start = mount.get_azalt()
     time_start = time.time()
-    while True:
-        error = error_source.compute_error(OPTICAL_ERROR_RETRIES)
-        if (abs(error['az']) > HALF_FRAME_ERROR_MAG or 
-            abs(error['alt']) > HALF_FRAME_ERROR_MAG):
-            break
-        elif time.time() - time_start > MAX_MOTION_EST_TIME:
-            break
-    error_stop = error_source.compute_error(OPTICAL_ERROR_RETRIES)
+    tracker.register_callback(stats_callback)
+    tracker.run()
+    tracker.register_callback(None)
+    error_mean = {
+        'az': np.mean(error_lists['az']),
+        'alt': np.mean(error_lists['alt'])
+    }
+    error_sigma = {
+        'az': np.std(error_lists['az']),
+        'alt': np.std(error_lists['alt'])
+    }
+    position_stop = mount.get_azalt()
     time_elapsed = time.time() - time_start
     apparent_motion = {
-        'az': (error_stop['az'] - error_start['az']) / time_elapsed,
-        'alt': (error_stop['alt'] - error_start['alt']) / time_elapsed
+        'az': errorsources.wrap_error(position_stop['az'] - position_start['az']),
+        'alt': errorsources.wrap_error(position_stop['alt'] - position_start['alt'])
+    }
+    slew_rate_est = {
+        'az': apparent_motion['az'] / time_elapsed,
+        'alt': apparent_motion['alt'] / time_elapsed
     }
     apparent_motion_angle = (180.0 / math.pi * math.atan2(
         apparent_motion['alt'], apparent_motion['az']
@@ -168,6 +182,12 @@ try:
     if ((apparent_motion['alt'] > 0.0 and args.align_dir_alt == +1) or
         (apparent_motion['alt'] < 0.0 and args.align_dir_alt == -1)):
         track_axes.append('alt')
+    print('\taz error mean (arcseconds): ' + str(error_mean['az'] * 3600.0))
+    print('\talt error mean (arcseconds): ' + str(error_mean['alt'] * 3600.0))
+    print('\taz error sigma (arcseconds): ' + str(error_sigma['az'] * 3600.0))
+    print('\talt error sigma (arcseconds): ' + str(error_sigma['alt'] * 3600.0))
+    print('\taz slew rate (arcsec/s) ' + str(slew_rate_est['az'] * 3600.0) + ', ' + str(tracker.loop_filter['az'].int * 3600.0))
+    print('\talt slew rate (arcsec/s): ' + str(slew_rate_est['alt'] * 3600.0) + ', ' + str(tracker.loop_filter['alt'].int * 3600.0))
     print('\taz apparent motion (arcsec/s): ' + str(apparent_motion['az'] * 3600.0))
     print('\talt apparent motion (arcsec/s): ' + str(apparent_motion['alt'] * 3600.0))
     print('\tapparent motion direction (degrees): ' + str(apparent_motion_angle))
