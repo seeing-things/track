@@ -100,18 +100,7 @@ class OpticalErrorSource(ErrorSource):
     def compute_error(self, retries=0):
 
         while True:
-            # wait for the camera to have a frame ready
-            select.select((self.camera,), (), ())
-
-            frame_raw = self.camera.read()
-            frame_img = Image.frombytes('RGB', (self.frame_width_px, self.frame_height_px), frame_raw)
-            frame = cv2.cvtColor(np.array(frame_img), cv2.COLOR_RGB2BGR)
-
-            # keep track of the capture buffer state and requeue if neceeesary
-            self.buf_cur += 1
-            if self.buf_cur >= self.buf_max:
-                self.camera.queue_all_buffers()
-                self.buf_cur = 0
+            frame = self.camera_get_fresh_frame()
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -152,3 +141,36 @@ class OpticalErrorSource(ErrorSource):
             error['alt'] = error_y_deg
 
             return error
+
+    # return the most recent frame from the camera, waiting if necessary, and throwing away stale frames if any
+    def camera_get_fresh_frame(self):
+        self.camera_block_until_frame_ready()
+
+        frames = []
+        while self.camera_has_frames_available():
+            frames += [self.camera_get_one_frame()]
+
+        return frames[-1]
+
+    # block until the camera has at least one frame ready
+    def camera_block_until_frame_ready(self):
+        select.select((self.camera,), (), ())
+
+    # query whether the camera has at least one frame ready for us to read (non-blocking)
+    def camera_has_frames_available(self):
+        readable, writable, exceptional = select.select((self.camera,), (), (), 0.0)
+        return (len(readable) != 0)
+
+    # read in one frame from the camera buffer; the frame is not guaranteed to be the most recent frame available!
+    def camera_get_one_frame(self):
+        frame_raw = self.camera.read()
+        frame_img = Image.frombytes('RGB', (self.frame_width_px, self.frame_height_px), frame_raw)
+        frame = cv2.cvtColor(np.array(frame_img), cv2.COLOR_RGB2BGR)
+
+        # keep track of the capture buffer state and requeue if neceeesary
+        self.buf_cur += 1
+        if self.buf_cur >= self.buf_max:
+            self.camera.queue_all_buffers()
+            self.buf_cur = 0
+
+        return frame
