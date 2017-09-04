@@ -74,9 +74,6 @@ class OpticalErrorSource(ErrorSource):
 
         self.degrees_per_pixel = arcsecs_per_pixel / 3600.0
 
-        self.buf_max = num_buffers
-        self.buf_cur = 0
-
         # try to set resolution to the desired W/H; also request RGB, not YUV
         self.camera = v4l2capture.Video_device(device_name)
         self.frame_width_px, self.frame_height_px = self.camera.set_format(wanted_width_px, wanted_height_px, 0)
@@ -187,15 +184,9 @@ class OpticalErrorSource(ErrorSource):
 
     # read in one frame from the camera buffer; the frame is not guaranteed to be the most recent frame available!
     def camera_get_one_frame(self):
-        frame_raw = self.camera.read()
+        frame_raw = self.camera.read_and_queue()
         frame_img = Image.frombytes('RGB', (self.frame_width_px, self.frame_height_px), frame_raw)
         frame = cv2.cvtColor(np.array(frame_img), cv2.COLOR_RGB2BGR)
-
-        # keep track of the capture buffer state and requeue if neceeesary
-        self.buf_cur += 1
-        if self.buf_cur >= self.buf_max:
-            self.camera.queue_all_buffers()
-            self.buf_cur = 0
 
         return frame
 
