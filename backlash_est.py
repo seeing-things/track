@@ -9,7 +9,18 @@ import cv2
 
 parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
 parser.add_argument('--camera', help='device name of tracking camera', default='/dev/video0')
+parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 args = parser.parse_args()
+
+mount = mounts.NexStarMount(args.scope)
+position_start = mount.get_azalt()
+deadband_az = 100.0
+deadband_alt = 100.0
+slew_rate = 100.0 / 3600.0
+
+mount.slew('az', slew_rate)
+mount.slew('alt', 0.0)
+direction = 'right'
 
 cap = cv2.VideoCapture(args.camera)
 
@@ -35,7 +46,7 @@ p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, **feature_params)
 # Create a mask image for drawing purposes
 mask = np.zeros_like(old_frame)
 
-while(1):
+while True:
     ret,frame = cap.read()
     if not ret:
         print('could not get frame')
@@ -59,21 +70,60 @@ while(1):
         cv2.circle(frame,(a,b),5,color[i].tolist(),-1)
     img = cv2.add(frame,mask)
 
+    cv2.putText(img, "az deadband: " + str(deadband_az), (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255))
+    cv2.putText(img, "alt deadband: " + str(deadband_alt), (0, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255))
+    cv2.putText(img, "slew rate: " + str(slew_rate * 3600.0), (0, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255))
+
     cv2.imshow('frame',img)
     k = cv2.waitKey(30) & 0xff
     if k == 27:
         break
-    if k == ord('c'):
+    elif k == ord('c'):
         mask = np.zeros_like(old_frame)
-    if k == ord('r'):
+    elif k == ord('r'):
         mask = np.zeros_like(old_frame)
         old_gray = frame_gray.copy()
         p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, **feature_params)
         continue
+    elif k == ord('w'):
+        deadband_alt += 1
+    elif k == ord('s'):
+        deadband_alt -= 1
+    elif k == ord('a'):
+        deadband_az -= 1
+    elif k == ord('d'):
+        deadband_az += 1
+    elif k == ord('='):
+        slew_rate += 10.0 / 3600.0
+    elif k == ord('-'):
+        slew_rate -= 10.0 / 3600.0
 
     # Now update the previous frame and previous points
     old_gray = frame_gray.copy()
     p0 = good_new.reshape(-1,1,2)
+
+    position = mount.get_azalt()
+    position_change = {
+        'az': errorsources.wrap_error(position['az'] - position_start['az']) * 3600.0,
+        'alt': errorsources.wrap_error(position['alt'] - position_start['alt']) * 3600.0,
+    }
+    print(str(position_change))
+    if direction == 'right' and position_change['az'] > change_az:
+        mount.slew('az', 0.0)
+        mount.slew('alt', +slew_rate)
+        direction = 'up'
+    elif direction == 'up' and position_change['alt'] > change_alt:
+        mount.slew('alt', 0.0)
+        mount.slew('az', -slew_rate)
+        direction = 'left'
+    elif direction == 'left' and position_change['az'] <= 0.0:
+        mount.slew('az', 0.0)
+        mount.slew('alt', -slew_rate)
+        direction = 'down'
+    elif direction == 'down' and position_change['alt'] <= 0.0:
+        mount.slew('alt', 0.0)
+        mount.slew('az', +slew_rate)
+        direction = 'right'
 
 cv2.destroyAllWindows()
 cap.release()
