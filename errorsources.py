@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import time
 import select
-import v4l2capture
+import v4l2capture # THIS FORK: https://github.com/gebart/python-v4l2capture
 from PIL import Image
 
 # wraps an angle in degrees to the range [-180,+180)
