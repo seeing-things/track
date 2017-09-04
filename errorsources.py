@@ -4,10 +4,7 @@ import datetime
 import math
 import cv2
 import numpy as np
-import time
-import select
-import v4l2capture # THIS FORK: https://github.com/gebart/python-v4l2capture
-from PIL import Image
+import webcam
 
 # wraps an angle in degrees to the range [-180,+180)
 def wrap_error(e):
@@ -74,14 +71,10 @@ class OpticalErrorSource(ErrorSource):
 
         self.degrees_per_pixel = arcsecs_per_pixel / 3600.0
 
-        # try to set resolution to the desired W/H; also request RGB, not YUV
-        self.camera = v4l2capture.Video_device(device_name)
-        self.frame_width_px, self.frame_height_px = self.camera.set_format(wanted_width_px, wanted_height_px, 0)
+        self.webcam = webcam.WebCam(device_name, (wanted_width_px, wanted_height_px), num_buffers)
 
-        # set up the camera for capturing frames
-        self.camera.create_buffers(num_buffers)
-        self.camera.queue_all_buffers()
-        self.camera.start()
+        self.frame_width_px  = self.webcam.get_res_x()
+        self.frame_height_px = self.webcam.get_res_y()
 
         self.frame_center_px = (self.frame_width_px / 2.0, self.frame_height_px / 2.0)
 
@@ -101,12 +94,6 @@ class OpticalErrorSource(ErrorSource):
         cv2.createTrackbar('block size', 'frame', 7, 31, self.block_size_validate)
         cv2.createTrackbar('C', 'frame', 3, 255, self.do_nothing)
 
-    def __del__(self):
-        if hasattr(self, 'camera'):
-            # clean up the camera frame capture resources
-            self.camera.stop()
-            self.camera.close()
-
     # validator for block size trackbar
     def block_size_validate(self, x):
         if x % 2 == 0:
@@ -121,7 +108,8 @@ class OpticalErrorSource(ErrorSource):
     def compute_error(self, retries=0):
 
         while True:
-            frame = self.camera_get_fresh_frame()
+            frame_rgb = self.webcam.get_fresh_frame()
+            frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -162,33 +150,6 @@ class OpticalErrorSource(ErrorSource):
             error['alt'] = error_y_deg
 
             return error
-
-    # return the most recent frame from the camera, waiting if necessary, and throwing away stale frames if any
-    def camera_get_fresh_frame(self):
-        self.camera_block_until_frame_ready()
-
-        frames = []
-        while self.camera_has_frames_available():
-            frames += [self.camera_get_one_frame()]
-
-        return frames[-1]
-
-    # block until the camera has at least one frame ready
-    def camera_block_until_frame_ready(self):
-        select.select((self.camera,), (), ())
-
-    # query whether the camera has at least one frame ready for us to read (non-blocking)
-    def camera_has_frames_available(self):
-        readable, writable, exceptional = select.select((self.camera,), (), (), 0.0)
-        return (len(readable) != 0)
-
-    # read in one frame from the camera buffer; the frame is not guaranteed to be the most recent frame available!
-    def camera_get_one_frame(self):
-        frame_raw = self.camera.read_and_queue()
-        frame_img = Image.frombytes('RGB', (self.frame_width_px, self.frame_height_px), frame_raw)
-        frame = cv2.cvtColor(np.array(frame_img), cv2.COLOR_RGB2BGR)
-
-        return frame
 
 
 class HybridErrorSource(ErrorSource):
