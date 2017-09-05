@@ -44,7 +44,7 @@ lk_params = dict( winSize  = (15,15),
 color = np.random.randint(0,255,(100,3))
 
 # Take first frame and find corners in it
-old_frame = cv2.cvtColor(webcam.get_fresh_frame(), cv2.COLOR_RGB2BGR)
+old_frame = webcam.get_fresh_frame()
 old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
 p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, **feature_params)
 
@@ -52,7 +52,7 @@ p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, **feature_params)
 mask = np.zeros_like(old_frame)
 
 while True:
-    frame = cv2.cvtColor(webcam.get_fresh_frame(), cv2.COLOR_RGB2BGR)
+    frame = webcam.get_fresh_frame()
     frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     # calculate optical flow

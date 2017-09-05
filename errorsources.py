@@ -108,9 +108,7 @@ class OpticalErrorSource(ErrorSource):
     def compute_error(self, retries=0):
 
         while True:
-            frame_rgb = self.webcam.get_fresh_frame()
-            frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-
+            frame = self.webcam.get_fresh_frame()
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
             thresh = cv2.adaptiveThreshold(

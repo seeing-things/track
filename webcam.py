@@ -1,8 +1,8 @@
 import fcntl
 import select
-import numpy
-import v4l2capture    # USE THIS FORK: https://github.com/gebart/python-v4l2capture
-from PIL import Image # Use the Pillow fork, not the original/old PIL library
+import numpy as np
+import cv2
+import v4l2capture # USE THIS FORK: https://github.com/gebart/python-v4l2capture
 
 
 class WebCam(object):
@@ -14,7 +14,7 @@ class WebCam(object):
 
         self.camera = v4l2capture.Video_device(self.dev_path)
 
-        self.res_actual = self.camera.set_format(self.res_wanted[0], self.res_wanted[1], yuv420=0)
+        self.res_actual = self.camera.set_format(self.res_wanted[0], self.res_wanted[1], yuv420=0, fourcc='JPEG')
 
         self.camera.create_buffers(self.num_buffers)
         self.camera.queue_all_buffers()
@@ -33,7 +33,7 @@ class WebCam(object):
         return self.res_actual[1]
 
     # get the most recent frame from the webcam, waiting if necessary, and throwing away stale frames if any
-    # (the frame is a numpy array in RGB format)
+    # (the frame is a numpy array in BGR format)
     def get_fresh_frame(self):
         self.block_until_frame_ready()
 
@@ -41,17 +41,13 @@ class WebCam(object):
         while self.has_frames_available():
             frames += [self.get_one_frame()]
 
-        return frames[-1]
+        # decode the JPEG from the webcam into BGR for OpenCV's use
+        return cv2.imdecode(np.fromstring(frames[-1], dtype=np.uint8), cv2.IMREAD_COLOR)
 
     # get one frame from the webcam buffer; the frame is not guaranteed to be the most recent frame available!
-    # (the frame is a numpy array in RGB format)
+    # (the frame is a JPEG byte string)
     def get_one_frame(self):
-        frame_raw = self.camera.read_and_queue()
-
-        frame_img = Image.frombytes('RGB', self.res_actual, frame_raw)
-
-        frame = numpy.array(frame_img)
-        return frame
+        return self.camera.read_and_queue()
 
     # block until the webcam has at least one frame ready
     def block_until_frame_ready(self):
