@@ -7,6 +7,8 @@ import configargparse
 import numpy as np
 import cv2
 import webcam
+import mounts
+import errorsources
 
 parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
 parser.add_argument('--camera', help='device node path for tracking webcam', default='/dev/video0')
@@ -15,7 +17,7 @@ parser.add_argument('--camera-exposure', help='webcam exposure level', default=2
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 args = parser.parse_args()
 
-mount = mounts.NexStarMount(args.scope)
+mount = mounts.NexStarMount(args.scope, alt_min_limit=-180, alt_max_limit=+180)
 position_start = mount.get_azalt()
 deadband_az = 100.0
 deadband_alt = 100.0
@@ -107,11 +109,11 @@ while True:
         'alt': errorsources.wrap_error(position['alt'] - position_start['alt']) * 3600.0,
     }
     print(str(position_change))
-    if direction == 'right' and position_change['az'] > change_az:
+    if direction == 'right' and position_change['az'] > deadband_az:
         mount.slew('az', 0.0)
         mount.slew('alt', +slew_rate)
         direction = 'up'
-    elif direction == 'up' and position_change['alt'] > change_alt:
+    elif direction == 'up' and position_change['alt'] > deadband_alt:
         mount.slew('alt', 0.0)
         mount.slew('az', -slew_rate)
         direction = 'left'
