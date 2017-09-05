@@ -6,9 +6,14 @@ import config
 import configargparse
 import numpy as np
 import cv2
+import webcam
 
 parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
-parser.add_argument('--camera', help='device name of tracking camera', default='/dev/video0')
+parser.add_argument('--camera', help='device node path for tracking webcam', default='/dev/video0')
+parser.add_argument('--camera-w', help='desired webcam capture width in pixels', required=True, type=int)
+parser.add_argument('--camera-h', help='desired webcam capture height in pixels', required=True, type=int)
+parser.add_argument('--camera-bufs', help='number of webcam capture buffers', required=True, type=int)
+parser.add_argument('--camera-exposure', help='webcam exposure level', default=2000, type=int)
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 args = parser.parse_args()
 
@@ -22,7 +27,7 @@ mount.slew('az', slew_rate)
 mount.slew('alt', 0.0)
 direction = 'right'
 
-cap = cv2.VideoCapture(args.camera)
+webcam = webcam.WebCam(args.camera, (args.camera_w, args.camera_h), args.camera_bufs, args.camera_exposure)
 
 # params for ShiTomasi corner detection
 feature_params = dict( maxCorners = 10,
@@ -39,7 +44,7 @@ lk_params = dict( winSize  = (15,15),
 color = np.random.randint(0,255,(100,3))
 
 # Take first frame and find corners in it
-ret, old_frame = cap.read()
+old_frame = cv2.cvtColor(webcam.get_fresh_frame(), cv2.COLOR_RGB2BGR)
 old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
 p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, **feature_params)
 
@@ -47,11 +52,7 @@ p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, **feature_params)
 mask = np.zeros_like(old_frame)
 
 while True:
-    ret,frame = cap.read()
-    if not ret:
-        print('could not get frame')
-        continue
-
+    frame = cv2.cvtColor(webcam.get_fresh_frame(), cv2.COLOR_RGB2BGR)
     frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     # calculate optical flow
@@ -126,4 +127,3 @@ while True:
         direction = 'right'
 
 cv2.destroyAllWindows()
-cap.release()

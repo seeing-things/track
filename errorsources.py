@@ -67,11 +67,11 @@ class BlindErrorSource(ErrorSource):
 
 class OpticalErrorSource(ErrorSource):
 
-    def __init__(self, device_name, arcsecs_per_pixel, wanted_width_px, wanted_height_px, num_buffers):
+    def __init__(self, cam_dev_path, arcsecs_per_pixel, cam_res_wanted, cam_num_buffers):
 
         self.degrees_per_pixel = arcsecs_per_pixel / 3600.0
 
-        self.webcam = webcam.WebCam(device_name, (wanted_width_px, wanted_height_px), num_buffers)
+        self.webcam = webcam.WebCam(cam_dev_path, cam_res_wanted, cam_num_buffers)
 
         self.frame_width_px  = self.webcam.get_res_x()
         self.frame_height_px = self.webcam.get_res_y()
@@ -154,16 +154,18 @@ class OpticalErrorSource(ErrorSource):
 
 class HybridErrorSource(ErrorSource):
     def __init__(
-            self, 
-            mount, 
-            observer, 
-            target, 
-            camera, 
+            self,
+            mount,
+            observer,
+            target,
+            cam_dev_path,
             arcsecs_per_pixel,
+            cam_res_wanted,
+            cam_num_buffers,
             max_divergence=2.0
         ):
         self.blind = BlindErrorSource(mount, observer, target)
-        self.optical = OpticalErrorSource(camera, arcsecs_per_pixel)
+        self.optical = OpticalErrorSource(cam_dev_path, arcsecs_per_pixel, cam_res_wanted, cam_num_buffers)
         self.max_divergence = max_divergence
 
         self.BLIND_STATE = 0

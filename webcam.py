@@ -7,12 +7,12 @@ from PIL import Image # Use the Pillow fork, not the original/old PIL library
 
 class WebCam(object):
 
-    def __init__(self, dev_name, res_wanted, num_buffers):
-        self.dev_name    = dev_name
+    def __init__(self, dev_path, res_wanted, num_buffers):
+        self.dev_path    = dev_path
         self.res_wanted  = res_wanted
         self.num_buffers = num_buffers
 
-        self.camera = v4l2capture.Video_device(self.dev_name)
+        self.camera = v4l2capture.Video_device(self.dev_path)
 
         self.res_actual = self.camera.set_format(self.res_wanted[0], self.res_wanted[1], yuv420=0)
 
