@@ -2,6 +2,7 @@ import fcntl
 import select
 import numpy as np
 import cv2
+import v4l2
 import v4l2capture # USE THIS FORK: https://github.com/gebart/python-v4l2capture
 
 
@@ -11,6 +12,26 @@ class WebCam(object):
         self.dev_path    = dev_path
         self.res_wanted  = res_wanted
         self.num_buffers = num_buffers
+
+        self.dev = open(self.dev_path, 'r')
+
+        # set the JPEG compression quality to the maximum level possible
+        try:
+            jpegcomp = v4l2.v4l2_jpegcompression()
+            fcntl.ioctl(self.dev, v4l2.VIDIOC_G_JPEGCOMP, jpegcomp)
+            jpegcomp.quality = 100
+            fcntl.ioctl(self.dev, v4l2.VIDIOC_S_JPEGCOMP, jpegcomp)
+        except (IOError, OSError):
+            print('WebCam: failed to set control: JPEG compression quality')
+
+        # disable automatic gain control
+        try:
+            ctrl = v4l2.v4l2_control()
+            ctrl.id    = v4l2.V4L2_CID_AUTOGAIN
+            ctrl.value = 0
+            fcntl.ioctl(self.dev, v4l2.VIDIOC_S_CTRL, ctrl)
+        except (IOError, OSError):
+            print('WebCam: failed to set control: automatic gain')
 
         self.camera = v4l2capture.Video_device(self.dev_path)
 
@@ -23,6 +44,7 @@ class WebCam(object):
     def __del__(self):
         self.camera.stop()
         self.camera.close()
+        self.dev.close()
 
     # get the ACTUAL webcam frame width
     def get_res_x(self):
@@ -57,3 +79,14 @@ class WebCam(object):
     def has_frames_available(self):
         readable, writable, exceptional = select.select((self.camera,), (), (), 0.0)
         return (len(readable) != 0)
+
+    def is_ctrl_supported(self, id):
+        query = v4l2.v4l2_queryctrl()
+        query.id = id
+        try:
+            fcntl.ioctl(self.dev, v4l2.VIDIOC_QUERYCTRL, query)
+        except (IOError, OSError):
+            return False
+        if ((query.flags & v4l2.V4L2_CTRL_FLAG_DISABLED) != 0):
+            return False
+        return True
