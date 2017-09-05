@@ -5,13 +5,16 @@ import cv2
 import v4l2
 import v4l2capture # USE THIS FORK: https://github.com/gebart/python-v4l2capture
 
+import hexdump
+
 
 class WebCam(object):
 
-    def __init__(self, dev_path, res_wanted, num_buffers):
-        self.dev_path    = dev_path
-        self.res_wanted  = res_wanted
-        self.num_buffers = num_buffers
+    def __init__(self, dev_path, res_wanted, num_buffers, ctlval_exposure):
+        self.dev_path        = dev_path
+        self.res_wanted      = res_wanted
+        self.num_buffers     = num_buffers
+        self.ctlval_exposure = ctlval_exposure
 
         self.dev = open(self.dev_path, 'r')
 
@@ -32,6 +35,15 @@ class WebCam(object):
             fcntl.ioctl(self.dev, v4l2.VIDIOC_S_CTRL, ctrl)
         except (IOError, OSError):
             print('WebCam: failed to set control: automatic gain')
+
+        # set exposure to the desired level
+        try:
+            ctrl = v4l2.v4l2_control()
+            ctrl.id    = v4l2.V4L2_CID_EXPOSURE
+            ctrl.value = self.ctlval_exposure
+            fcntl.ioctl(self.dev, v4l2.VIDIOC_S_CTRL, ctrl)
+        except (IOError, OSError):
+            print('WebCam: failed to set control: exposure')
 
         self.camera = v4l2capture.Video_device(self.dev_path)
 

@@ -13,6 +13,7 @@ parser.add_argument('--camera-res', help='webcam resolution in arcseconds per pi
 parser.add_argument('--camera-w', help='desired webcam capture width in pixels', required=True, type=int)
 parser.add_argument('--camera-h', help='desired webcam capture height in pixels', required=True, type=int)
 parser.add_argument('--camera-bufs', help='number of webcam capture buffers', required=True, type=int)
+parser.add_argument('--camera-exposure', help='webcam exposure level', default=2000, type=int)
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
 parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
@@ -84,7 +85,7 @@ if args.mode == 'solarsystem':
         raise Exception('The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name))
 
 # Create object with base type ErrorSource
-error_source = errorsources.HybridErrorSource(mount, observer, target, args.camera, args.camera_res, (args.camera_w, args.camera_h), args.max_divergence)
+error_source = errorsources.HybridErrorSource(mount, observer, target, args.camera, args.camera_res, (args.camera_w, args.camera_h), args.camera_exposure, args.max_divergence)
 
 tracker = track.Tracker(
     mount = mount, 

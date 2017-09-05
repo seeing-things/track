@@ -18,6 +18,7 @@ parser.add_argument('--camera-res', help='webcam resolution in arcseconds per pi
 parser.add_argument('--camera-w', help='desired webcam capture width in pixels', required=True, type=int)
 parser.add_argument('--camera-h', help='desired webcam capture height in pixels', required=True, type=int)
 parser.add_argument('--camera-bufs', help='number of webcam capture buffers', required=True, type=int)
+parser.add_argument('--camera-exposure', help='webcam exposure level', default=2000, type=int)
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.1, type=float)
 parser.add_argument('--loop-damping', help='control loop damping factor', default=2.0, type=float)
@@ -33,7 +34,7 @@ args = parser.parse_args()
 mount = mounts.NexStarMount(args.scope, alt_min_limit=-180, alt_max_limit=+180)
 
 # Create object with base type ErrorSource
-error_source = errorsources.OpticalErrorSource(args.camera, args.camera_res, (args.camera_w, args.camera_h), args.camera_bufs)
+error_source = errorsources.OpticalErrorSource(args.camera, args.camera_res, (args.camera_w, args.camera_h), args.camera_bufs, args.camera_exposure)
 
 tracker = track.Tracker(
     mount = mount, 
