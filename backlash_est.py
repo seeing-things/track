@@ -10,8 +10,6 @@ import webcam
 
 parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
 parser.add_argument('--camera', help='device node path for tracking webcam', default='/dev/video0')
-parser.add_argument('--camera-w', help='desired webcam capture width in pixels', required=True, type=int)
-parser.add_argument('--camera-h', help='desired webcam capture height in pixels', required=True, type=int)
 parser.add_argument('--camera-bufs', help='number of webcam capture buffers', required=True, type=int)
 parser.add_argument('--camera-exposure', help='webcam exposure level', default=2000, type=int)
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
@@ -27,7 +25,7 @@ mount.slew('az', slew_rate)
 mount.slew('alt', 0.0)
 direction = 'right'
 
-webcam = webcam.WebCam(args.camera, (args.camera_w, args.camera_h), args.camera_bufs, args.camera_exposure)
+webcam = webcam.WebCam(args.camera, args.camera_bufs, args.camera_exposure)
 
 # params for ShiTomasi corner detection
 feature_params = dict( maxCorners = 10,

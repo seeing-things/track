@@ -10,9 +10,8 @@ import hexdump
 
 class WebCam(object):
 
-    def __init__(self, dev_path, res_wanted, num_buffers, ctlval_exposure):
+    def __init__(self, dev_path, num_buffers, ctlval_exposure):
         self.dev_path        = dev_path
-        self.res_wanted      = res_wanted
         self.num_buffers     = num_buffers
         self.ctlval_exposure = ctlval_exposure
 
@@ -50,6 +49,11 @@ class WebCam(object):
         fmt.type = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
         fcntl.ioctl(self.dev, v4l2.VIDIOC_G_FMT, fmt)
         assert (fmt.fmt.pix.pixelformat == v4l2.V4L2_PIX_FMT_JPEG)
+
+        # sanity-check the allegedly supported camera width and height
+        assert (fmt.fmt.win.w.left > 0 and fmt.fmt.win.w.left <= 10240)
+        assert (fmt.fmt.win.w.top  > 0 and fmt.fmt.win.w.top  <= 10240)
+        self.res_wanted = (fmt.fmt.win.w.left, fmt.fmt.win.w.top)
 
         self.camera = v4l2capture.Video_device(self.dev_path)
 
