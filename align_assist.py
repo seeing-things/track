@@ -107,14 +107,26 @@ def stats_callback():
     if time.time() - time_start >= STAT_TRACK_TIME:
         tracker.stop = True
 
+def set_active_axis(obj_to_center_angle, apparent_motion_angle):
+    if ((obj_to_center_angle >= 0.0 and obj_to_center_angle < 90.0) or 
+        (obj_to_center_angle >= 180.0 and obj_to_center_angle < 270.0)):
+        if obj_to_center_angle > apparent_motion_angle:
+            active_axis = 'alt'
+        else:
+            active_axis = 'az'
+    else:
+        if apparent_motion_angle > obj_to_center_angle:
+            active_axis = 'alt'
+        else:
+            active_axis = 'az'
+    return active_axis
+
 try:
 
     # Some of these constants make assumptions about specific hardware
     SLEW_STOP_SLEEP = 1.0
     FAST_SLEW_RATE = 120.0 / 3600.0
     SLOW_SLEW_RATE = 30.0 / 3600.0
-    VERY_SLOW_SLEW_RATE = 5.0 / 3600.0
-    ANGLE_THRESHOLD = 1.0
     WIDE_ANGLE_THRESHOLD = 10.0
     OPTICAL_ERROR_RETRIES = 10
     MAX_DRIFT_TIME = 30.0
@@ -175,6 +187,7 @@ try:
     apparent_motion_angle = (180.0 / math.pi * math.atan2(
         apparent_motion['alt'], apparent_motion['az']
     )) % 360.0
+    apparent_motion_magnitude = np.abs(apparent_motion['az'] + 1j*apparent_motion['alt'])
     track_axes = []
     if ((apparent_motion['az'] > 0.0 and args.align_dir_az == +1) or
         (apparent_motion['az'] < 0.0 and args.align_dir_az == -1)):
@@ -295,42 +308,26 @@ try:
         # move object such that its apparent motion vector intersects the
         # center of the frame
         print('Moving object such that velocity vector intersects center of frame...')
-        error = error_source.compute_error(OPTICAL_ERROR_RETRIES)
-        error_angle = 180.0 / math.pi * math.atan2(error['alt'], error['az'])
-        obj_to_center_angle = (error_angle + 180.0) % 360.0
-        print('\tangle from object to center frame: ' + str(obj_to_center_angle))
-        if ((obj_to_center_angle >= 0.0 and obj_to_center_angle < 90.0) or 
-            (obj_to_center_angle >= 180.0 and obj_to_center_angle < 270.0)):
-            if obj_to_center_angle > apparent_motion_angle:
-                active_axis = 'alt'
-            else:
-                active_axis = 'az'
-        else:
-            if apparent_motion_angle > obj_to_center_angle:
-                active_axis = 'alt'
-            else:
-                active_axis = 'az'
-        print('\tslewing in ' + active_axis)
-        active_axis_align_dir = args.align_dir_alt if active_axis == 'alt' else args.align_dir_az
-        mount.slew(active_axis, SLOW_SLEW_RATE * active_axis_align_dir)
-        angle_diff_prev = errorsources.wrap_error(obj_to_center_angle - apparent_motion_angle)
-        very_slow = False
+        align_dir = {
+            'az': args.align_dir_az,
+            'alt': args.align_dir_alt
+        }
         while True:
             error = error_source.compute_error(OPTICAL_ERROR_RETRIES)
             error_angle = 180.0 / math.pi * math.atan2(error['alt'], error['az'])
+            error_magnitude = np.abs(error['az'] + 1j*error['alt'])
             obj_to_center_angle = (error_angle + 180.0) % 360.0
             angle_diff = errorsources.wrap_error(obj_to_center_angle - apparent_motion_angle)
+            time_to_center = abs(error_magnitude / apparent_motion_magnitude)
             print('\tangle diff: ' + str(angle_diff))
-            if ((np.sign(angle_diff) != np.sign(angle_diff_prev)) or 
-                (abs(angle_diff) < ANGLE_THRESHOLD)):
-                mount.slew('az', 0.0)
-                mount.slew('alt', 0.0)
+            print('\ttime to center: ' + str(time_to_center))
+            if time_to_center < MAX_DRIFT_TIME:
+                mount.slew(active_axis, 0.0)
                 break
-            elif abs(angle_diff) < WIDE_ANGLE_THRESHOLD and very_slow == False:
-                print('\tnearing correct angle, very slow slew rate enabled')
-                very_slow = True
-                mount.slew(active_axis, VERY_SLOW_SLEW_RATE * active_axis_align_dir)
-            angle_diff_prev = angle_diff
+            active_axis = set_active_axis(obj_to_center_angle, apparent_motion_angle)
+            inactive_axis = 'az' if active_axis == 'alt' else 'alt'
+            mount.slew(active_axis, SLOW_SLEW_RATE * align_dir[active_axis])
+            mount.slew(inactive_axis, 0.0)
 
         # wait for object to drift back towards center.
         print('Press ALIGN on hand controller when object crosses frame center...')
