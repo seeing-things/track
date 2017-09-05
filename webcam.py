@@ -45,6 +45,12 @@ class WebCam(object):
         except (IOError, OSError):
             print('WebCam: failed to set control: exposure')
 
+        # ensure that the device supports 'JFIF JPEG' format video capture
+        fmt = v4l2.v4l2_format()
+        fmt.type = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
+        fcntl.ioctl(self.dev, v4l2.VIDIOC_G_FMT, fmt)
+        assert (fmt.fmt.pix.pixelformat == v4l2.V4L2_PIX_FMT_JPEG)
+
         self.camera = v4l2capture.Video_device(self.dev_path)
 
         self.res_actual = self.camera.set_format(self.res_wanted[0], self.res_wanted[1], yuv420=0, fourcc='JPEG')
