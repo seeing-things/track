@@ -5,8 +5,6 @@ import cv2
 import v4l2
 import v4l2capture # USE THIS FORK: https://github.com/gebart/python-v4l2capture
 
-import hexdump
-
 
 class WebCam(object):
 
