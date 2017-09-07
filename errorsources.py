@@ -50,12 +50,12 @@ class BlindErrorSource(ErrorSource):
 
         # compensate for backlash if object is moving against the slew 
         # direction used during alignment
-        align_dir = mount.get_align_dir()
+        align_dir = self.mount.get_aligned_slew_dir()
         axes_to_adjust = {
             'az': align_dir['az'] != target_motion_direction['az'],
             'alt': align_dir['alt'] != target_motion_direction['alt'],
         }
-        mount_position = mount.remove_backlash(mount_position, axes_to_adjust)
+        mount_position = self.mount.remove_backlash(mount_position, axes_to_adjust)
          
         # compute pointing errors in degrees
         error = {}

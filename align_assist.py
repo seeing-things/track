@@ -158,6 +158,7 @@ try:
 
     # Continue tracking to estimate apparent motion of the object.
     print('Estimating object motion...')
+    error_lists = {}
     error_lists['az'] = []
     error_lists['alt'] = []
     position_start = mount.get_azalt()
