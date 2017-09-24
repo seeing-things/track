@@ -62,9 +62,11 @@ class WebCam(object):
         self.camera.start()
 
     def __del__(self):
-        self.camera.stop()
-        self.camera.close()
-        self.dev.close()
+        if hasattr(self, 'camera'):
+            self.camera.stop()
+            self.camera.close()
+        if hasattr(self, 'dev'):
+            self.dev.close()
 
     # get the ACTUAL webcam frame width
     def get_res_x(self):
