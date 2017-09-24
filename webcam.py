@@ -1,5 +1,10 @@
+import sys
+import os
+import errno
 import fcntl
 import select
+import time
+import datetime
 import numpy as np
 import cv2
 import v4l2
@@ -61,6 +66,8 @@ class WebCam(object):
         self.camera.queue_all_buffers()
         self.camera.start()
 
+        self.dump_init()
+
     def __del__(self):
         if hasattr(self, 'camera'):
             self.camera.stop()
@@ -91,7 +98,9 @@ class WebCam(object):
     # get one frame from the webcam buffer; the frame is not guaranteed to be the most recent frame available!
     # (the frame is a JPEG byte string)
     def get_one_frame(self):
-        return self.camera.read_and_queue()
+        jpeg = self.camera.read_and_queue()
+        self.dump_one(jpeg)
+        return jpeg
 
     # block until the webcam has at least one frame ready
     def block_until_frame_ready(self):
@@ -112,3 +121,35 @@ class WebCam(object):
         if ((query.flags & v4l2.V4L2_CTRL_FLAG_DISABLED) != 0):
             return False
         return True
+
+    def dump_init(self):
+        self.dump_idx = 0
+
+        # find and create a not-yet-existent 'dump####' directory
+        num = 0
+        while True:
+            self.dump_dir = 'dump{:04d}'.format(num)
+            try:
+                os.makedirs(self.dump_dir)
+            except (IOError, OSError) as e:
+                if e.errno == errno.EEXIST:
+                    num += 1
+                else:
+                    raise
+            else:
+                break
+
+    def dump_one(self, jpeg):
+        file_name = 'frame_{:04d}_{:%Y%m%d_%H%M%S_%f}.jpg'.format(self.dump_idx, datetime.utcnow())
+        self.dump_idx += 1
+
+        file_path = os.path.join(self.dump_dir, file_name)
+
+        if sys.version_info >= (3,3): # Python 3.3+ added 'x' exclusive mode
+            mode = 'wbx'
+        else:                         # otherwise: manually prevent overwrite
+            mode = 'wb'
+            assert not os.path.exists(file_path)
+
+        with open(file_path, mode) as f:
+            f.write(jpeg)
