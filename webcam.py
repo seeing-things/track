@@ -140,7 +140,7 @@ class WebCam(object):
                 break
 
     def dump_one(self, jpeg):
-        file_name = 'frame_{:04d}_{:%Y%m%d_%H%M%S_%f}.jpg'.format(self.dump_idx, datetime.utcnow())
+        file_name = 'frame_{:04d}_{:%Y%m%d_%H%M%S_%f}.jpg'.format(self.dump_idx, datetime.datetime.utcnow())
         self.dump_idx += 1
 
         file_path = os.path.join(self.dump_dir, file_name)
