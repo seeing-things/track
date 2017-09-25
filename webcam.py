@@ -131,6 +131,9 @@ class WebCam(object):
             if self.proc_exit_r in readable:
                 return
 
+            frames_jpeg = []
+            frames_bgr  = []
+
             # grab as many frames as are available to us right now
             while self.has_frames_available():
                 now = datetime.datetime.utcnow() # TODO
