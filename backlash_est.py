@@ -44,9 +44,15 @@ lk_params = dict( winSize  = (15,15),
 color = np.random.randint(0,255,(100,3))
 
 # Take first frame and find corners in it
-old_frame = webcam.get_fresh_frame()
-old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
-p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, **feature_params)
+print('searching for candidate set of features to track')
+while True:
+    old_frame = webcam.get_fresh_frame()
+    old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
+    p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, **feature_params)
+    cv2.imshow('frame',old_frame)
+    cv2.waitKey(30)
+    if p0 is not None:
+        break
 
 # Create a mask image for drawing purposes
 mask = np.zeros_like(old_frame)
@@ -82,10 +88,14 @@ while True:
     elif k == ord('c'):
         mask = np.zeros_like(old_frame)
     elif k == ord('r'):
-        mask = np.zeros_like(old_frame)
-        old_gray = frame_gray.copy()
-        p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, **feature_params)
-        continue
+        ptmp = cv2.goodFeaturesToTrack(frame_gray, mask = None, **feature_params)
+        if ptmp is not None:
+            p0 = ptmp
+            mask = np.zeros_like(old_frame)
+            old_gray = frame_gray.copy()
+            continue
+        else:
+            print('Could not find any new features to track')
     elif k == ord('w'):
         deadband_alt += 1
     elif k == ord('s'):
