@@ -73,6 +73,11 @@ class Gamepad(object):
         self.input_thread.start()
         self.integrator_thread.start()
 
+    def get_proportional(self):
+        x = np.clip(self.left_gain*self.left_x + self.right_gain*self.right_x, -1.0, 1.0)
+        y = np.clip(self.left_gain*self.left_y + self.right_gain*self.right_y, -1.0, 1.0)
+        return (x, y)
+
     def get_integrator(self):
         return (self.int_x, self.int_y)
 

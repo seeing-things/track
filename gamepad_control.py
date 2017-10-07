@@ -20,8 +20,7 @@ game_pad = gamepad.Gamepad()
 try:
     while True:
         try:
-            x = np.clip(game_pad.left_x + 0.1*game_pad.right_x, -1.0, 1.0)
-            y = np.clip(game_pad.left_y + 0.1*game_pad.right_y, -1.0, 1.0)
+            x, y = game_pad.get_proportional()
             mount.slew('az', mount.max_slew_rate * x)
             mount.slew('alt', mount.max_slew_rate * y)
         except mount.AltitudeLimitException:

@@ -20,7 +20,6 @@ parser.add_argument('--backlash-az', help='backlash in azimuth (arcseconds)', de
 parser.add_argument('--backlash-alt', help='backlash in altitude (arcseconds)', default=0.0, type=float)
 parser.add_argument('--align-dir-az', help='azimuth alignment approach direction (-1 or +1)', default=+1, type=int)
 parser.add_argument('--align-dir-alt', help='altitude alignment approach direction (-1 or +1)', default=+1, type=int)
-parser.add_argument('--gamepad', help='enable gamepad for pointing correction', action='store_true')
 
 subparsers = parser.add_subparsers(title='modes', dest='mode')
 
@@ -82,14 +81,17 @@ if args.mode == 'solarsystem':
 # Create object with base type ErrorSource
 error_source = errorsources.BlindErrorSource(mount, observer, target)
 
-if args.gamepad:
+try:
     # Create gamepad object and register callback
     game_pad = gamepad.Gamepad(
         left_gain = 1.0,  # left stick degrees per second
-        right_gain = 1.0, # right stick degrees per second
+        right_gain = 0.1, # right stick degrees per second
         int_limit = 5.0,  # max correction in degrees for either axis
     )
     error_source.register_offset_callback(game_pad.get_integrator)
+    print('Gamepad found and registered.')
+except RuntimeError:
+    print('No gamepads found.')
 
 tracker = track.Tracker(
     mount = mount, 

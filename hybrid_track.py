@@ -24,7 +24,6 @@ parser.add_argument('--backlash-alt', help='backlash in altitude (arcseconds)', 
 parser.add_argument('--max-divergence', help='max divergence of optical and blind sources (degrees)', default=2.0, type=float)
 parser.add_argument('--align-dir-az', help='azimuth alignment approach direction (-1 or +1)', default=+1, type=int)
 parser.add_argument('--align-dir-alt', help='altitude alignment approach direction (-1 or +1)', default=+1, type=int)
-parser.add_argument('--gamepad', help='enable gamepad for pointing correction', action='store_true')
 
 subparsers = parser.add_subparsers(title='modes', dest='mode')
 
@@ -94,7 +93,7 @@ error_source = errorsources.HybridErrorSource(
     args.max_divergence
 )
 
-if args.gamepad:
+try:
     # Create gamepad object and register callback
     game_pad = gamepad.Gamepad(
         left_gain = 1.0,  # left stick degrees per second
@@ -102,6 +101,9 @@ if args.gamepad:
         int_limit = 5.0,  # max correction in degrees for either axis
     )
     error_source.register_blind_offset_callback(game_pad.get_integrator)
+    print('Gamepad found and registered.')
+except RuntimeError:
+    print('No gamepads found.')
 
 tracker = track.Tracker(
     mount = mount, 
