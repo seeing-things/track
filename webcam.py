@@ -37,7 +37,7 @@ class WebCam(object):
         try:
             ctrl = v4l2.v4l2_control()
             ctrl.id    = v4l2.V4L2_CID_EXPOSURE
-            ctrl.value = self.ctlval_exposure
+            ctrl.value = int(self.ctlval_exposure)
             fcntl.ioctl(self.dev, v4l2.VIDIOC_S_CTRL, ctrl)
         except (IOError, OSError):
             print('WebCam: failed to set control: exposure')
