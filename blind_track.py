@@ -15,8 +15,7 @@ parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
 parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
 parser.add_argument('--elevation', required=True, help='elevation of observer (m)', type=float)
 parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.5, type=float)
-parser.add_argument('--loop-damping', help='control loop damping factor', default=0.5, type=float)
-parser.add_argument('--loop-period', help='control loop period', default=0.25, type=float)
+parser.add_argument('--loop-damping', help='control loop damping factor', default=2.0, type=float)
 parser.add_argument('--backlash-az', help='backlash in azimuth (arcseconds)', default=0.0, type=float)
 parser.add_argument('--backlash-alt', help='backlash in altitude (arcseconds)', default=0.0, type=float)
 parser.add_argument('--align-dir-az', help='azimuth alignment approach direction (-1 or +1)', default=+1, type=int)
@@ -95,7 +94,6 @@ if args.gamepad:
 tracker = track.Tracker(
     mount = mount, 
     error_source = error_source, 
-    update_period = args.loop_period,
     loop_bandwidth = args.loop_bw,
     damping_factor = args.loop_damping
 )

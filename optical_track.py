@@ -14,7 +14,6 @@ parser.add_argument('--camera-exposure', help='webcam exposure level', default=2
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.1, type=float)
 parser.add_argument('--loop-damping', help='control loop damping factor', default=2.0, type=float)
-parser.add_argument('--loop-period', help='control loop period', default=0.3, type=float)
 args = parser.parse_args()
 
 # Create object with base type TelescopeMount
@@ -26,7 +25,6 @@ error_source = errorsources.OpticalErrorSource(args.camera, args.camera_res, arg
 tracker = track.Tracker(
     mount = mount, 
     error_source = error_source, 
-    update_period = args.loop_period,
     loop_bandwidth = args.loop_bw,
     damping_factor = args.loop_damping
 )

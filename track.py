@@ -95,28 +95,45 @@ class TelescopeMount(object):
 
 # Proportional plus integral (PI) loop filter
 class LoopFilter(object):
-    def __init__(self, bandwidth, damping_factor, update_period, rate_limit):
-        
-        # compute loop filter gains
-        bt = bandwidth * update_period
-        k0 = update_period
-        denom = damping_factor + 1.0 / (4.0 * damping_factor)
-        self.prop_gain = 4.0 * damping_factor / denom * bt / k0
-        self.int_gain = 4.0 / denom**2.0 * bt**2.0 / k0
-
-        # initialize control loop integrator
-        self.int = 0.0
-
+    def __init__(self, bandwidth, damping_factor, rate_limit, max_update_period=1.0):
+        self.bandwidth = bandwidth
+        self.damping_factor = damping_factor
+        self.max_update_period = max_update_period
         self.rate_limit = rate_limit
+        self.int = 0.0
+        self.last_iteration_time = None
 
     # Returns new slew rate in [phase units] per second, where [phase units] 
     # are the same as the units of the input error value.
     def update(self, error):
+
+        # can't measure loop period on first update
+        if self.last_iteration_time is None:
+            self.last_iteration_time = time.time()
+            return 0.0
+
+        update_period = time.time() - self.last_iteration_time
+        self.last_iteration_time = time.time()
+        if update_period > self.max_update_period:
+            print('Warning: loop filter update period was ' 
+                + str(update_period) + ' s, limit is ' 
+                + str(self.max_update_period) + ' s.')
+            return self.int
+
+        print('measured loop period: ' + str(update_period * 1000.0) + ' ms')
+
+        # compute loop filter gains based on loop period
+        bt = self.bandwidth * update_period
+        k0 = update_period
+        denom = self.damping_factor + 1.0 / (4.0 * self.damping_factor)
+        prop_gain = 4.0 * self.damping_factor / denom * bt / k0
+        int_gain = 4.0 / denom**2.0 * bt**2.0 / k0
+
         # proportional term
-        prop = self.prop_gain * error
+        prop = prop_gain * error
 
         # integral term
-        self.int = clamp(self.int + self.int_gain * error, self.rate_limit)
+        self.int = clamp(self.int + int_gain * error, self.rate_limit)
 
         # new slew rate is the sum of P and I terms subject to rate limit
         return clamp(prop + self.int, self.rate_limit)
@@ -125,22 +142,17 @@ class LoopFilter(object):
 # Main tracking loop class
 class Tracker(object):
 
-    def __init__(self, mount, error_source, update_period, loop_bandwidth, damping_factor):
-
-        # update rate of control loop
-        self.update_period = update_period
+    def __init__(self, mount, error_source, loop_bandwidth, damping_factor):
 
         self.loop_filter = {}
         self.loop_filter['az'] = LoopFilter(
             bandwidth = loop_bandwidth, 
             damping_factor = damping_factor, 
-            update_period = update_period, 
             rate_limit = mount.get_max_slew_rate()
         )
         self.loop_filter['alt'] = LoopFilter(
             bandwidth = loop_bandwidth, 
             damping_factor = damping_factor, 
-            update_period = update_period, 
             rate_limit = mount.get_max_slew_rate()
         )
 
@@ -181,8 +193,6 @@ class Tracker(object):
             return
 
         while True:
-            start_time = time.time()
-
             try:
                 if self._stopping_condition():
                     return
@@ -205,10 +215,3 @@ class Tracker(object):
                     self.callback()
 
                 self.num_iterations += 1
-
-                elapsed_time = time.time() - start_time
-
-                if elapsed_time > self.update_period:
-                    print('Warning: Can\'t keep up! Actual loop period this iteration: ' + str(elapsed_time))
-                else:
-                    time.sleep(self.update_period - elapsed_time)
