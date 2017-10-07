@@ -11,11 +11,9 @@ parser.add_argument('--scope', help='serial device for connection to telescope',
 parser.add_argument('--bypass-alt-limits', help='bypass mount altitude limits', action='store_true')
 args = parser.parse_args()
 
-mount = mounts.NexStarMount(args.scope)
+mount = mounts.NexStarMount(args.scope, bypass_alt_limits=args.bypass_alt_limits)
 if args.bypass_alt_limits:
-    print('Warning: Overriding altitude limits! Be careful!')
-    mount.alt_min_limit = -180
-    mount.alt_max_limit = +180
+    print('Warning: Altitude limits disabled! Be careful!')
 
 game_pad = gamepad.Gamepad()
 

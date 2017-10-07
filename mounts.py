@@ -1,5 +1,6 @@
 from track import TelescopeMount
 import nexstar
+import time
 
 class NexStarMount(TelescopeMount):
     """Interface class to facilitate tracking with NexStar telescopes.
@@ -38,6 +39,7 @@ class NexStarMount(TelescopeMount):
         device_name, 
         alt_min_limit=-10.0, 
         alt_max_limit=67.0, 
+        bypass_alt_limits=False,
         max_slew_rate=16319.0/3600.0
     ):
         """Inits NexStarMount object.
@@ -53,6 +55,7 @@ class NexStarMount(TelescopeMount):
                 value is reasonable for a NexStar 130SLT.
             alt_max_limit: Upper limit on the mount's altitude. The default
                 value is reasonable for a NexStar 130SLT.
+            bypass_alt_limits: If True altitude limits will not be enforced.
             max_slew_rate: The maximum slew rate supported by the mount. The
                 default value (about 4.5 deg/s) is the max rate supported by
                 the NexStar 130SLT hand controller as determined by
@@ -61,16 +64,21 @@ class NexStarMount(TelescopeMount):
         self.nexstar = nexstar.NexStar(device_name)
         self.alt_min_limit = alt_min_limit
         self.alt_max_limit = alt_max_limit
+        self.bypass_alt_limits = bypass_alt_limits
         self.max_slew_rate = max_slew_rate
         self.backlash = {'az': 0.0, 'alt': 0.0}
         self.aligned_slew_dir = {'az': +1, 'alt': +1}
+        self.cached_position = None
+        self.cached_position_time = None
+        self.cached_position_time_limit = 0.25
 
     def get_azalt(self):
         """Gets the current position of the mount.
 
         Gets the current position coordinates of the mount in azimuth-altitude
         format. The positions returned are as reported by the mount with no 
-        corrections applied.
+        corrections applied. The position is also cached inside this object for
+        efficient altitude limit enforcement.
 
         Returns:
             A dict with keys 'az' and 'alt' where the values are the azimuth
@@ -78,7 +86,9 @@ class NexStarMount(TelescopeMount):
             the altitude range is [-180,+180).
         """
         (az, alt) = self.nexstar.get_azalt()
-        return {'az': az, 'alt': alt}
+        self.cached_position = {'az': az, 'alt': alt}
+        self.cached_position_time = time.time()
+        return self.cached_position
 
     def get_aligned_slew_dir(self):
         """Gets the slew directions used during alignment.
@@ -113,7 +123,6 @@ class NexStarMount(TelescopeMount):
             and altitude positions in degrees with corrections applied. The 
             azimuth range is [0,360) and the altitude range is [-180,+180).
         """
-
         az = position['az']
         alt = position['alt']
 
@@ -162,8 +171,15 @@ class NexStarMount(TelescopeMount):
         and the slew direction is not away from the limit, the slew rate in
         the altitude axis will be set to 0 and an AltitudeLimitException will
         be raised. Note that the altitude limit protection is not guaranteed
-        to prevent a collision of the optical tube against the mount because
-        the position of the mount is only checked when this function is called.
+        to prevent a collision of the optical tube against the mount for a
+        number of reasons:
+            1) The limit is only checked each time this function is called
+            2) The motors do not respond instantly when commanded to stop
+            3) Altitude knowledge is dependent on good alignment
+            4) The limits could be set improperly
+        To prevent unnecessary reads of the mount position, the altitude limit
+        check will attempt to use a cached position value. However if the 
+        cached value is too old it will read the mount's position directly.
 
         Args:
             axis: A string indicating the axis: 'az' or 'alt'.
@@ -175,12 +191,20 @@ class NexStarMount(TelescopeMount):
                 altitude slew rate has been set to zero.
         """
         assert axis in ['az', 'alt']
-        assert abs(rate) <= self.max_slew_rate
+        if abs(rate) > self.max_slew_rate:
+            raise ValueError('slew rate exceeds limit')
 
         # enforce altitude limits
-        if axis == 'alt':
-            hit_limit = False
-            position = self.get_azalt()
+        if axis == 'alt' and self.bypass_alt_limits == False:
+            if self.cached_position is not None:
+                time_since_cached = time.time() - self.cached_position_time
+                if time_since_cached < self.cached_position_time_limit:
+                    position = self.cached_position
+                else:
+                    position = self.get_azalt()
+            else:
+                position = self.get_azalt()
+
             if ((position['alt'] >= self.alt_max_limit and rate > 0.0) or
                 (position['alt'] <= self.alt_min_limit and rate < 0.0)):
                 self.nexstar.slew_var('alt', 0.0)

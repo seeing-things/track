@@ -15,9 +15,10 @@ parser.add_argument('--camera', help='device node path for tracking webcam', def
 parser.add_argument('--camera-bufs', help='number of webcam capture buffers', required=True, type=int)
 parser.add_argument('--camera-exposure', help='webcam exposure level', default=2000, type=int)
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
+parser.add_argument('--bypass-alt-limits', help='bypass altitude limit enforcement', action='store_true')
 args = parser.parse_args()
 
-mount = mounts.NexStarMount(args.scope, alt_min_limit=-180, alt_max_limit=+180)
+mount = mounts.NexStarMount(args.scope, bypass_alt_limits=args.bypass_alt_limits)
 position_start = mount.get_azalt()
 deadband_az = 100.0
 deadband_alt = 100.0
