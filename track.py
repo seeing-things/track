@@ -1,3 +1,10 @@
+"""tracking loop for telescope control.
+
+Track provides the classes required to point a telescope with software using a
+feedback control loop.
+
+"""
+
 from __future__ import print_function
 import time
 import abc
