@@ -172,16 +172,31 @@ class LoopFilter(object):
         self.int = 0.0
         self.last_iteration_time = None
 
-    # Returns new slew rate in [phase units] per second, where [phase units]
-    # are the same as the units of the input error value.
     def update(self, error):
-        """
+        """Update the loop filter using new error signal input.
+
+        Updates the loop filter using new error signal information. The loop
+        filter proportional and integral coefficients are calculated on each
+        call based on the time elapsed since the previous call. This allows
+        the loop response to remain consistent even if the loop period is
+        changing dynamically or can't be predicted in advance.
 
         If this method was last called more than max_update_period seconds ago
         a warning will be printed and the stored integrator value will be
         returned. The error signal will be ignored. This is meant to protect
         against edge cases where long periods between calls to update() could
         cause huge disturbances to the loop behavior.
+
+        The integrator and output of the loop filter will be limited to not
+        exceed the maximum slew rate as defined by the rate_limit constructor
+        argument.
+
+        Args:
+            error: The error in phase units (typically degrees).
+
+        Returns:
+            The slew rate to be applied in the same units as the error signal
+                (typically degrees).
         """
 
         # can't measure loop period on first update
