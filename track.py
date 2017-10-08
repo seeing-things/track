@@ -197,8 +197,6 @@ class LoopFilter(object):
                   + str(self.max_update_period) + ' s.')
             return self.int
 
-        print('measured loop period: ' + str(update_period * 1000.0) + ' ms')
-
         # compute loop filter gains based on loop period
         bt = self.bandwidth * update_period
         k0 = update_period
