@@ -262,6 +262,10 @@ class OpticalErrorSource(ErrorSource):
 
         self.frame_center_px = (self.frame_width_px / 2.0, self.frame_height_px / 2.0)
 
+        # counts of consecutive frames with detections or no detections
+        self.consec_detect_frames = 0
+        self.consec_no_detect_frames = 0
+
         # initialize blob detector
         params = cv2.SimpleBlobDetector_Params()
         params.filterByColor = False
@@ -318,6 +322,8 @@ class OpticalErrorSource(ErrorSource):
                     retries -= 1
                     continue
                 else:
+                    self.consec_detect_frames = 0
+                    self.consec_no_detect_frames += 1
                     raise self.NoSignalException('No target identified')
 
             # error is distance of first keypoint from center frame
@@ -330,6 +336,9 @@ class OpticalErrorSource(ErrorSource):
             error = {}
             error['az'] = error_x_deg
             error['alt'] = error_y_deg
+
+            self.consec_detect_frames += 1
+            self.consec_no_detect_frames = 0
 
             return error
 
@@ -344,16 +353,14 @@ class HybridErrorSource(ErrorSource):
             arcsecs_per_pixel,
             cam_num_buffers,
             cam_ctlval_exposure,
-            max_divergence=2.0
+            max_divergence=5.0,
+            max_optical_no_signal_frames=4
         ):
         self.blind = BlindErrorSource(mount, observer, target)
         self.optical = OpticalErrorSource(cam_dev_path, arcsecs_per_pixel, cam_num_buffers, cam_ctlval_exposure)
         self.max_divergence = max_divergence
-
-        self.BLIND_STATE = 0
-        self.OPTICAL_STATE = 1
-        self.state = self.BLIND_STATE
-
+        self.max_optical_no_signal_frames = max_optical_no_signal_frames
+        self.state = 'blind'
         print('Hybrid error source starting in blind tracking state')
 
     def register_blind_offset_callback(self, callback):
@@ -365,21 +372,26 @@ class HybridErrorSource(ErrorSource):
         try:
             optical_error = self.optical.compute_error()
         except ErrorSource.NoSignalException:
-            if self.state == self.BLIND_STATE:
+            if self.state == 'blind':
                 return blind_error
             else:
+                if self.optical.consec_no_detect_frames >= self.max_optical_no_signal_frames:
+                    print('Lost target in camera, switching to blind tracking')
+                    self.state = 'blind'
+                    return blind_error
                 raise
 
+        # this is not the right way to compute the angle between the two positions!
         error_diff = {
             'az': blind_error['az'] - optical_error['az'],
             'alt': blind_error['alt'] - optical_error['alt'],
         }
         error_diff_mag = np.absolute(error_diff['az'] + 1j*error_diff['alt'])
-        if self.state == self.BLIND_STATE and error_diff_mag < self.max_divergence:
-            print('Solutions within ' + str(error_diff_mag) + ', switched to optical tracking')
-            self.state = self.OPTICAL_STATE
-        elif self.state == self.OPTICAL_STATE and error_diff_mag >= self.max_divergence:
-            print('Solutions diverged (' + str(error_diff_mag) + ' degrees apart), switching back to blind tracking')
-            self.state = self.BLIND_STATE
+        if self.state == 'blind' and error_diff_mag < self.max_divergence:
+            print('A target is in view, switching to optical tracking')
+            self.state = 'optical'
+        elif self.state == 'optical' and error_diff_mag > self.max_divergence:
+            print('Solutions diverged, switching to blind tracking')
+            self.state = 'blind'
 
-        return blind_error if self.state == self.BLIND_STATE else optical_error
+        return blind_error if self.state == 'blind' else optical_error
