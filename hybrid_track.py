@@ -84,12 +84,12 @@ if args.mode == 'solarsystem':
 
 # Create object with base type ErrorSource
 error_source = errorsources.HybridErrorSource(
-    mount, 
-    observer, 
-    target, 
-    args.camera, 
-    args.camera_res, 
-    args.camera_exposure, 
+    mount,
+    observer,
+    target,
+    args.camera,
+    args.camera_res,
+    args.camera_exposure,
     args.max_divergence
 )
 
@@ -106,8 +106,8 @@ except RuntimeError:
     print('No gamepads found.')
 
 tracker = track.Tracker(
-    mount = mount, 
-    error_source = error_source, 
+    mount = mount,
+    error_source = error_source,
     loop_bandwidth = args.loop_bw,
     damping_factor = args.loop_damping
 )

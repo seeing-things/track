@@ -20,23 +20,23 @@ class NexStarMount(TelescopeMount):
             is enforced during calls to slew().
         max_slew_rate: Maximum slew rate supported by the mount in degrees per
             second.
-        last_slew_dir: A dict storing the directions of the last commanded 
+        last_slew_dir: A dict storing the directions of the last commanded
             slews in each axis. Keys are 'az' and 'alt'. Values are +1 when
             the last slew was in the positive direction and -1 when the last
-            slew was in the negative direction. The values may be either +1 
+            slew was in the negative direction. The values may be either +1
             or -1 after class construction or when the last slew has rate 0.
         backlash: A dict storing the magnitudes of the backlash in each axis.
             Keys are 'az' and 'alt'. The values have units of degrees and are
             non-negative.
         aligned_slew_dir: A dict storing the final approach direction used
-            during alignment on each axis. Keys are 'az' and 'alt'. Values 
+            during alignment on each axis. Keys are 'az' and 'alt'. Values
             are +1 to indicate that the final approach slew was in the positive
             direction or -1 to indicate the opposite.
     """
 
     def __init__(
-        self, 
-        device_name, 
+        self,
+        device_name,
         alt_min_limit=0.0,
         alt_max_limit=65.0,
         bypass_alt_limits=False,
@@ -51,7 +51,7 @@ class NexStarMount(TelescopeMount):
         Args:
             device_name: A string with the name of the serial device connected
                 to the hand controller. For example, '/dev/ttyUSB0'.
-            alt_min_limit: Lower limit on the mount's altitude. The default 
+            alt_min_limit: Lower limit on the mount's altitude. The default
                 value is reasonable for a NexStar 130SLT.
             alt_max_limit: Upper limit on the mount's altitude. The default
                 value is reasonable for a NexStar 130SLT.
@@ -76,7 +76,7 @@ class NexStarMount(TelescopeMount):
         """Gets the current position of the mount.
 
         Gets the current position coordinates of the mount in azimuth-altitude
-        format. The positions returned are as reported by the mount with no 
+        format. The positions returned are as reported by the mount with no
         corrections applied. The position is also cached inside this object for
         efficient altitude limit enforcement.
 
@@ -94,7 +94,7 @@ class NexStarMount(TelescopeMount):
         """Gets the slew directions used during alignment.
 
         Returns:
-            A dict with keys 'az' and 'alt' where the values are +1 or -1 
+            A dict with keys 'az' and 'alt' where the values are +1 or -1
             indicating the slew direction used during alignment for that axis.
         """
         return self.aligned_slew_dir
@@ -102,25 +102,25 @@ class NexStarMount(TelescopeMount):
     def remove_backlash(self, position, axes_to_adjust):
         """Adjusts positions to compensate for backlash deadband.
 
-        The position in a given axis will be corrected to remove the backlash 
-        deadband if the set_backlash function has been called with a non-zero 
+        The position in a given axis will be corrected to remove the backlash
+        deadband if the set_backlash function has been called with a non-zero
         correction factor and the axis appears in the axes_to_compensate list.
-        It is the responsibility of the caller to decide when backlash 
-        compensation should be applied. Generally compensation should only be 
-        applied when the mount is slewing against the direction used during 
+        It is the responsibility of the caller to decide when backlash
+        compensation should be applied. Generally compensation should only be
+        applied when the mount is slewing against the direction used during
         alignment. No attempt is made to handle the special case where the mount
         is within the deadband region.
 
         Args:
             position: A dict with keys 'az' and 'alt' with values corresponding
-                to the azimuth and altitude positions in degrees to be 
+                to the azimuth and altitude positions in degrees to be
                 corrected.
             axes_to_adjust: A dict with keys 'az' and 'alt' and values True
                 or False indicating which axes should be compensated.
 
         Returns:
             A dict with keys 'az' and 'alt' where the values are the azimuth
-            and altitude positions in degrees with corrections applied. The 
+            and altitude positions in degrees with corrections applied. The
             azimuth range is [0,360) and the altitude range is [-180,+180).
         """
         az = position['az']
@@ -145,11 +145,11 @@ class NexStarMount(TelescopeMount):
 
         Args:
             axis: A string indicating the axis: 'az' or 'alt'.
-            aligned_slew_dir: An integer indicating which slew direction was 
+            aligned_slew_dir: An integer indicating which slew direction was
                 used on final approach during alignment. May be either +1,
                 indicating that final approach was in the positive direction,
                 or -1 to indicate the opposite. The backlash compensation will
-                only be applied when the slew direction is opposite of the 
+                only be applied when the slew direction is opposite of the
                 approach direction used during alignment.
             backlash: The non-negative magnitude of the backlash adjustment in
                 degrees.
@@ -165,7 +165,7 @@ class NexStarMount(TelescopeMount):
 
         Commands the mount to slew at a paritcular rate in one axis. Each axis
         is controlled independently. To slew in both axes, call this function
-        twice: once for each axis. If the slew is in the altitude axis and 
+        twice: once for each axis. If the slew is in the altitude axis and
         altitude limits have been set, the function will check the mount's
         current position against the limits. If the limit has been violated
         and the slew direction is not away from the limit, the slew rate in
@@ -178,7 +178,7 @@ class NexStarMount(TelescopeMount):
             3) Altitude knowledge is dependent on good alignment
             4) The limits could be set improperly
         To prevent unnecessary reads of the mount position, the altitude limit
-        check will attempt to use a cached position value. However if the 
+        check will attempt to use a cached position value. However if the
         cached value is too old it will read the mount's position directly.
 
         Args:
@@ -209,7 +209,7 @@ class NexStarMount(TelescopeMount):
                 (position['alt'] <= self.alt_min_limit and rate < 0.0)):
                 self.nexstar.slew_var('alt', 0.0)
                 raise self.AltitudeLimitException('Altitude limit exceeded')
-            
+
         # slew_var argument units are arcseconds per second
         self.nexstar.slew_var(axis, rate * 3600.0)
 

@@ -39,8 +39,8 @@ if args.bypass_alt_limits:
 error_source = errorsources.OpticalErrorSource(args.camera, args.camera_res, args.camera_bufs, args.camera_exposure)
 
 tracker = track.Tracker(
-    mount = mount, 
-    error_source = error_source, 
+    mount = mount,
+    error_source = error_source,
     loop_bandwidth = args.loop_bw,
     damping_factor = args.loop_damping
 )

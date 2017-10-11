@@ -94,8 +94,8 @@ except RuntimeError:
     print('No gamepads found.')
 
 tracker = track.Tracker(
-    mount = mount, 
-    error_source = error_source, 
+    mount = mount,
+    error_source = error_source,
     loop_bandwidth = args.loop_bw,
     damping_factor = args.loop_damping
 )

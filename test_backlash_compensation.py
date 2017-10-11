@@ -45,9 +45,9 @@ try:
                     position_change_corrected = errorsources.wrap_error(position_corrected[axis] - position_start[axis])
                     time_elapsed = time.time() - time_start
                     csvwriter.writerow([
-                        time_elapsed, 
-                        position[axis] * 3600.0, 
-                        position_change * 3600.0, 
+                        time_elapsed,
+                        position[axis] * 3600.0,
+                        position_change * 3600.0,
                         position_change_corrected * 3600.0
                     ])
                     if abs(position_change) > SLEW_RANGE_DEG:
@@ -62,9 +62,9 @@ try:
                     position_change_corrected = errorsources.wrap_error(position_corrected[axis] - position_start[axis])
                     time_elapsed = time.time() - time_start
                     csvwriter.writerow([
-                        time_elapsed, 
-                        position[axis] * 3600.0, 
-                        position_change * 3600.0, 
+                        time_elapsed,
+                        position[axis] * 3600.0,
+                        position_change * 3600.0,
                         position_change_corrected * 3600.0
                     ])
                     if np.sign(position_change) != np.sign(position_change_prev):

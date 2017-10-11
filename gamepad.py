@@ -12,13 +12,13 @@ class Gamepad(object):
     by providing correction feedback.
 
     Attributes:
-        left_x: A floating point value representing the x-axis position of the 
+        left_x: A floating point value representing the x-axis position of the
             left analog stick with values normalized to [-1.0, +1.0].
-        left_y: A floating point value representing the y-axis position of the 
+        left_y: A floating point value representing the y-axis position of the
             left analog stick with values normalized to [-1.0, +1.0].
-        right_x: A floating point value representing the x-axis position of the 
+        right_x: A floating point value representing the x-axis position of the
             right analog stick with values normalized to [-1.0, +1.0].
-        right_y: A floating point value representing the y-axis position of the 
+        right_y: A floating point value representing the y-axis position of the
             right analog stick with values normalized to [-1.0, +1.0].
         int_x: The integrated value of the x-axes of both analog sticks.
         int_y: The integrated value of the y-axes of both analog sticks.
@@ -35,10 +35,10 @@ class Gamepad(object):
     MIN_LEVEL = 0.01
 
     def __init__(
-        self, 
+        self,
         left_gain=1.0,
-        right_gain=0.1, 
-        int_limit=1.0, 
+        right_gain=0.1,
+        int_limit=1.0,
         int_loop_period=0.01
     ):
         """Inits Gamepad object.
@@ -123,8 +123,8 @@ class Gamepad(object):
     def __integrator(self):
         """Thread function for integrating analog stick values.
 
-        Inputs from both analog sticks are multiplied by the respective gains 
-        and integrated. This is done in a separate thread so that the 
+        Inputs from both analog sticks are multiplied by the respective gains
+        and integrated. This is done in a separate thread so that the
         integrators can continue running even when the input thread is blocked
         waiting for new events from the controller.
         """

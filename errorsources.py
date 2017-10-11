@@ -17,7 +17,7 @@ def normalize(v):
         v: A vector in 3-space using Cartesian coordinates.
 
     Returns:
-        A vector in 3-space with the same direction as v but with unit 
+        A vector in 3-space with the same direction as v but with unit
             magnitude.
     """
     v = np.asarray(v)
@@ -26,8 +26,8 @@ def normalize(v):
 def rotate(v, axis, theta):
     """Rotates a vector in 3-space.
 
-    Rotate a vector v in 3-space about the given axis of rotation by theta 
-    radians in a counterclockwise direction (right-hand rule). The rotation 
+    Rotate a vector v in 3-space about the given axis of rotation by theta
+    radians in a counterclockwise direction (right-hand rule). The rotation
     matrix is formed using the Euler-Rodrigues formula.
 
     Reference: https://stackoverflow.com/a/6802723
@@ -59,12 +59,12 @@ def rotate(v, axis, theta):
 def horiz_to_cart(v):
     """Convert unit vector from horizontal to Cartesian coordinate system.
 
-    Converts a unit vector in 3-space from the horizontal (Azimuth-Altitude) 
-    coordinate system to the Cartesian (x,y,z) coordinate system. The 
+    Converts a unit vector in 3-space from the horizontal (Azimuth-Altitude)
+    coordinate system to the Cartesian (x,y,z) coordinate system. The
     horizontal coordinate system is similar to the spherical coordinate system
     except (1) the azimuthal angle increases in a clockwise direction about
-    the z-axis, and (2) the altitude is zero at the azimuthal (xy) plane, in 
-    contrast to the polar angle of the spherical coordinate system which is 
+    the z-axis, and (2) the altitude is zero at the azimuthal (xy) plane, in
+    contrast to the polar angle of the spherical coordinate system which is
     zero at zenith.
 
     Args:
@@ -94,13 +94,13 @@ def horiz_to_cart(v):
 def cart_to_horiz(v):
     """Convert a vector from Cartesian to horizontal coordinate system.
 
-    Converts a vector in 3-space from the Cartesian (x,y,z) coordinate 
-    system to the horizontal (Azimuth-Altitude) coordinate system. Any 
-    magnitude information will be lost. See the horiz_to_cart description for 
+    Converts a vector in 3-space from the Cartesian (x,y,z) coordinate
+    system to the horizontal (Azimuth-Altitude) coordinate system. Any
+    magnitude information will be lost. See the horiz_to_cart description for
     differences between horizontal and spherical coordinate systems.
 
     Args:
-        v: A size 3 numpy array containing the Cartesian coordinates of a 
+        v: A size 3 numpy array containing the Cartesian coordinates of a
             vector.
 
     Returns:
@@ -128,14 +128,14 @@ def adjust_position(target_position_prev, target_position, offset):
     """Adjust target position by correction factor.
 
     Adjusts the position of the target by an offset where the offset is
-    specified in a reference frame defined by the object's direction of 
+    specified in a reference frame defined by the object's direction of
     travel. This makes it possible to make adjustments such as "1 degree
     ahead of the predicted position" or "0.3 degrees left with respect to
     the object's direction of travel."  This is expected to be more useful
     than adjustments such as "1 degree higher in altitude."
 
     Args:
-        target_position_prev: A dict with keys 'az' and 'alt' giving the 
+        target_position_prev: A dict with keys 'az' and 'alt' giving the
             position of the target a short time ago in degrees.
         target_position: A dict with keys 'az' and 'alt' giving the current
             position of the target in degrees.
@@ -156,8 +156,8 @@ def adjust_position(target_position_prev, target_position, offset):
         raise ValueError('current and previous positions are equal!')
 
     # Compute object motion vector. This makes the assumption that tpos and
-    # tpos_prev are separated by a small angle. The more correct calculation 
-    # would result in a vector tmotion that is tangent to the unit sphere at 
+    # tpos_prev are separated by a small angle. The more correct calculation
+    # would result in a vector tmotion that is tangent to the unit sphere at
     # the location of tpos.
     tmotion = normalize(tpos - tpos_prev)
 
@@ -195,8 +195,8 @@ class BlindErrorSource(ErrorSource):
     def compute_error(self, retries=0):
 
         # Get coordinates of the target from a past time for use in determining
-        # direction of motion. This needs to be far enough in the past that 
-        # this position and the current position are separated enough to 
+        # direction of motion. This needs to be far enough in the past that
+        # this position and the current position are separated enough to
         # compute an accurate motion vector.
         a_while_ago = datetime.datetime.utcnow() - datetime.timedelta(seconds=10)
         self.observer.date = ephem.Date(a_while_ago)
@@ -220,8 +220,8 @@ class BlindErrorSource(ErrorSource):
         # make any corrections to predicted position
         if self.offset_callback is not None:
             adjusted_position = adjust_position(
-                target_position_prev, 
-                target_position, 
+                target_position_prev,
+                target_position,
                 self.offset_callback()
             )
         else:
@@ -232,7 +232,7 @@ class BlindErrorSource(ErrorSource):
             'alt': np.sign(wrap_error(target_position['alt'] - target_position_prev['alt'])),
         }
 
-        # compensate for backlash if object is moving against the slew 
+        # compensate for backlash if object is moving against the slew
         # direction used during alignment
         align_dir = self.mount.get_aligned_slew_dir()
         axes_to_adjust = {
@@ -240,7 +240,7 @@ class BlindErrorSource(ErrorSource):
             'alt': align_dir['alt'] != target_motion_direction['alt'],
         }
         mount_position = self.mount.remove_backlash(mount_position, axes_to_adjust)
-         
+
         # compute pointing errors in degrees
         error = {}
         error['az'] = wrap_error(adjusted_position['az'] - mount_position['az'])
