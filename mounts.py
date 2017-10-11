@@ -37,8 +37,8 @@ class NexStarMount(TelescopeMount):
     def __init__(
         self, 
         device_name, 
-        alt_min_limit=-10.0, 
-        alt_max_limit=67.0, 
+        alt_min_limit=0.0,
+        alt_max_limit=65.0,
         bypass_alt_limits=False,
         max_slew_rate=16319.0/3600.0
     ):
