@@ -32,7 +32,7 @@ class Gamepad(object):
     """
 
     MAX_ANALOG_VAL = 2**15
-    MIN_CHANGE = 0.01
+    MIN_LEVEL = 0.01
 
     def __init__(
         self, 
@@ -70,6 +70,7 @@ class Gamepad(object):
         self.input_thread.daemon = True
         self.integrator_thread = threading.Thread(target=self.__integrator)
         self.integrator_thread.daemon = True
+        self.integrator_mode = False
         self.input_thread.start()
         self.integrator_thread.start()
 
@@ -80,6 +81,12 @@ class Gamepad(object):
 
     def get_integrator(self):
         return (self.int_x, self.int_y)
+
+    def get_value(self):
+        if self.integrator_mode:
+            return self.get_integrator()
+        else:
+            return self.get_proportional()
 
     def __get_input(self):
         """Thread function for reading input from gamepad
@@ -93,19 +100,25 @@ class Gamepad(object):
             events = self.gamepad.read()
             for event in events:
                 if event.code == 'ABS_X':
-                    self.left_x = float(event.state) / self.MAX_ANALOG_VAL
-                    # print('x changed to ' + str(self.left_x))
+                    left_x = float(event.state) / self.MAX_ANALOG_VAL
+                    self.left_x = left_x if abs(left_x) >= self.MIN_LEVEL else 0.0
                 elif event.code == 'ABS_Y':
-                    self.left_y = float(event.state) / self.MAX_ANALOG_VAL
-                    # print('y changed to ' + str(self.left_y))
+                    left_y = -float(event.state) / self.MAX_ANALOG_VAL
+                    self.left_y = left_y if abs(left_y) >= self.MIN_LEVEL else 0.0
                 elif event.code == 'ABS_RX':
-                    self.right_x = float(event.state) / self.MAX_ANALOG_VAL
+                    right_x = float(event.state) / self.MAX_ANALOG_VAL
+                    self.right_x = right_x if abs(right_x) >= self.MIN_LEVEL else 0.0
                 elif event.code == 'ABS_RY':
-                    self.right_y = float(event.state) / self.MAX_ANALOG_VAL
-                elif event.code == 'BTN_NORTH':
+                    right_y = -float(event.state) / self.MAX_ANALOG_VAL
+                    self.right_y = right_y if abs(right_y) >= self.MIN_LEVEL else 0.0
+                elif event.code == 'BTN_NORTH' and event.state == 1:
                     self.int_x = 0.0
-                elif event.code == 'BTN_WEST':
+                elif event.code == 'BTN_WEST' and event.state == 1:
                     self.int_y = 0.0
+                elif event.code == 'BTN_TL' and event.state == 1:
+                    self.integrator_mode = False
+                elif event.code == 'BTN_TR' and event.state == 1:
+                    self.integrator_mode = True
 
     def __integrator(self):
         """Thread function for integrating analog stick values.
@@ -116,27 +129,14 @@ class Gamepad(object):
         waiting for new events from the controller.
         """
         while True:
+            if self.integrator_mode:
+                self.int_x += self.left_gain * self.int_loop_period * self.left_x
+                self.int_y += self.left_gain * self.int_loop_period * self.left_y
+                self.int_x += self.right_gain * self.int_loop_period * self.right_x
+                self.int_y += self.right_gain * self.int_loop_period * self.right_y
 
-            # create copies because the input thread is writing to these
-            left_x = self.left_x
-            left_y = self.left_y
-            right_x = self.right_x
-            right_y = self.right_y
-
-            # Don't integrate tiny values because these may be the result of 
-            # calibration errors. We don't want the integrators to accumulate
-            # if the analog stick is actually centered.
-            if abs(left_x) > self.MIN_CHANGE:
-                self.int_x += self.left_gain * self.int_loop_period * left_x
-            if abs(left_y) > self.MIN_CHANGE:
-                self.int_y += self.left_gain * self.int_loop_period * left_y
-            if abs(right_x) > self.MIN_CHANGE:
-                self.int_x += self.right_gain * self.int_loop_period * right_x
-            if abs(right_y) > self.MIN_CHANGE:
-                self.int_y += self.right_gain * self.int_loop_period * right_y
-            
-            self.int_x = np.clip(self.int_x, -self.int_limit, self.int_limit)
-            self.int_y = np.clip(self.int_y, -self.int_limit, self.int_limit)
+                self.int_x = np.clip(self.int_x, -self.int_limit, self.int_limit)
+                self.int_y = np.clip(self.int_y, -self.int_limit, self.int_limit)
 
             time.sleep(self.int_loop_period)
 

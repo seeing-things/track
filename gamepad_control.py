@@ -4,7 +4,6 @@ import config
 import configargparse
 import mounts
 import gamepad
-import numpy as np
 
 parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
@@ -20,7 +19,7 @@ game_pad = gamepad.Gamepad()
 try:
     while True:
         try:
-            x, y = game_pad.get_proportional()
+            x, y = game_pad.get_value()
             mount.slew('az', mount.max_slew_rate * x)
             mount.slew('alt', mount.max_slew_rate * y)
         except mount.AltitudeLimitException:
