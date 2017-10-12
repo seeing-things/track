@@ -27,8 +27,8 @@ def rotate(v, axis, theta):
     """Rotates a vector in 3-space.
 
     Rotate a vector v in 3-space about the given axis of rotation by theta
-    radians in a counterclockwise direction (right-hand rule). The rotation
-    matrix is formed using the Euler-Rodrigues formula.
+    in a counterclockwise direction (right-hand rule). The rotation matrix is
+    formed using the Euler-Rodrigues formula.
 
     Reference: https://stackoverflow.com/a/6802723
 
@@ -36,12 +36,14 @@ def rotate(v, axis, theta):
         v: A vector in 3-space using Cartesian coordinates.
         axis: A vector in 3-space giving the axis of rotation. Not required to
             be a unit vector (magnitude ignored).
-        theta: Angle of rotation in radians. The rotation will be performed
+        theta: Angle of rotation in degrees. The rotation will be performed
             according to the right-hand rule convention.
 
     Returns:
         A numpy array with size 3 representing the rotated vector.
     """
+
+    theta = theta * math.pi / 180.0
 
     # make the rotation matrix
     axis = np.asarray(axis)
@@ -164,13 +166,13 @@ def adjust_position(target_position_prev, target_position, offset):
     # convert gamepad vector from Cartesian to polar
     gpcomplex = offset[0] + 1j*offset[1]
     gpmag = np.abs(gpcomplex)
-    gparg = np.angle(gpcomplex)
+    gparg = np.angle(gpcomplex) * 180.0 / math.pi
 
     # compute axis of rotation
     axis = rotate(tmotion, tpos, gparg)
 
     # rotate position about axis of rotation
-    tpos_new = rotate(tpos, axis, gpmag * math.pi / 180.0)
+    tpos_new = rotate(tpos, axis, gpmag)
 
     # convert back to horizontal coordinate system
     return cart_to_horiz(tpos_new)
