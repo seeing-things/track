@@ -3,14 +3,13 @@
 # Adapted from an example here: http://docs.opencv.org/trunk/d7/d8b/tutorial_py_lucas_kanade.html
 
 import config
-import configargparse
 import numpy as np
 import cv2
 import webcam
 import mounts
 import errorsources
 
-parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
+parser = config.ArgParser()
 parser.add_argument('--camera', help='device node path for tracking webcam', default='/dev/video0')
 parser.add_argument('--camera-bufs', help='number of webcam capture buffers', required=True, type=int)
 parser.add_argument('--camera-exposure', help='webcam exposure level', default=2000, type=int)

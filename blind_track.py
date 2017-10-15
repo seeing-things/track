@@ -1,14 +1,13 @@
 #!/usr/bin/env python
 
 import config
-import configargparse
 import track
 import mounts
 import errorsources
 import ephem
 import gamepad
 
-parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES, formatter_class=configargparse.ArgumentDefaultsHelpFormatter)
+parser = config.ArgParser()
 
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--lat', required=True, help='latitude of observer (+N)')

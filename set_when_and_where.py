@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 
 import config
-import configargparse
 import math
 import time
 import nexstar
 import ephem
 
-parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
+parser = config.ArgParser()
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
 parser.add_argument('--lon', required=True, help='longitude of observer (+E)')

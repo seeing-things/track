@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 
 import config
-import configargparse
 import mounts
 import gamepad
 
-parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
+parser = config.ArgParser()
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--bypass-alt-limits', help='bypass mount altitude limits', action='store_true')
 args = parser.parse_args()

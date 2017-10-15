@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 
 import config
-import configargparse
 import track
 import mounts
 import errorsources
 import gamepad
 
-parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
+parser = config.ArgParser()
 parser.add_argument('--camera', help='device node path for tracking webcam', default='/dev/video0')
 parser.add_argument('--camera-res', help='webcam resolution in arcseconds per pixel', required=True, type=float)
 parser.add_argument('--camera-bufs', help='number of webcam capture buffers', required=True, type=int)

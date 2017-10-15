@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
-import argparse
+import config
 import mounts
 import time
 import errorsources
 import sys
 
-parser = argparse.ArgumentParser()
+parser = config.ArgParser()
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--backlash-az', help='backlash in azimuth (arcseconds)', default=0.0, type=float)
 parser.add_argument('--backlash-alt', help='backlash in altitude (arcseconds)', default=0.0, type=float)

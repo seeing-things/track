@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 
 import config
-import configargparse
 import ephem
 import ephem.stars
 import datetime
 import math
 
-parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES, formatter_class=configargparse.ArgumentDefaultsHelpFormatter)
+parser = config.ArgParser()
 
 parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
 parser.add_argument('--lon', required=True, help='longitude of observer (+E)')

@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 
 import config
-import configargparse
 import ephem
 import time
 import urllib2
 
-parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
+parser = config.ArgParser()
 parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
 parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
 parser.add_argument('--elevation', required=False, default=0.0, help='elevation of observer (m)', type=float)
