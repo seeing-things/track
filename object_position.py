@@ -3,6 +3,7 @@
 import config
 import configargparse
 import ephem
+import ephem.stars
 import datetime
 import math
 
@@ -31,15 +32,28 @@ observer.elevation = args.elevation
 
 # Get the PyEphem Body object corresonding to the given named star
 if args.mode == 'star':
-    print('In named star mode: \'{}\''.format(args.name))
-    target = ephem.star(args.name)
+    print('In named star mode: looking up \'{}\''.format(args.name))
+    target = None
+    for name, star in ephem.stars.stars.items():
+        if args.name.lower() == name.lower():
+            print('Found named star: \'{}\''.format(name))
+            target = ephem.star(name)
+            break
+    if target == None:
+        raise Exception('The named star \'{}\' isn\' present in PyEphem.'.format(args.name))
 
 # Get the PyEphem Body object corresonding to the given named solar system body
 if args.mode == 'solarsystem':
-    print('In named solar system body mode: \'{}\''.format(args.name))
-    ss_objs = [name for _0, _1, name in ephem._libastro.builtin_planets()]
-    if args.name in ss_objs:
-        body_type = getattr(ephem, args.name)
+    print('In named solar system body mode: looking up \'{}\''.format(args.name))
+    ss_objs = [name.lower() for _0, _1, name in ephem._libastro.builtin_planets()]
+    if args.name.lower() in ss_objs:
+        body_type = None
+        for attr in dir(ephem):
+            if args.name.lower() == attr.lower():
+                body_type = getattr(ephem, attr)
+                print('Found solar system body: \'{}\''.format(attr))
+                break
+        assert body_type != None
         target = body_type()
     else:
         raise Exception('The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name))
