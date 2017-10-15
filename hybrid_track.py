@@ -17,7 +17,7 @@ parser.add_argument('--scope', help='serial device for connection to telescope',
 parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
 parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
 parser.add_argument('--elevation', required=True, help='elevation of observer (m)', type=float)
-parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.1, type=float)
+parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.5, type=float)
 parser.add_argument('--loop-damping', help='control loop damping factor', default=2.0, type=float)
 parser.add_argument('--backlash-az', help='backlash in azimuth (arcseconds)', default=0.0, type=float)
 parser.add_argument('--backlash-alt', help='backlash in altitude (arcseconds)', default=0.0, type=float)

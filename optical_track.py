@@ -13,7 +13,7 @@ parser.add_argument('--camera-res', help='webcam resolution in arcseconds per pi
 parser.add_argument('--camera-bufs', help='number of webcam capture buffers', required=True, type=int)
 parser.add_argument('--camera-exposure', help='webcam exposure level', default=2000, type=int)
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
-parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.1, type=float)
+parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.5, type=float)
 parser.add_argument('--loop-damping', help='control loop damping factor', default=2.0, type=float)
 parser.add_argument('--bypass-alt-limits', help='bypass mount altitude limits', action='store_true')
 args = parser.parse_args()
