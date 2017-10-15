@@ -96,10 +96,11 @@ error_source = errorsources.HybridErrorSource(
 try:
     # Create gamepad object and register callback
     game_pad = gamepad.Gamepad(
-        left_gain = 1.0,  # left stick degrees per second
-        right_gain = 1.0, # right stick degrees per second
+        left_gain = 2.0,  # left stick degrees per second
+        right_gain = 0.5, # right stick degrees per second
         int_limit = 5.0,  # max correction in degrees for either axis
     )
+    game_pad.integrator_mode = True
     error_source.register_blind_offset_callback(game_pad.get_integrator)
     print('Gamepad found and registered.')
 except RuntimeError:
