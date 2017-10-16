@@ -100,13 +100,15 @@ class WebCam(object):
 
     # get the most recent frame from the webcam, waiting if necessary, and throwing away stale frames if any
     # (the frame is a numpy array in BGR format)
+    # TODO: add timeout parameter: if webcam process dies for some reason, this will block
+    # indefinitely and therefore make the main thread (in other parts of the codebase) hang badly
     def get_fresh_frame(self):
         # block until there's at least one frame in the pipe
-        self.frames_in.poll(None)
+        self.frames_out.poll(None)
 
         frames = []
-        while self.frames_in.poll():
-            frames += [self.frames_in.read()]
+        while self.frames_out.poll():
+            frames += [self.frames_out.recv()]
 
         # return only the most recently acquired frame
         return frames[-1]
