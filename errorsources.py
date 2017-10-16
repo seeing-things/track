@@ -266,75 +266,54 @@ class OpticalErrorSource(ErrorSource):
         self.consec_detect_frames = 0
         self.consec_no_detect_frames = 0
 
+        # initialize blob detector
+        params = cv2.SimpleBlobDetector_Params()
+        params.filterByColor = False
+        params.filterByConvexity = False
+        params.filterByInertia = False
+        params.maxArea = 50000.0
+        #params.thresholdStep = 1
+        params.minThreshold = 100
+        params.maxThreshold = 200
+        params.minDistBetweenBlobs = 200
+        self.detector = cv2.SimpleBlobDetector_create(params)
+
         cv2.namedWindow('frame')
-        cv2.createTrackbar('min threshold', 'frame', 2, 255, self.__min_trackbar_validate)
-        cv2.createTrackbar('max threshold', 'frame', 255, 255, self.__max_trackbar_validate)
-        cv2.createTrackbar('threshold step', 'frame', 10, 255, self.__threshold_step_validate)
-        cv2.createTrackbar('max area', 'frame', 500, 1000, self.__do_nothing_validate)
-        cv2.createTrackbar('min dist', 'frame', 200, 1000, self.__do_nothing_validate)
+        cv2.createTrackbar('block size', 'frame', 7, 31, self.block_size_validate)
+        cv2.createTrackbar('C', 'frame', 3, 255, self.do_nothing)
+
+    # validator for block size trackbar
+    def block_size_validate(self, x):
+        if x % 2 == 0:
+            cv2.setTrackbarPos('block size', 'frame', x + 1)
+        elif x < 3:
+            cv2.setTrackbarPos('block size', 'frame', 3)
 
     # validator for OpenCV trackbar
-    def __min_trackbar_validate(self, x):
-        max_setting = cv2.getTrackbarPos('max threshold', 'frame')
-        if x > max_setting:
-            cv2.setTrackbarPos('min threshold', 'frame', max_setting)
-
-    # validator for OpenCV trackbar
-    def __max_trackbar_validate(self, x):
-        min_setting = cv2.getTrackbarPos('min threshold', 'frame')
-        if x < min_setting:
-            cv2.setTrackbarPos('max threshold', 'frame', min_setting)
-
-    def __threshold_step_validate(self, x):
-        if x <= 0:
-            cv2.setTrackbarPos('threshold step', 'frame', 1)
-
-    # validator for OpenCV trackbar
-    def __do_nothing_validate(self, x):
+    def do_nothing(self, x):
         pass
 
     def compute_error(self, retries=0):
 
         while True:
-
             frame = self.webcam.get_fresh_frame()
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            # initialize blob detector
-            params = cv2.SimpleBlobDetector_Params()
-            params.filterByColor = False
-            params.filterByConvexity = False
-            params.filterByInertia = False
-            params.maxArea = cv2.getTrackbarPos('max area', 'frame')
-            params.thresholdStep = cv2.getTrackbarPos('threshold step', 'frame')
-            params.minThreshold = cv2.getTrackbarPos('min threshold', 'frame')
-            params.maxThreshold = cv2.getTrackbarPos('max threshold', 'frame')
-            params.minDistBetweenBlobs = cv2.getTrackbarPos('min dist', 'frame')
-            blob_detector = cv2.SimpleBlobDetector_create(params)
+            thresh = cv2.adaptiveThreshold(
+                gray,
+                255,
+                cv2.ADAPTIVE_THRESH_MEAN_C,
+                cv2.THRESH_BINARY,
+                cv2.getTrackbarPos('block size', 'frame'),
+                cv2.getTrackbarPos('C', 'frame')
+            )
 
-            keypoints = blob_detector.detect(frame)
+            keypoints = self.detector.detect(thresh)
 
             # display the original frame with keypoints circled in red
-            frame_annotated = cv2.drawKeypoints(
-                frame,
-                keypoints,
-                np.array([]),
-                (0,0,255),
-                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
-            )
-            cv2.line(
-                frame_annotated,
-                (int(self.frame_center_px[0]), 0),
-                (int(self.frame_center_px[0]), int(self.frame_height_px) - 1),
-                (100,0,0),
-                1
-            )
-            cv2.line(
-                frame_annotated,
-                (0, int(self.frame_center_px[1])),
-                (int(self.frame_width_px) - 1, int(self.frame_center_px[1])),
-                (100,0,0),
-                1
-            )
+            frame_annotated = cv2.drawKeypoints(frame, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            cv2.line(frame_annotated, (int(self.frame_center_px[0]), 0), (int(self.frame_center_px[0]), int(self.frame_height_px) - 1), (100,0,0), 1)
+            cv2.line(frame_annotated, (0, int(self.frame_center_px[1])), (int(self.frame_width_px) - 1, int(self.frame_center_px[1])), (100,0,0), 1)
             cv2.imshow('frame', frame_annotated)
             cv2.waitKey(1)
 
