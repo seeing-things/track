@@ -126,28 +126,32 @@ class WebCam(object):
 
     # [WEBCAM PROCESS] webcam monitor loop
     def monitor(self):
-        while True:
-            readable, writable, exceptional = select.select((self.camera, self.proc_exit_r), (), (), 0.5)
+        try:
+            while True:
+                readable, writable, exceptional = select.select((self.camera, self.proc_exit_r), (), (), 0.5)
 
-            # the main thread is asking us to terminate
-            if self.proc_exit_r in readable:
-                return
+                # the main thread is asking us to terminate
+                if self.proc_exit_r in readable:
+                    return
 
-            frames_jpeg = []
-            frames_bgr  = []
+                frames_jpeg = []
+                frames_bgr  = []
 
-            # grab as many frames as are available to us right now
-            while self.has_frames_available():
-                now = datetime.datetime.utcnow() # TODO
-                frames_jpeg += [self.camera.read_and_queue()]
+                # grab as many frames as are available to us right now
+                while self.has_frames_available():
+                    now = datetime.datetime.utcnow() # TODO
+                    frames_jpeg += [self.camera.read_and_queue()]
 
-            # decode the compressed JPEG image data into BGR format for OpenCV's use
-            for frame_jpeg in frames_jpeg:
-                frames_bgr += [cv2.imdecode(np.fromstring(frame_jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)]
+                # decode the compressed JPEG image data into BGR format for OpenCV's use
+                for frame_jpeg in frames_jpeg:
+                    frames_bgr += [cv2.imdecode(np.fromstring(frame_jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)]
 
-            # send the decoded frames across the pipe to the main process
-            for frame_bgr in frames_bgr:
-                self.frames_in.send(frame_bgr)
+                # send the decoded frames across the pipe to the main process
+                for frame_bgr in frames_bgr:
+                    self.frames_in.send(frame_bgr)
+        except KeyboardInterrupt:
+            print('Webcam process caught KeyboardInterrupt')
+            return
 
     # [WEBCAM PROCESS] does the webcam have at least one frame ready for us to read? (non-blocking)
     def has_frames_available(self):
