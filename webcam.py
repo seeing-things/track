@@ -69,6 +69,7 @@ class WebCam(object):
         self.frames_out, self.frames_in = multiprocessing.Pipe(duplex=False)
 
         self.proc = multiprocessing.Process(target=self.monitor, name='WebCam Process')
+        self.proc.daemon = True # docs: "when a process exists, it attempts to kill all of its daemonic child processes"
         self.proc.start()
 
     def __del__(self):
