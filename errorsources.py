@@ -126,6 +126,38 @@ def cart_to_horiz(v):
 
     return {'az': az_deg, 'alt': alt_deg}
 
+def angle_between(u, v):
+    """Angle between two vectors.
+
+    Compute the angle between two vectors. The vectors can be of any dimension
+    though in the context of this module 3-space is anticipated to be the
+    likely use-case. The algorithm for computing the angle was taken from the
+    following paper which claims that it has better numerical performance
+    than other more common approaches (see page 47):
+    https://people.eecs.berkeley.edu/~wkahan/Mindless.pdf
+
+    Args:
+        u, v: Input vectors. If Cartesian coordinates these should both be
+            either lists or numpy arrays. If horizontal coordinates these
+            should both be dicts containing keys 'az' and 'alt'.
+
+    Returns:
+        Angle between the vectors in degrees.
+    """
+
+    if type(u) == 'dict' and type(v) == 'dict':
+        u = horiz_to_cart(u)
+        v = horiz_to_cart(v)
+    else:
+        u = np.asarray(u, dtype='float')
+        v = np.asarray(v, dtype='float')
+
+    u_norm = np.linalg.norm(u)
+    v_norm = np.linalg.norm(v)
+    theta = 2.0 * np.arctan2(np.linalg.norm(v_norm * u - u_norm * v),
+                             np.linalg.norm(v_norm * u + u_norm * v))
+    return theta * 180.0 / math.pi
+
 def adjust_position(target_position_prev, target_position, offset):
     """Adjust target position by correction factor.
 
