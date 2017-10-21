@@ -68,28 +68,54 @@ class WebCam(object):
 
         self.frames_out, self.frames_in = multiprocessing.Pipe(duplex=False)
 
+        self.start_monitor_proc()
+
+    def __del__(self):
+        print('WebCam: dtor invoked')
+        if hasattr(self, 'proc'):
+            self.stop_monitor_proc()
+        if hasattr(self, 'proc_exit_r'):
+            print('WebCam: closing os pipe \'proc_exit_r\'')
+            os.close(self.proc_exit_r)
+        if hasattr(self, 'proc_exit_w'):
+            print('WebCam: closing os pipe \'proc_exit_w\'')
+            os.close(self.proc_exit_w)
+        if hasattr(self, 'camera'):
+            print('WebCam: calling self.camera.stop()')
+            self.camera.stop()
+            print('WebCam: calling self.camera.close()')
+            self.camera.close()
+        if hasattr(self, 'dev'):
+            print('WebCam: closing file object for webcam device node')
+            self.dev.close()
+        print('WebCam: dtor complete')
+
+    def start_monitor_proc(self):
         self.proc = multiprocessing.Process(target=self.monitor, name='WebCam Process')
         self.proc.daemon = True # docs: "when a process exists, it attempts to kill all of its daemonic child processes"
         self.proc.start()
 
-    def __del__(self):
-        if hasattr(self, 'proc') and self.proc.is_alive():
-            # first attempt to use the pipe/select/join method to cleanly end the monitor process
-            os.write(self.proc_exit_w, '!')
-            self.proc.join(1.0)
-            # failing that, kill it the brutal way
-            if self.proc.is_alive():
-                print('WebCam: monitor process didn\'t end; terminating it forcefully')
-                self.proc.terminate()
-        if hasattr(self, 'proc_exit_r'):
-            os.close(self.proc_exit_r)
-        if hasattr(self, 'proc_exit_w'):
-            os.close(self.proc_exit_w)
-        if hasattr(self, 'camera'):
-            self.camera.stop()
-            self.camera.close()
-        if hasattr(self, 'dev'):
-            self.dev.close()
+    def stop_monitor_proc(self):
+        if not self.proc.is_alive():
+            print('Webcam: monitor process exists but has already terminated itself')
+            return
+
+        # first attempt to use the pipe/select/join method to cleanly end the monitor process
+        print('WebCam: attempting to stop monitor process cleanly using pipe I/O')
+        os.write(self.proc_exit_w, '!')
+        self.proc.join(1.0)
+        if not self.proc.is_alive():
+            return
+
+        # failing that, kill it the brutal way
+        print('WebCam: monitor process is still alive; calling Process.terminate() [this is bad]')
+        self.proc.terminate()
+        if not self.proc.is_alive():
+            return
+
+        # uh oh
+        print('WebCam: monitor process is STILL alive; throwing up hands and giving up')
+        return
 
     # get the ACTUAL webcam frame width
     def get_res_x(self):
