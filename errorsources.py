@@ -1,14 +1,25 @@
-from track import ErrorSource
-import ephem
+"""error sources for use in telescope tracking control loop.
+
+The errorsources module provides classes that derive from the abstract ErrorSource class. Each
+class defines a method compute_error() which returns an error vector representing the difference
+between the current position and some measure of the ideal position. This information might come
+from ephemeris data for a celestial or man-made object, a camera, or even human input. Error source
+classes can also be designed to compute an error vector by combining data from multiple sources
+or by intelligently switching between sources.
+"""
+
+from __future__ import print_function
 import datetime
 import math
+from track import ErrorSource
+import ephem
 import cv2
 import numpy as np
 import webcam
 
-# wraps an angle in degrees to the range [-180,+180)
-def wrap_error(e):
-    return (e + 180.0) % 360.0 - 180.0
+def wrap_error(error):
+    """Wraps an angle in degrees to the range [-180,+180)"""
+    return (error + 180.0) % 360.0 - 180.0
 
 def normalize(v):
     """Normalize a Cartesian vector in 3-space to unit magnitude.
@@ -17,8 +28,7 @@ def normalize(v):
         v: A vector in 3-space using Cartesian coordinates.
 
     Returns:
-        A vector in 3-space with the same direction as v but with unit
-            magnitude.
+        A vector in 3-space with the same direction as v but with unit magnitude.
     """
     v = np.asarray(v)
     return v / math.sqrt(np.dot(v, v))
@@ -26,22 +36,22 @@ def normalize(v):
 def rotate(v, axis, theta):
     """Rotates a vector in 3-space.
 
-    Rotate a vector v in 3-space about the given axis of rotation by theta
-    in a counterclockwise direction (right-hand rule). The rotation matrix is
-    formed using the Euler-Rodrigues formula.
+    Rotate a vector v in 3-space about the given axis of rotation by theta in a counterclockwise
+    direction (right-hand rule). The rotation matrix is formed using the Euler-Rodrigues formula.
 
     Reference: https://stackoverflow.com/a/6802723
 
     Args:
         v: A vector in 3-space using Cartesian coordinates.
-        axis: A vector in 3-space giving the axis of rotation. Not required to
-            be a unit vector (magnitude ignored).
-        theta: Angle of rotation in degrees. The rotation will be performed
-            according to the right-hand rule convention.
+        axis: A vector in 3-space giving the axis of rotation. Not required to be a unit vector
+            (magnitude ignored).
+        theta: Angle of rotation in degrees. The rotation will be performed according to the
+            right-hand rule convention.
 
     Returns:
         A numpy array with size 3 representing the rotated vector.
     """
+    # pylint: disable=too-many-locals
 
     theta = theta * math.pi / 180.0
 
@@ -52,26 +62,24 @@ def rotate(v, axis, theta):
     b, c, d = -axis*math.sin(theta/2.0)
     aa, bb, cc, dd = a*a, b*b, c*c, d*d
     bc, ad, ac, ab, bd, cd = b*c, a*d, a*c, a*b, b*d, c*d
-    rotation_matrix =  np.array([[aa+bb-cc-dd, 2*(bc+ad), 2*(bd-ac)],
-                                 [2*(bc-ad), aa+cc-bb-dd, 2*(cd+ab)],
-                                 [2*(bd+ac), 2*(cd-ab), aa+dd-bb-cc]])
+    rotation_matrix = np.array([[aa+bb-cc-dd, 2*(bc+ad), 2*(bd-ac)],
+                                [2*(bc-ad), aa+cc-bb-dd, 2*(cd+ab)],
+                                [2*(bd+ac), 2*(cd-ab), aa+dd-bb-cc]])
 
     return np.dot(rotation_matrix, v)
 
 def horiz_to_cart(v):
     """Convert unit vector from horizontal to Cartesian coordinate system.
 
-    Converts a unit vector in 3-space from the horizontal (Azimuth-Altitude)
-    coordinate system to the Cartesian (x,y,z) coordinate system. The
-    horizontal coordinate system is similar to the spherical coordinate system
-    except (1) the azimuthal angle increases in a clockwise direction about
-    the z-axis, and (2) the altitude is zero at the azimuthal (xy) plane, in
-    contrast to the polar angle of the spherical coordinate system which is
-    zero at zenith.
+    Converts a unit vector in 3-space from the horizontal (Azimuth-Altitude) coordinate system to
+    the Cartesian (x,y,z) coordinate system. The horizontal coordinate system is similar to the
+    spherical coordinate system except (1) the azimuthal angle increases in a clockwise direction
+    about the z-axis, and (2) the altitude is zero at the azimuthal (xy) plane, in contrast to the
+    polar angle of the spherical coordinate system which is zero at zenith.
 
     Args:
-        v: A dict containing keys 'az' and 'alt' with values in degrees.
-            It is assumed that the magnitude of this vector is 1.
+        v: A dict containing keys 'az' and 'alt' with values in degrees. It is assumed that the
+            magnitude of this vector is 1.
 
     Returns:
         A size 3 numpy array containing the Cartesian coordinates of the vector.
@@ -82,7 +90,6 @@ def horiz_to_cart(v):
     alt = v['alt'] * math.pi / 180.0
 
     # horizontal to spherical
-    r = 1
     phi = -az
     theta = math.pi / 2.0 - alt
 
@@ -91,19 +98,17 @@ def horiz_to_cart(v):
     y = math.sin(theta) * math.sin(phi)
     z = math.cos(theta)
 
-    return np.asarray([x,y,z], dtype=float)
+    return np.asarray([x, y, z], dtype=float)
 
 def cart_to_horiz(v):
     """Convert a vector from Cartesian to horizontal coordinate system.
 
-    Converts a vector in 3-space from the Cartesian (x,y,z) coordinate
-    system to the horizontal (Azimuth-Altitude) coordinate system. Any
-    magnitude information will be lost. See the horiz_to_cart description for
-    differences between horizontal and spherical coordinate systems.
+    Converts a vector in 3-space from the Cartesian (x,y,z) coordinate system to the horizontal
+    (Azimuth-Altitude) coordinate system. Any magnitude information will be lost. See the
+    horiz_to_cart description for differences between horizontal and spherical coordinate systems.
 
     Args:
-        v: A size 3 numpy array containing the Cartesian coordinates of a
-            vector.
+        v: A size 3 numpy array containing the Cartesian coordinates of a vector.
 
     Returns:
         A dict containing keys 'az' and 'alt' with values in degrees.
@@ -129,23 +134,22 @@ def cart_to_horiz(v):
 def angle_between(u, v):
     """Angle between two vectors.
 
-    Compute the angle between two vectors. The vectors can be of any dimension
-    though in the context of this module 3-space is anticipated to be the
-    likely use-case. The algorithm for computing the angle was taken from the
-    following paper which claims that it has better numerical performance
-    than other more common approaches (see page 47):
+    Compute the angle between two vectors. The vectors can be of any dimension though in the
+    context of this module 3-space is anticipated to be the likely use-case. The algorithm for
+    computing the angle was taken from the following paper which claims that it has better
+    numerical performance than other more common approaches (see page 47):
     https://people.eecs.berkeley.edu/~wkahan/Mindless.pdf
 
     Args:
-        u, v: Input vectors. If Cartesian coordinates these should both be
-            either lists or numpy arrays. If horizontal coordinates these
-            should both be dicts containing keys 'az' and 'alt'.
+        u, v: Input vectors. If Cartesian coordinates these should both be either lists or numpy
+            arrays. If horizontal coordinates these should both be dicts containing keys 'az' and
+            'alt'.
 
     Returns:
         Angle between the vectors in degrees.
     """
 
-    if type(u) is dict and type(v) is dict:
+    if isinstance(u, dict) and isinstance(v, dict):
         u = horiz_to_cart(u)
         v = horiz_to_cart(v)
     else:
@@ -161,23 +165,21 @@ def angle_between(u, v):
 def adjust_position(target_position_prev, target_position, offset):
     """Adjust target position by correction factor.
 
-    Adjusts the position of the target by an offset where the offset is
-    specified in a reference frame defined by the object's direction of
-    travel. This makes it possible to make adjustments such as "1 degree
-    ahead of the predicted position" or "0.3 degrees left with respect to
-    the object's direction of travel."  This is expected to be more useful
-    than adjustments such as "1 degree higher in altitude."
+    Adjusts the position of the target by an offset where the offset is specified in a reference
+    frame defined by the object's direction of travel. This makes it possible to make adjustments
+    such as "1 degree ahead of the predicted position" or "0.3 degrees left with respect to the
+    object's direction of travel."  This is expected to be more useful than adjustments such as
+    "1 degree higher in altitude."
 
     Args:
-        target_position_prev: A dict with keys 'az' and 'alt' giving the
-            position of the target a short time ago in degrees.
-        target_position: A dict with keys 'az' and 'alt' giving the current
-            position of the target in degrees.
-        offset: A two-element list or numpy array giving the offset adjustments
-            in degrees. The first element is the x-axis offset and the second
-            element is the y-axis offset. The +y axis is in the direction of
-            the object's motion. The x-axis is perpendicular to the object's
-            motion.
+        target_position_prev: A dict with keys 'az' and 'alt' giving the position of the target a
+            short time ago in degrees.
+        target_position: A dict with keys 'az' and 'alt' giving the current position of the target
+            in degrees.
+        offset: A two-element list or numpy array giving the offset adjustments in degrees. The
+            first element is the x-axis offset and the second element is the y-axis offset. The +y
+            axis is in the direction of the object's motion. The x-axis is perpendicular to the
+            object's motion.
 
     Returns:
         A dict with keys 'az' and 'alt' giving the adjusted position.
@@ -189,10 +191,9 @@ def adjust_position(target_position_prev, target_position, offset):
     if all(tpos == tpos_prev):
         raise ValueError('current and previous positions are equal!')
 
-    # Compute object motion vector. This makes the assumption that tpos and
-    # tpos_prev are separated by a small angle. The more correct calculation
-    # would result in a vector tmotion that is tangent to the unit sphere at
-    # the location of tpos.
+    # Compute object motion vector. This makes the assumption that tpos and tpos_prev are separated
+    # by a small angle. The more correct calculation would result in a vector tmotion that is
+    # tangent to the unit sphere at the location of tpos.
     tmotion = normalize(tpos - tpos_prev)
 
     # convert gamepad vector from Cartesian to polar
@@ -211,16 +212,27 @@ def adjust_position(target_position_prev, target_position, offset):
 
 
 class BlindErrorSource(ErrorSource):
+    """Ephemeris based error source.
+
+    This class implements an error source based on computed ephemeris information. It is dubbed
+    a "blind" error source in the sense that no physical sensing of the target position is
+    involved (such as by use of a camera). The error vector is computed by taking the difference
+    of the mount's current position and the position of the target as predicted by the PyEphem
+    package.
+
+    Attributes:
+        observer: PyEphem Observer object.
+        target: PyEphem Target object.
+        mount: TelescopeMount object.
+        offset_callback: A function that can make adjustments to the target position.
+        mount_position_cached: Cached position of the mount from last call to compute_error().
+        target_position_cached: Cached position of the target from last call to compute_error().
+    """
 
     def __init__(self, mount, observer, target):
-
-        # PyEphem Observer and Body objects
         self.observer = observer
         self.target = target
-
-        # TelescopeMount object
         self.mount = mount
-
         self.offset_callback = None
         self.mount_position_cached = None
         self.target_position_cached = None
@@ -230,10 +242,9 @@ class BlindErrorSource(ErrorSource):
 
     def compute_error(self, retries=0):
 
-        # Get coordinates of the target from a past time for use in determining
-        # direction of motion. This needs to be far enough in the past that
-        # this position and the current position are separated enough to
-        # compute an accurate motion vector.
+        # Get coordinates of the target from a past time for use in determining direction of
+        # motion. This needs to be far enough in the past that this position and the current
+        # position are separated enough to compute an accurate motion vector.
         a_while_ago = datetime.datetime.utcnow() - datetime.timedelta(seconds=10)
         self.observer.date = ephem.Date(a_while_ago)
         self.target.compute(self.observer)
@@ -295,7 +306,7 @@ class OpticalErrorSource(ErrorSource):
 
         self.webcam = webcam.WebCam(cam_dev_path, cam_num_buffers, cam_ctlval_exposure)
 
-        self.frame_width_px  = self.webcam.get_res_x()
+        self.frame_width_px = self.webcam.get_res_x()
         self.frame_height_px = self.webcam.get_res_y()
 
         self.frame_center_px = (self.frame_width_px / 2.0, self.frame_height_px / 2.0)
@@ -349,9 +360,27 @@ class OpticalErrorSource(ErrorSource):
             keypoints = self.detector.detect(thresh)
 
             # display the original frame with keypoints circled in red
-            frame_annotated = cv2.drawKeypoints(frame, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-            cv2.line(frame_annotated, (int(self.frame_center_px[0]), 0), (int(self.frame_center_px[0]), int(self.frame_height_px) - 1), (100,0,0), 1)
-            cv2.line(frame_annotated, (0, int(self.frame_center_px[1])), (int(self.frame_width_px) - 1, int(self.frame_center_px[1])), (100,0,0), 1)
+            frame_annotated = cv2.drawKeypoints(
+                frame,
+                keypoints,
+                np.array([]),
+                (0, 0, 255),
+                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+            )
+            cv2.line(
+                frame_annotated,
+                (int(self.frame_center_px[0]), 0),
+                (int(self.frame_center_px[0]), int(self.frame_height_px) - 1),
+                (100, 0, 0),
+                1
+            )
+            cv2.line(
+                frame_annotated,
+                (0, int(self.frame_center_px[1])),
+                (int(self.frame_width_px) - 1, int(self.frame_center_px[1])),
+                (100, 0, 0),
+                1
+            )
             cv2.imshow('frame', frame_annotated)
             cv2.waitKey(1)
 
@@ -409,11 +438,11 @@ class HybridErrorSource(ErrorSource):
     def register_blind_offset_callback(self, callback):
         self.blind.register_offset_callback(callback)
 
-    def compute_error(self):
-        blind_error = self.blind.compute_error()
+    def compute_error(self, retries=0):
+        blind_error = self.blind.compute_error(retries)
 
         try:
-            optical_error = self.optical.compute_error()
+            optical_error = self.optical.compute_error(retries)
         except ErrorSource.NoSignalException:
             if self.state == 'blind':
                 return blind_error
