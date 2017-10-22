@@ -132,9 +132,7 @@ class WebCam(object):
     # (the frame is a numpy array in BGR format)
     def get_fresh_frame(self):
         # block until there's at least one frame in the pipe
-        print('WebCam: get_fresh_frame poll begin')
         self.frames_out.poll(None)
-        print('WebCam: get_fresh_frame poll end')
 
         frames = []
         while self.frames_out.poll():
