@@ -72,8 +72,15 @@ class TelescopeMount(object):
         pass
 
     @abc.abstractmethod
-    def get_azalt(self):
+    def get_azalt(self, max_cache_age=0.0):
         """Gets the current position of the mount.
+
+        Args:
+            max_cache_age: If the position has been read from the mount less than this many seconds
+                ago, the function may return a cached position value in lieu of reading the
+                position from the mount. In cases where reading from the mount is relatively slow
+                this may allow the function to return much more quickly. The default value is set
+                to 0 seconds, in which case the function will never return a cached value.
 
         Returns:
             A dict with keys 'az' and 'alt' where the values are the azimuth

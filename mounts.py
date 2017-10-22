@@ -70,9 +70,8 @@ class NexStarMount(TelescopeMount):
         self.aligned_slew_dir = {'az': +1, 'alt': +1}
         self.cached_position = None
         self.cached_position_time = None
-        self.cached_position_time_limit = 0.25
 
-    def get_azalt(self):
+    def get_azalt(self, max_cache_age=0.0):
         """Gets the current position of the mount.
 
         Gets the current position coordinates of the mount in azimuth-altitude
@@ -80,11 +79,23 @@ class NexStarMount(TelescopeMount):
         corrections applied. The position is also cached inside this object for
         efficient altitude limit enforcement.
 
+        Args:
+            max_cache_age: If the position has been read from the mount less than this many seconds
+                ago, the function may return a cached position value in lieu of reading the
+                position from the mount. In cases where reading from the mount is relatively slow
+                this may allow the function to return much more quickly. The default value is set
+                to 0 seconds, in which case the function will never return a cached value.
+
         Returns:
             A dict with keys 'az' and 'alt' where the values are the azimuth
             and altitude positions in degrees. The azimuth range is [0,360) and
             the altitude range is [-180,+180).
         """
+        if self.cached_position is not None:
+            time_since_cached = time.time() - self.cached_position_time
+            if time_since_cached < max_cache_age:
+                return self.cached_position
+
         (az, alt) = self.nexstar.get_azalt()
         self.cached_position = {'az': az, 'alt': alt}
         self.cached_position_time = time.time()
@@ -196,15 +207,7 @@ class NexStarMount(TelescopeMount):
 
         # enforce altitude limits
         if axis == 'alt' and self.bypass_alt_limits == False:
-            if self.cached_position is not None:
-                time_since_cached = time.time() - self.cached_position_time
-                if time_since_cached < self.cached_position_time_limit:
-                    position = self.cached_position
-                else:
-                    position = self.get_azalt()
-            else:
-                position = self.get_azalt()
-
+            position = self.get_azalt(0.25)
             if ((position['alt'] >= self.alt_max_limit and rate > 0.0) or
                 (position['alt'] <= self.alt_min_limit and rate < 0.0)):
                 self.nexstar.slew_var('alt', 0.0)
