@@ -145,7 +145,7 @@ def angle_between(u, v):
         Angle between the vectors in degrees.
     """
 
-    if type(u) == 'dict' and type(v) == 'dict':
+    if type(u) is dict and type(v) is dict:
         u = horiz_to_cart(u)
         v = horiz_to_cart(v)
     else:
@@ -222,6 +222,8 @@ class BlindErrorSource(ErrorSource):
         self.mount = mount
 
         self.offset_callback = None
+        self.mount_position_cached = None
+        self.target_position_cached = None
 
     def register_offset_callback(self, callback):
         self.offset_callback = callback
@@ -247,6 +249,7 @@ class BlindErrorSource(ErrorSource):
             'az': self.target.az * 180.0 / math.pi,
             'alt': self.target.alt * 180.0 / math.pi
         }
+        self.target_position_cached = target_position
 
         # get current position of telescope (degrees)
         mount_position = self.mount.get_azalt()
@@ -274,6 +277,7 @@ class BlindErrorSource(ErrorSource):
             'alt': align_dir['alt'] != target_motion_direction['alt'],
         }
         mount_position = self.mount.remove_backlash(mount_position, axes_to_adjust)
+        self.mount_position_cached = mount_position
 
         # compute pointing errors in degrees
         error = {}
@@ -391,7 +395,12 @@ class HybridErrorSource(ErrorSource):
             max_optical_no_signal_frames=4
         ):
         self.blind = BlindErrorSource(mount, observer, target)
-        self.optical = OpticalErrorSource(cam_dev_path, arcsecs_per_pixel, cam_num_buffers, cam_ctlval_exposure)
+        self.optical = OpticalErrorSource(
+            cam_dev_path,
+            arcsecs_per_pixel,
+            cam_num_buffers,
+            cam_ctlval_exposure
+        )
         self.max_divergence = max_divergence
         self.max_optical_no_signal_frames = max_optical_no_signal_frames
         self.state = 'blind'
@@ -415,16 +424,26 @@ class HybridErrorSource(ErrorSource):
                     return blind_error
                 raise
 
-        # this is not the right way to compute the angle between the two positions!
-        error_diff = {
-            'az': blind_error['az'] - optical_error['az'],
-            'alt': blind_error['alt'] - optical_error['alt'],
+        # get optical target position, which is the mount's current position plus the optical
+        # error vector
+        mount_position = self.blind.mount_position_cached
+        target_position_optical = {
+            'az': mount_position['az'] + optical_error['az'],
+            'alt': mount_position['alt'] + optical_error['alt']
         }
-        error_diff_mag = np.absolute(error_diff['az'] + 1j*error_diff['alt'])
-        if self.state == 'blind' and error_diff_mag < self.max_divergence:
+
+        # get blind object position, which is what PyEphem says it is
+        target_position_blind = self.blind.target_position_cached
+
+        # Get angle between optical and blind target position solutions. This is a measure of how
+        # far the two solutions have diverged. A large divergence angle could mean that the
+        # computer vision algorithm is not tracking the correct object.
+        divergence_angle = angle_between(target_position_optical, target_position_blind)
+
+        if self.state == 'blind' and divergence_angle < self.max_divergence:
             print('A target is in view, switching to optical tracking')
             self.state = 'optical'
-        elif self.state == 'optical' and error_diff_mag > self.max_divergence:
+        elif self.state == 'optical' and divergence_angle > self.max_divergence:
             print('Solutions diverged, switching to blind tracking')
             self.state = 'blind'
 
