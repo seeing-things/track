@@ -127,11 +127,11 @@ class WebCam(object):
 
     # get the most recent frame from the webcam, waiting if necessary, and throwing away stale frames if any
     # (the frame is a numpy array in BGR format)
-    # TODO: add timeout parameter: if webcam process dies for some reason, this will block
-    # indefinitely and therefore make the main thread (in other parts of the codebase) hang badly
     def get_fresh_frame(self):
         # block until there's at least one frame in the pipe
+        print('WebCam: get_fresh_frame poll begin')
         self.frames_out.poll(None)
+        print('WebCam: get_fresh_frame poll end')
 
         frames = []
         while self.frames_out.poll():
@@ -178,7 +178,9 @@ class WebCam(object):
                     self.frames_in.send(frame_bgr)
         except KeyboardInterrupt:
             print('Webcam process caught KeyboardInterrupt')
-            return
+
+        # close the pipe so that if get_fresh_frame is blocking, it'll get kicked
+        self.frames_in.close()
 
     # [WEBCAM PROCESS] does the webcam have at least one frame ready for us to read? (non-blocking)
     def has_frames_available(self):
