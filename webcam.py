@@ -70,6 +70,9 @@ class WebCam(object):
 
         self.start_monitor_proc()
 
+        # we don't need the 'in' end of the pipe in the main process
+        self.frames_in.close()
+
     def __del__(self):
         print('WebCam: dtor invoked')
         if hasattr(self, 'proc'):
@@ -153,6 +156,9 @@ class WebCam(object):
 
     # [WEBCAM PROCESS] webcam monitor loop
     def monitor(self):
+        # we don't need the 'out' end of the pipe in the monitor process
+        self.frames_out.close()
+
         try:
             while True:
                 readable, writable, exceptional = select.select((self.camera, self.proc_exit_r), (), (), 0.5)
