@@ -1,13 +1,11 @@
 #!/usr/bin/env python
 
-import config
-import mounts
-import errorsources
 import time
 import numpy as np
 import csv
+import track
 
-parser = config.ArgParser()
+parser = track.ArgParser()
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--backlash-az', help='backlash in azimuth (arcseconds)', default=0.0, type=float)
 parser.add_argument('--backlash-alt', help='backlash in altitude (arcseconds)', default=0.0, type=float)
@@ -15,7 +13,7 @@ parser.add_argument('--align-dir-az', help='azimuth alignment approach direction
 parser.add_argument('--align-dir-alt', help='altitude alignment approach direction (-1 or +1)', default=+1, type=int)
 args = parser.parse_args()
 
-mount = mounts.NexStarMount(args.scope)
+mount = track.NexStarMount(args.scope)
 mount.set_backlash('az', args.align_dir_az, args.backlash_az / 3600.0)
 mount.set_backlash('alt', args.align_dir_alt, args.backlash_alt / 3600.0)
 
@@ -40,8 +38,8 @@ try:
                 while True:
                     position = mount.get_azalt()
                     position_corrected = mount.remove_backlash(position, {'az':True, 'alt':True})
-                    position_change = errorsources.wrap_error(position[axis] - position_start[axis])
-                    position_change_corrected = errorsources.wrap_error(position_corrected[axis] - position_start[axis])
+                    position_change = track.wrap_error(position[axis] - position_start[axis])
+                    position_change_corrected = track.wrap_error(position_corrected[axis] - position_start[axis])
                     time_elapsed = time.time() - time_start
                     csvwriter.writerow([
                         time_elapsed,
@@ -57,8 +55,8 @@ try:
                 while True:
                     position = mount.get_azalt()
                     position_corrected = mount.remove_backlash(position, {'az':True, 'alt':True})
-                    position_change = errorsources.wrap_error(position[axis] - position_start[axis])
-                    position_change_corrected = errorsources.wrap_error(position_corrected[axis] - position_start[axis])
+                    position_change = track.wrap_error(position[axis] - position_start[axis])
+                    position_change_corrected = track.wrap_error(position_corrected[axis] - position_start[axis])
                     time_elapsed = time.time() - time_start
                     csvwriter.writerow([
                         time_elapsed,

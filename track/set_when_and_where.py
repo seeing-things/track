@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
-import config
 import math
 import time
-import nexstar
+import point
 import ephem
+import track
 
-parser = config.ArgParser()
+parser = track.ArgParser()
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
 parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
@@ -25,6 +25,6 @@ lat = observer.lat * 180.0 / math.pi
 lon = observer.lon * 180.0 / math.pi
 
 # Shove data into telescope
-nexstar = nexstar.NexStar(args.scope)
-nexstar.set_location(lat, lon)
-nexstar.set_time(time.time())
+mount = point.NexStar(args.scope)
+mount.set_location(lat, lon)
+mount.set_time(time.time())

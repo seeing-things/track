@@ -11,11 +11,9 @@ or by intelligently switching between sources.
 from __future__ import print_function
 import datetime
 import math
-from track import ErrorSource
+from .control import ErrorSource
 import ephem
-import cv2
 import numpy as np
-import webcam
 
 def wrap_error(error):
     """Wraps an angle in degrees to the range [-180,+180)"""
@@ -301,6 +299,14 @@ class BlindErrorSource(ErrorSource):
 class OpticalErrorSource(ErrorSource):
 
     def __init__(self, cam_dev_path, arcsecs_per_pixel, cam_num_buffers, cam_ctlval_exposure):
+        try:
+            import cv2
+            from . import webcam
+        except ImportError as e:
+            if 'cv2' in e.message:
+                print('Failed to import cv2. Optical tracking requires OpenCV.')
+                raise
+            raise
 
         self.degrees_per_pixel = arcsecs_per_pixel / 3600.0
 

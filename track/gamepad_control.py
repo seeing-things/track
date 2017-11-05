@@ -1,19 +1,17 @@
 #!/usr/bin/env python
 
-import config
-import mounts
-import gamepad
+import track
 
-parser = config.ArgParser()
+parser = track.ArgParser()
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--bypass-alt-limits', help='bypass mount altitude limits', action='store_true')
 args = parser.parse_args()
 
-mount = mounts.NexStarMount(args.scope, bypass_alt_limits=args.bypass_alt_limits)
+mount = track.NexStarMount(args.scope, bypass_alt_limits=args.bypass_alt_limits)
 if args.bypass_alt_limits:
     print('Warning: Altitude limits disabled! Be careful!')
 
-game_pad = gamepad.Gamepad()
+game_pad = track.Gamepad()
 
 try:
     while True:

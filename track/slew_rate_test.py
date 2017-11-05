@@ -1,17 +1,15 @@
 #!/usr/bin/env python
 
-import config
-import mounts
-import errorsources
 import time
 import numpy as np
+import track
 
-parser = config.ArgParser()
+parser = track.ArgParser()
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 args = parser.parse_args()
 
 # Create object with base type TelescopeMount
-mount = mounts.NexStarMount(args.scope)
+mount = track.NexStarMount(args.scope)
 
 try:
     SLEW_CHANGE_SLEEP = 3.0
@@ -40,7 +38,7 @@ try:
             while True:
                 position = mount.get_azalt()
                 time_elapsed = time.time() - time_start
-                position_change = abs(errorsources.wrap_error(position[axis] - position_start[axis]))
+                position_change = abs(track.wrap_error(position[axis] - position_start[axis]))
                 if position_change > SLEW_LIMIT or time_elapsed > TIME_LIMIT:
                     break
 

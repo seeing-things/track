@@ -2,14 +2,11 @@
 
 # Adapted from an example here: http://docs.opencv.org/trunk/d7/d8b/tutorial_py_lucas_kanade.html
 
-import config
 import numpy as np
 import cv2
-import webcam
-import mounts
-import errorsources
+import track
 
-parser = config.ArgParser()
+parser = track.ArgParser()
 parser.add_argument('--camera', help='device node path for tracking webcam', default='/dev/video0')
 parser.add_argument('--camera-bufs', help='number of webcam capture buffers', required=True, type=int)
 parser.add_argument('--camera-exposure', help='webcam exposure level', default=2000, type=int)
@@ -17,7 +14,7 @@ parser.add_argument('--scope', help='serial device for connection to telescope',
 parser.add_argument('--bypass-alt-limits', help='bypass altitude limit enforcement', action='store_true')
 args = parser.parse_args()
 
-mount = mounts.NexStarMount(args.scope, bypass_alt_limits=args.bypass_alt_limits)
+mount = track.NexStarMount(args.scope, bypass_alt_limits=args.bypass_alt_limits)
 position_start = mount.get_azalt()
 deadband_az = 100.0
 deadband_alt = 100.0
@@ -27,7 +24,7 @@ mount.slew('az', slew_rate)
 mount.slew('alt', 0.0)
 direction = 'right'
 
-webcam = webcam.WebCam(args.camera, args.camera_bufs, args.camera_exposure)
+webcam = track.WebCam(args.camera, args.camera_bufs, args.camera_exposure)
 
 # params for ShiTomasi corner detection
 feature_params = dict( maxCorners = 10,
@@ -115,8 +112,8 @@ while True:
 
     position = mount.get_azalt()
     position_change = {
-        'az': errorsources.wrap_error(position['az'] - position_start['az']) * 3600.0,
-        'alt': errorsources.wrap_error(position['alt'] - position_start['alt']) * 3600.0,
+        'az': track.wrap_error(position['az'] - position_start['az']) * 3600.0,
+        'alt': track.wrap_error(position['alt'] - position_start['alt']) * 3600.0,
     }
     print(str(position_change))
     if direction == 'right' and position_change['az'] > deadband_az:

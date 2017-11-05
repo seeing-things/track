@@ -1,14 +1,13 @@
 #!/usr/bin/env python
 
-import config
 import track
-import mounts
-import errorsources
 import ephem
-import gamepad
 
-parser = config.ArgParser()
-
+parser = track.ArgParser()
+parser.add_argument('--camera', help='device node path for tracking webcam', default='/dev/video0')
+parser.add_argument('--camera-res', help='webcam resolution in arcseconds per pixel', required=True, type=float)
+parser.add_argument('--camera-bufs', help='number of webcam capture buffers', required=True, type=int)
+parser.add_argument('--camera-exposure', help='webcam exposure level', default=2000, type=int)
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
 parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
@@ -17,6 +16,7 @@ parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.5
 parser.add_argument('--loop-damping', help='control loop damping factor', default=2.0, type=float)
 parser.add_argument('--backlash-az', help='backlash in azimuth (arcseconds)', default=0.0, type=float)
 parser.add_argument('--backlash-alt', help='backlash in altitude (arcseconds)', default=0.0, type=float)
+parser.add_argument('--max-divergence', help='max divergence of optical and blind sources (degrees)', default=2.0, type=float)
 parser.add_argument('--align-dir-az', help='azimuth alignment approach direction (-1 or +1)', default=+1, type=int)
 parser.add_argument('--align-dir-alt', help='altitude alignment approach direction (-1 or +1)', default=+1, type=int)
 
@@ -38,7 +38,7 @@ parser_star.add_argument('name', help='name of planet or moon')
 args = parser.parse_args()
 
 # Create object with base type TelescopeMount
-mount = mounts.NexStarMount(args.scope)
+mount = track.NexStarMount(args.scope)
 mount.set_backlash('az', args.align_dir_az, args.backlash_az / 3600.0)
 mount.set_backlash('alt', args.align_dir_alt, args.backlash_alt  / 3600.0)
 
@@ -78,17 +78,25 @@ if args.mode == 'solarsystem':
         raise Exception('The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name))
 
 # Create object with base type ErrorSource
-error_source = errorsources.BlindErrorSource(mount, observer, target)
+error_source = track.HybridErrorSource(
+    mount,
+    observer,
+    target,
+    args.camera,
+    args.camera_res,
+    args.camera_exposure,
+    args.max_divergence
+)
 
 try:
     # Create gamepad object and register callback
-    game_pad = gamepad.Gamepad(
+    game_pad = track.Gamepad(
         left_gain = 2.0,  # left stick degrees per second
         right_gain = 0.5, # right stick degrees per second
         int_limit = 5.0,  # max correction in degrees for either axis
     )
     game_pad.integrator_mode = True
-    error_source.register_offset_callback(game_pad.get_integrator)
+    error_source.register_blind_offset_callback(game_pad.get_integrator)
     print('Gamepad found and registered.')
 except RuntimeError:
     print('No gamepads found.')

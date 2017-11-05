@@ -1,5 +1,5 @@
-from track import TelescopeMount
-import nexstar
+from .control import TelescopeMount
+import point
 import time
 
 class NexStarMount(TelescopeMount):
@@ -7,10 +7,10 @@ class NexStarMount(TelescopeMount):
 
     This class implements the abstract methods in the TelescopeMount base
     class. The interface to the NexStar hand controller is provided by
-    the nexstar package.
+    the point package.
 
     Attributes:
-        nexstar: A nexstar.NexStar object which abstracts the low-level serial
+        mount: A point.NexStar object which abstracts the low-level serial
             command interface to the NexStar hand controller.
         alt_min_limit: Lower limit on the mount's altitude, which can be used
             to prevent the optical tube from colliding with the mount. Limit
@@ -44,7 +44,7 @@ class NexStarMount(TelescopeMount):
     ):
         """Inits NexStarMount object.
 
-        Initializes a NexStarMount object by constructing a nexstar.NexStar
+        Initializes a NexStarMount object by constructing a point.NexStar
         object to communicate with the hand controller and sets initial values
         for several class attributes.
 
@@ -61,7 +61,7 @@ class NexStarMount(TelescopeMount):
                 the NexStar 130SLT hand controller as determined by
                 experimentation.
         """
-        self.nexstar = nexstar.NexStar(device_name)
+        self.mount = point.NexStar(device_name)
         self.alt_min_limit = alt_min_limit
         self.alt_max_limit = alt_max_limit
         self.bypass_alt_limits = bypass_alt_limits
@@ -96,7 +96,7 @@ class NexStarMount(TelescopeMount):
             if time_since_cached < max_cache_age:
                 return self.cached_position
 
-        (az, alt) = self.nexstar.get_azalt()
+        (az, alt) = self.mount.get_azalt()
         self.cached_position = {'az': az, 'alt': alt}
         self.cached_position_time = time.time()
         return self.cached_position
@@ -210,11 +210,11 @@ class NexStarMount(TelescopeMount):
             position = self.get_azalt(0.25)
             if ((position['alt'] >= self.alt_max_limit and rate > 0.0) or
                 (position['alt'] <= self.alt_min_limit and rate < 0.0)):
-                self.nexstar.slew_var('alt', 0.0)
+                self.mount.slew_var('alt', 0.0)
                 raise self.AltitudeLimitException('Altitude limit exceeded')
 
         # slew_var argument units are arcseconds per second
-        self.nexstar.slew_var(axis, rate * 3600.0)
+        self.mount.slew_var(axis, rate * 3600.0)
 
     def get_max_slew_rate(self):
         return self.max_slew_rate

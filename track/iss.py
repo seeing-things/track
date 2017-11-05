@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-import config
 import ephem
 import time
 import urllib2
+import track
 
-parser = config.ArgParser()
+parser = track.ArgParser()
 parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
 parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
 parser.add_argument('--elevation', required=False, default=0.0, help='elevation of observer (m)', type=float)

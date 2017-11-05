@@ -1,12 +1,8 @@
 #!/usr/bin/env python
 
-import config
 import track
-import mounts
-import errorsources
-import gamepad
 
-parser = config.ArgParser()
+parser = track.ArgParser()
 parser.add_argument('--camera', help='device node path for tracking webcam', default='/dev/video0')
 parser.add_argument('--camera-res', help='webcam resolution in arcseconds per pixel', required=True, type=float)
 parser.add_argument('--camera-bufs', help='number of webcam capture buffers', required=True, type=int)
@@ -30,12 +26,12 @@ def gamepad_callback():
             pass
 
 # Create object with base type TelescopeMount
-mount = mounts.NexStarMount(args.scope, bypass_alt_limits=args.bypass_alt_limits)
+mount = track.NexStarMount(args.scope, bypass_alt_limits=args.bypass_alt_limits)
 if args.bypass_alt_limits:
     print('Warning: Altitude limits disabled! Be careful!')
 
 # Create object with base type ErrorSource
-error_source = errorsources.OpticalErrorSource(args.camera, args.camera_res, args.camera_bufs, args.camera_exposure)
+error_source = track.OpticalErrorSource(args.camera, args.camera_res, args.camera_bufs, args.camera_exposure)
 
 tracker = track.Tracker(
     mount = mount,
@@ -45,7 +41,7 @@ tracker = track.Tracker(
 )
 
 try:
-    game_pad = gamepad.Gamepad()
+    game_pad = track.Gamepad()
     tracker.register_callback(gamepad_callback)
     print('Gamepad found and registered.')
 except RuntimeError:

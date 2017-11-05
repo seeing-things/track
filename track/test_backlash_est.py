@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 
-import config
-import mounts
 import time
-import errorsources
 import sys
+import track
 
-parser = config.ArgParser()
+parser = track.ArgParser()
 parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
 parser.add_argument('--backlash-az', help='backlash in azimuth (arcseconds)', default=0.0, type=float)
 parser.add_argument('--backlash-alt', help='backlash in altitude (arcseconds)', default=0.0, type=float)
@@ -29,7 +27,7 @@ else:
 print('Testing ' + str(axis) + ' axis')
 
 # Create object with base type TelescopeMount
-mount = mounts.NexStarMount(args.scope)
+mount = track.NexStarMount(args.scope)
 
 position_start = mount.get_azalt()
 
@@ -38,8 +36,8 @@ while True:
     while True:
         position = mount.get_azalt()
         position_change = {
-            'az': errorsources.wrap_error(position['az'] - position_start['az']) * 3600.0,
-            'alt': errorsources.wrap_error(position['alt'] - position_start['alt']) * 3600.0,
+            'az': track.wrap_error(position['az'] - position_start['az']) * 3600.0,
+            'alt': track.wrap_error(position['alt'] - position_start['alt']) * 3600.0,
         }
         print('Position change (arcseconds): ' + str(position_change))
         if position_change[axis] > deadband:
@@ -48,8 +46,8 @@ while True:
     while True:
         position = mount.get_azalt()
         position_change = {
-            'az': errorsources.wrap_error(position['az'] - position_start['az']) * 3600.0,
-            'alt': errorsources.wrap_error(position['alt'] - position_start['alt']) * 3600.0,
+            'az': track.wrap_error(position['az'] - position_start['az']) * 3600.0,
+            'alt': track.wrap_error(position['alt'] - position_start['alt']) * 3600.0,
         }
         print('Position change (arcseconds): ' + str(position_change))
         if position_change[axis] < 0:
