@@ -52,6 +52,7 @@ setup(
 
     dependency_links=[
         'http://github.com/gebart/python-v4l2capture/tarball/master#egg=v4l2capture-1.5', 
+        'http://github.com/bgottula/point/tarball/master#egg=point-0.1', 
     ],
 
     entry_points={
