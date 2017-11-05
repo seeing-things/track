@@ -14,6 +14,14 @@ import math
 from .control import ErrorSource
 import ephem
 import numpy as np
+try:
+    import cv2
+    from . import webcam
+except ImportError as e:
+    if 'cv2' in e.message:
+        print('Failed to import cv2. Optical tracking requires OpenCV.')
+        pass
+    raise
 
 def wrap_error(error):
     """Wraps an angle in degrees to the range [-180,+180)"""
@@ -299,14 +307,6 @@ class BlindErrorSource(ErrorSource):
 class OpticalErrorSource(ErrorSource):
 
     def __init__(self, cam_dev_path, arcsecs_per_pixel, cam_num_buffers, cam_ctlval_exposure):
-        try:
-            import cv2
-            from . import webcam
-        except ImportError as e:
-            if 'cv2' in e.message:
-                print('Failed to import cv2. Optical tracking requires OpenCV.')
-                raise
-            raise
 
         self.degrees_per_pixel = arcsecs_per_pixel / 3600.0
 
@@ -321,6 +321,10 @@ class OpticalErrorSource(ErrorSource):
         self.consec_detect_frames = 0
         self.consec_no_detect_frames = 0
 
+        # detect OpenCV version to handle API differences between 2 and 3
+        opencv_ver = int(cv2.__version__.split('.')[0])
+        assert opencv_ver == 2 or opencv_ver == 3
+
         # initialize blob detector
         params = cv2.SimpleBlobDetector_Params()
         params.filterByColor = False
@@ -331,7 +335,10 @@ class OpticalErrorSource(ErrorSource):
         params.minThreshold = 100
         params.maxThreshold = 200
         params.minDistBetweenBlobs = 200
-        self.detector = cv2.SimpleBlobDetector_create(params)
+        if opencv_ver == 2:
+            self.detector = cv2.SimpleBlobDetector(params)
+        else:
+            self.detector = cv2.SimpleBlobDetector_create(params)
 
         cv2.namedWindow('frame')
         cv2.createTrackbar('block size', 'frame', 7, 31, self.block_size_validate)
