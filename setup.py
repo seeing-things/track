@@ -17,7 +17,7 @@ setup(
     # https://packaging.python.org/en/latest/single_source_version.html
     version='0.1.0',
 
-    description='A mess of code for controlling telescopes',
+    description='A mess of code for tracking moving objects with a telescope',
     long_description=long_description,
 
     url='https://github.com/bgottula/track',
