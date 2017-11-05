@@ -53,11 +53,15 @@ setup(
     dependency_links=[
         'http://github.com/gebart/python-v4l2capture/tarball/master#egg=v4l2capture-1.5', 
     ],
-)
 
-try:
-    import cv2
-except ImportError:
-    print('Failed to import cv2. Python bindings for OpenCV 3 are required '
-            + 'for computer vision features.')
-    pass
+    entry_points={
+        'console_scripts':[
+            'blind_track = track.blind_track:main',
+            'gamepad = track.gamepad_control:main',
+            'hybrid_track = track.hybrid_track:main',
+            'object_position = track.object_position:main',
+            'optical_track = track.optical_track:main',
+            'set_when_and_where = track.set_when_and_where:main',
+        ],
+    },
+)

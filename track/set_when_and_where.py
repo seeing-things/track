@@ -6,25 +6,30 @@ import point
 import ephem
 import track
 
-parser = track.ArgParser()
-parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
-parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
-parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
-args = parser.parse_args()
+def main():
 
-# We want to parse the latitude and longitude exactly the same way as our other
-# scripts do: by letting ephem.Angle do the parsing itself. But they explicitly
-# disallow us from creating our own Angle objects directly, so we're forced to
-# work around that by using an object (Observer) that has Angles in it already.
-observer = ephem.Observer()
-observer.lat = args.lat
-observer.lon = args.lon
+    parser = track.ArgParser()
+    parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
+    parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
+    parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
+    args = parser.parse_args()
 
-# Convert to degrees
-lat = observer.lat * 180.0 / math.pi
-lon = observer.lon * 180.0 / math.pi
+    # We want to parse the latitude and longitude exactly the same way as our other
+    # scripts do: by letting ephem.Angle do the parsing itself. But they explicitly
+    # disallow us from creating our own Angle objects directly, so we're forced to
+    # work around that by using an object (Observer) that has Angles in it already.
+    observer = ephem.Observer()
+    observer.lat = args.lat
+    observer.lon = args.lon
 
-# Shove data into telescope
-mount = point.NexStar(args.scope)
-mount.set_location(lat, lon)
-mount.set_time(time.time())
+    # Convert to degrees
+    lat = observer.lat * 180.0 / math.pi
+    lon = observer.lon * 180.0 / math.pi
+
+    # Shove data into telescope
+    mount = point.NexStar(args.scope)
+    mount.set_location(lat, lon)
+    mount.set_time(time.time())
+
+if __name__ == "__main__":
+    main()
