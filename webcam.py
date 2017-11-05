@@ -85,8 +85,15 @@ class WebCam(object):
         while self.has_frames_available():
             frames += [self.get_one_frame()]
 
+        # handle stupid differences between OpenCV versions 2 and 3
+        opencv_ver = cv2.__version__.split('.')[0]
+        assert opencv_ver == '2' or opencv_ver == '3'
+
         # decode the JPEG from the webcam into BGR for OpenCV's use
-        return cv2.imdecode(np.fromstring(frames[-1], dtype=np.uint8), cv2.IMREAD_COLOR)
+        if opencv_ver == '2':
+            return cv2.imdecode(np.fromstring(frames[-1], dtype=np.uint8), CV_LOAD_IMAGE_COLOR)
+        if opencv_ver == '3':
+            return cv2.imdecode(np.fromstring(frames[-1], dtype=np.uint8), cv2.IMREAD_COLOR)
 
     # get one frame from the webcam buffer; the frame is not guaranteed to be the most recent frame available!
     # (the frame is a JPEG byte string)
