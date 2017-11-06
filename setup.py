@@ -49,6 +49,7 @@ setup(
         'v4l2>=0.2',
         'v4l2capture>=1.5',
         'requests',
+        'MonthDelta>=1.0b',
     ],
 
     dependency_links=[
