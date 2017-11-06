@@ -14,13 +14,10 @@ def main():
     args = parser.parse_args()
 
     # Grab the latest space station TLE file from Celestrak
-    tlefile = requests.get('http://celestrak.com/NORAD/elements/stations.txt').text
-    tle = []
-    for line in tlefile.splitlines():
-        tle.append(str(line))
+    stations = requests.get('http://celestrak.com/NORAD/elements/stations.txt').text.splitlines()
 
     # Top entry in the station.txt file should be for ISS
-    iss = ephem.readtle(tle[0], tle[1], tle[2])
+    iss = ephem.readtle(str(stations[0]), str(stations[1]), str(stations[2]))
 
     # Create PyEphem Observer object with location information
     home = ephem.Observer()
