@@ -2,7 +2,7 @@
 
 import ephem
 import time
-import urllib2
+import requests
 import track
 
 def main():
@@ -14,11 +14,10 @@ def main():
     args = parser.parse_args()
 
     # Grab the latest space station TLE file from Celestrak
-    tlefile = urllib2.urlopen('http://celestrak.com/NORAD/elements/stations.txt')
+    tlefile = requests.get('http://celestrak.com/NORAD/elements/stations.txt').text
     tle = []
-    for line in tlefile:
-            tle.append(line)
-    tlefile.close()
+    for line in tlefile.splitlines():
+        tle.append(str(line))
 
     # Top entry in the station.txt file should be for ISS
     iss = ephem.readtle(tle[0], tle[1], tle[2])
