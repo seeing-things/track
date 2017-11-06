@@ -6,6 +6,7 @@ import re
 import track
 import datetime
 import monthdelta
+import os
 
 def urlify(s):
 
@@ -34,6 +35,7 @@ def print_tz_help():
 
 def main():
     parser = track.ArgParser()
+    parser.add_argument('outdir', help='output directory')
     parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
     parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
     parser.add_argument('--elevation', required=True, help='elevation of observer (m)', type=float)
@@ -134,7 +136,8 @@ def main():
             tle.append(span_tag.string)
         tles.append(tle)
 
-        with open('/tmp/tles/' + urlify(sat) + '.tle', 'w') as f:
+        filename = os.path.join(os.path.normpath(args.outdir), urlify(sat) + '.tle')
+        with open(filename, 'w') as f:
             for line in tle:
                 f.write(line + '\n')
 
