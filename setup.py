@@ -48,6 +48,7 @@ setup(
         'numpy',
         'v4l2>=0.2',
         'v4l2capture>=1.5',
+        'requests',
     ],
 
     dependency_links=[
