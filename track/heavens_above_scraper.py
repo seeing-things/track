@@ -116,11 +116,10 @@ def main():
         if mag > args.mag_limit:
             continue
 
-        # extract the satellite id and name from this table row
+        # extract the satellite id from the onclick attribute of this table row
         onclick_str = row['onclick']
-        url_suffix = re.findall(r"'([^']*)'", onclick_str)[0]
-        satid = re.findall(r"satid=([0-9]*)", url_suffix)[0]
-        pass_detail_url = base_url + url_suffix
+        url_suffix = re.search(r"'([^']*)'", onclick_str).group()
+        satid = re.search(r"satid=([0-9]*)", url_suffix).group()
 
         print('Getting TLE for ' + sat + '...')
 
@@ -128,8 +127,7 @@ def main():
         orbit_url = base_url + 'orbit.aspx?satid=' + satid
         orbit_page = requests.get(orbit_url).text
         orbit_soup = BeautifulSoup(orbit_page, 'lxml')
-        pre_tag = orbit_soup.pre
-        span_tags = pre_tag.find_all('span')
+        span_tags = orbit_soup.pre.find_all('span')
         tle = [sat]
         for span_tag in span_tags:
             assert span_tag['id'].startswith('ctl00_cph1_lblLine')
