@@ -12,7 +12,7 @@ class WebCam(object):
         self.dev_path        = dev_path
         self.num_buffers     = num_buffers
         self.ctlval_exposure = ctlval_exposure
-        
+
         # detect OpenCV version to handle API differences between 2 and 3
         self.opencv_ver = int(cv2.__version__.split('.')[0])
         assert self.opencv_ver == 2 or self.opencv_ver == 3
