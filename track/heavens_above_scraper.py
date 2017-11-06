@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from bs4 import BeautifulSoup
-import urllib2
+import requests
 import re
 import track
 
@@ -26,7 +26,7 @@ def main():
 
     bright_sats_url = base_url + 'AllSats.aspx?lat={}&lng={}&alt={}'.format(args.lat, args.lon, args.elevation)
 
-    bright_sats_page = urllib2.urlopen(bright_sats_url).read()
+    bright_sats_page = requests.get(bright_sats_url).text
     bright_sats_soup = BeautifulSoup(bright_sats_page, 'lxml')
 
     # find the rows in the table listing the satellite passes
@@ -48,7 +48,7 @@ def main():
 
         # get the TLE from the orbit details page for this satellite
         orbit_url = base_url + 'orbit.aspx?satid=' + satid
-        orbit_page = urllib2.urlopen(orbit_url).read()
+        orbit_page = requests.get(orbit_url).text
         orbit_soup = BeautifulSoup(orbit_page, 'lxml')
         pre_tag = orbit_soup.find_all('pre')[0]
         span_tags = pre_tag.find_all('span')
