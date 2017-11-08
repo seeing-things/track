@@ -95,7 +95,6 @@ def main():
     # this number is deceptive because it's pre-magnitude-filtering
     print('Found {} (pre-filtered) satellite passes.'.format(len(rows)))
 
-    tles = []
     for row in rows:
 
         cols = row.find_all('td')
@@ -118,8 +117,8 @@ def main():
 
         # extract the satellite id from the onclick attribute of this table row
         onclick_str = row['onclick']
-        url_suffix = re.search(r"'([^']*)'", onclick_str).group()
-        satid = re.search(r"satid=([0-9]*)", url_suffix).group()
+        url_suffix = re.findall(r"'([^']*)'", onclick_str)[0]
+        satid = re.findall(r"satid=([0-9]*)", url_suffix)[0]
 
         print('Getting TLE for ' + sat + '...')
 
@@ -128,19 +127,16 @@ def main():
         orbit_page = requests.get(orbit_url).text
         orbit_soup = BeautifulSoup(orbit_page, 'lxml')
         span_tags = orbit_soup.pre.find_all('span')
+        assert len(span_tags) == 2
         tle = [sat]
         for span_tag in span_tags:
             assert span_tag['id'].startswith('ctl00_cph1_lblLine')
             tle.append(span_tag.string)
-        tles.append(tle)
 
         filename = os.path.join(os.path.normpath(args.outdir), urlify(sat) + '.tle')
         with open(filename, 'w') as f:
             for line in tle:
                 f.write(line + '\n')
-
-        if len(tles) > 2:
-            break
 
 if __name__ == "__main__":
     main()
