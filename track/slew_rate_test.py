@@ -35,10 +35,10 @@ def main():
                 mount.slew(axis, direction * rate / 3600.0)
                 direction *= -1
                 time.sleep(SLEW_CHANGE_SLEEP)
-                position_start = mount.get_azalt()
+                position_start = mount.get_position()
                 time_start = time.time()
                 while True:
-                    position = mount.get_azalt()
+                    position = mount.get_position()
                     time_elapsed = time.time() - time_start
                     position_change = abs(track.wrap_error(position[axis] - position_start[axis]))
                     if position_change > SLEW_LIMIT or time_elapsed > TIME_LIMIT:

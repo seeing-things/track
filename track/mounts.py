@@ -71,7 +71,7 @@ class NexStarMount(TelescopeMount):
         self.cached_position = None
         self.cached_position_time = None
 
-    def get_azalt(self, max_cache_age=0.0):
+    def get_position(self, max_cache_age=0.0):
         """Gets the current position of the mount.
 
         Gets the current position coordinates of the mount in azimuth-altitude
@@ -100,6 +100,9 @@ class NexStarMount(TelescopeMount):
         self.cached_position = {'az': az, 'alt': alt}
         self.cached_position_time = time.time()
         return self.cached_position
+
+    def get_axis_names(self):
+        return ['az', 'alt']
 
     def get_aligned_slew_dir(self):
         """Gets the slew directions used during alignment.
@@ -211,10 +214,10 @@ class NexStarMount(TelescopeMount):
             if ((position['alt'] >= self.alt_max_limit and rate > 0.0) or
                 (position['alt'] <= self.alt_min_limit and rate < 0.0)):
                 self.mount.slew_var('alt', 0.0)
-                raise self.AltitudeLimitException('Altitude limit exceeded')
+                raise self.AxisLimitException(['alt'])
 
         # slew_var argument units are arcseconds per second
         self.mount.slew_var(axis, rate * 3600.0)
 
-    def get_max_slew_rate(self):
-        return self.max_slew_rate
+    def get_max_slew_rates(self):
+        return {'az': self.max_slew_rate, 'alt': self.max_slew_rate}

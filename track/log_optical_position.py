@@ -75,10 +75,10 @@ tracker.register_callback(track_until_converged_callback)
 tracker.run()
 
 now = time.time()
-position = mount.get_azalt()
+position = mount.get_position()
 directions = {}
-for d in ['az', 'alt']:
-    directions[d] = +1 if tracker.loop_filter[d].int > 0 else -1
+for axis in mount.get_axis_names():
+    directions[axis] = +1 if tracker.loop_filter[axis].int > 0 else -1
 
 print('Time: ' + str(now))
 print('Position: ' + str(position))

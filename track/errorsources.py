@@ -106,6 +106,38 @@ def horiz_to_cart(v):
 
     return np.asarray([x, y, z], dtype=float)
 
+def equatorial_to_cart(v):
+    """Convert unit vector from equatorial to Cartesian coordinate system.
+
+    Converts a unit vector in the equatorial coordinate system from a pair of right ascension (RA)
+    and declination (DEC) coordinates to Cartesian (x,y,z) coordinates. The equatorial coordinate
+    system is similar to the spherical coordinate system except the declination is zero at the
+    equator, in contrast to the polar angle of the spherical coordinate system which is zero at
+    the North pole.
+
+    Args:
+        v: A dict containing keys 'ra' and 'dec' with values in degrees. It is assumed that the
+            magnitude of this vector is 1.
+
+    Returns:
+        A size 3 numpy array containing the Cartesian coordinates of the vector.
+    """
+
+    # degrees to radians
+    ra = v['ra'] * math.pi / 180.0
+    dec = v['dec'] * math.pi / 180.0
+
+    # equatorial to spherical
+    phi = ra
+    theta = math.pi / 2.0 - dec
+
+    # spherical to Cartesian
+    x = math.sin(theta) * math.cos(phi)
+    y = math.sin(theta) * math.sin(phi)
+    z = math.cos(theta)
+
+    return np.asarray([x, y, z], dtype=float)
+
 def cart_to_horiz(v):
     """Convert a vector from Cartesian to horizontal coordinate system.
 
@@ -137,6 +169,38 @@ def cart_to_horiz(v):
 
     return {'az': az_deg, 'alt': alt_deg}
 
+def cart_to_equatorial(v):
+    """Convert a vector from Cartesian to equatorial coordinate system.
+
+    Converts a vector in 3-space from the Cartesian (x,y,z) coordinates to right ascension (RA) and
+    declination (DEC) coordinates in the equatorial coordinate system. Any magnitude information
+    will be lost. See the equatorial_to_cart description for differences between equatorial and
+    spherical coordinate systems.
+
+    Args:
+        v: A size 3 numpy array containing the Cartesian coordinates of a vector.
+
+    Returns:
+        A dict containing keys 'ra' and 'dec' with values in degrees.
+    """
+    x = v[0]
+    y = v[1]
+    z = v[2]
+
+    # Cartesian to spherical (unit magnitude assumed)
+    theta = math.acos(z)
+    phi = math.atan2(y, x)
+
+    # spherical to equatorial
+    ra = phi
+    dec = math.pi / 2.0 - theta
+
+    # radians to degrees
+    ra_deg = 180.0 / math.pi * ra
+    dec_deg = 180.0 / math.pi * dec
+
+    return {'ra': ra_deg, 'dec': dec_deg}
+
 def angle_between(u, v):
     """Angle between two vectors.
 
@@ -156,8 +220,14 @@ def angle_between(u, v):
     """
 
     if isinstance(u, dict) and isinstance(v, dict):
-        u = horiz_to_cart(u)
-        v = horiz_to_cart(v)
+        if set(u.keys()) == set(['az', 'alt']):
+            u = horiz_to_cart(u)
+            v = horiz_to_cart(v)
+        elif set(u.keys()) == set(['ra', 'dec']):
+            u = equatorial_to_cart(u)
+            v = equatorial_to_cart(v)
+        else:
+            raise ValueError("dict keys must be ['az','alt'] or ['ra','dec']")
     else:
         u = np.asarray(u, dtype='float')
         v = np.asarray(v, dtype='float')
@@ -178,9 +248,9 @@ def adjust_position(target_position_prev, target_position, offset):
     "1 degree higher in altitude."
 
     Args:
-        target_position_prev: A dict with keys 'az' and 'alt' giving the position of the target a
+        target_position_prev: A dict with keys for each axis giving the position of the target a
             short time ago in degrees.
-        target_position: A dict with keys 'az' and 'alt' giving the current position of the target
+        target_position: A dict with keys for each axis giving the current position of the target
             in degrees.
         offset: A two-element list or numpy array giving the offset adjustments in degrees. The
             first element is the x-axis offset and the second element is the y-axis offset. The +y
@@ -188,11 +258,22 @@ def adjust_position(target_position_prev, target_position, offset):
             object's motion.
 
     Returns:
-        A dict with keys 'az' and 'alt' giving the adjusted position.
+        A dict with keys for each axis giving the adjusted position.
     """
-    # convert vectors in horizontal coordinate system to Cartesian
-    tpos_prev = horiz_to_cart(target_position_prev)
-    tpos = horiz_to_cart(target_position)
+    if set(target_position.keys()) == set(['az', 'alt']):
+        coord_system = 'horizontal'
+    elif set(target_position.keys()) == set(['ra', 'dec']):
+        coord_system = 'equatorial'
+    else:
+        raise ValueError("dict keys must be ['az','alt'] or ['ra','dec']")
+
+    # convert vectors in spherical coordinate systems to Cartesian
+    if coord_system == 'horizontal':
+        tpos_prev = horiz_to_cart(target_position_prev)
+        tpos = horiz_to_cart(target_position)
+    else:
+        tpos_prev = equatorial_to_cart(target_position_prev)
+        tpos = equatorial_to_cart(target_position)
 
     if all(tpos == tpos_prev):
         raise ValueError('current and previous positions are equal!')
@@ -213,8 +294,11 @@ def adjust_position(target_position_prev, target_position, offset):
     # rotate position about axis of rotation
     tpos_new = rotate(tpos, axis, gpmag)
 
-    # convert back to horizontal coordinate system
-    return cart_to_horiz(tpos_new)
+    # convert back to original coordinate system
+    if coord_system == 'horizontal':
+        return cart_to_horiz(tpos_new)
+    else:
+        return cart_to_equatorial(tpos_new)
 
 
 class BlindErrorSource(ErrorSource):
@@ -242,9 +326,13 @@ class BlindErrorSource(ErrorSource):
         self.offset_callback = None
         self.mount_position_cached = None
         self.target_position_cached = None
+        self.axes = mount.get_axis_names()
 
     def register_offset_callback(self, callback):
         self.offset_callback = callback
+
+    def get_axis_names(self):
+        return self.axes
 
     def compute_error(self, retries=0):
 
@@ -254,22 +342,20 @@ class BlindErrorSource(ErrorSource):
         a_while_ago = datetime.datetime.utcnow() - datetime.timedelta(seconds=10)
         self.observer.date = ephem.Date(a_while_ago)
         self.target.compute(self.observer)
-        target_position_prev = {
-            'az': self.target.az * 180.0 / math.pi,
-            'alt': self.target.alt * 180.0 / math.pi
-        }
+        target_position_prev = {}
+        for axis in self.axes:
+            target_position_prev[axis] = eval('self.target.' + axis) * 180.0 / math.pi
 
         # get coordinates of target for current time
         self.observer.date = ephem.Date(datetime.datetime.utcnow())
         self.target.compute(self.observer)
-        target_position = {
-            'az': self.target.az * 180.0 / math.pi,
-            'alt': self.target.alt * 180.0 / math.pi
-        }
+        target_position = {}
+        for axis in self.axes:
+            target_position[axis] = eval('self.target.' + axis) * 180.0 / math.pi
         self.target_position_cached = target_position
 
         # get current position of telescope (degrees)
-        mount_position = self.mount.get_azalt()
+        mount_position = self.mount.get_position()
 
         # make any corrections to predicted position
         if self.offset_callback is not None:
@@ -281,36 +367,47 @@ class BlindErrorSource(ErrorSource):
         else:
             adjusted_position = target_position
 
-        target_motion_direction = {
-            'az': np.sign(wrap_error(target_position['az'] - target_position_prev['az'])),
-            'alt': np.sign(wrap_error(target_position['alt'] - target_position_prev['alt'])),
-        }
+        target_motion_direction = {}
+        for axis in self.axes:
+            target_motion_direction[axis] = np.sign(
+                wrap_error(target_position[axis] - target_position_prev[axis])
+            )
 
         # compensate for backlash if object is moving against the slew
         # direction used during alignment
         align_dir = self.mount.get_aligned_slew_dir()
-        axes_to_adjust = {
-            'az': align_dir['az'] != target_motion_direction['az'],
-            'alt': align_dir['alt'] != target_motion_direction['alt'],
-        }
+        axes_to_adjust = {}
+        for axis in self.axes:
+            axes_to_adjust[axis] = align_dir[axis] != target_motion_direction[axis]
         mount_position = self.mount.remove_backlash(mount_position, axes_to_adjust)
         self.mount_position_cached = mount_position
 
         # compute pointing errors in degrees
         error = {}
-        error['az'] = wrap_error(adjusted_position['az'] - mount_position['az'])
-        error['alt'] = wrap_error(adjusted_position['alt'] - mount_position['alt'])
+        for axis in self.axes:
+            error[axis] = wrap_error(adjusted_position[axis] - mount_position[axis])
 
         return error
 
 
 class OpticalErrorSource(ErrorSource):
 
-    def __init__(self, cam_dev_path, arcsecs_per_pixel, cam_num_buffers, cam_ctlval_exposure):
+    def __init__(
+            self,
+            cam_dev_path,
+            arcsecs_per_pixel,
+            cam_num_buffers,
+            cam_ctlval_exposure,
+            x_axis_name,
+            y_axis_name
+        ):
 
         self.degrees_per_pixel = arcsecs_per_pixel / 3600.0
 
         self.webcam = webcam.WebCam(cam_dev_path, cam_num_buffers, cam_ctlval_exposure)
+
+        self.x_axis_name = x_axis_name
+        self.y_axis_name = y_axis_name
 
         self.frame_width_px = self.webcam.get_res_x()
         self.frame_height_px = self.webcam.get_res_y()
@@ -354,6 +451,9 @@ class OpticalErrorSource(ErrorSource):
     # validator for OpenCV trackbar
     def do_nothing(self, x):
         pass
+
+    def get_axis_names(self):
+        return [self.x_axis_name, self.y_axis_name]
 
     def compute_error(self, retries=0):
 
@@ -412,10 +512,14 @@ class OpticalErrorSource(ErrorSource):
             error_x_deg = error_x_px * self.degrees_per_pixel
             error_y_deg = error_y_px * self.degrees_per_pixel
 
-            # FIXME: need to do proper coordinate transformation based on orientation of camera!
+            # FIXME: need to do proper coordinate transformation based on orientation of camera and
+            # type of mount (az-alt versus equatorial)! Part of this fix should include finding
+            # a better way of specifying the camera's orientation with respect to the mount axes
+            # and eliminating the y_axis_name and x_axis_name constructor arguments and class
+            # attributes.
             error = {}
-            error['az'] = error_x_deg
-            error['alt'] = error_y_deg
+            error[self.x_axis_name] = error_x_deg
+            error[self.y_axis_name] = error_y_deg
 
             self.consec_detect_frames += 1
             self.consec_no_detect_frames = 0
@@ -436,13 +540,30 @@ class HybridErrorSource(ErrorSource):
             max_divergence=5.0,
             max_optical_no_signal_frames=4
         ):
+        self.axes = mount.get_axis_names()
         self.blind = BlindErrorSource(mount, observer, target)
-        self.optical = OpticalErrorSource(
-            cam_dev_path,
-            arcsecs_per_pixel,
-            cam_num_buffers,
-            cam_ctlval_exposure
-        )
+        # FIXME: Have to do this because OpticalErrorSource has a crappy way of specifying how the
+        # camera is oriented with respect to the mount axes.
+        if set(self.axes) == set(['az', 'alt']):
+            self.optical = OpticalErrorSource(
+                cam_dev_path,
+                arcsecs_per_pixel,
+                cam_num_buffers,
+                cam_ctlval_exposure,
+                x_axis_name = 'az',
+                y_axis_name = 'alt'
+            )
+        elif set(self.axes) == set(['ra', 'dec']):
+            self.optical = OpticalErrorSource(
+                cam_dev_path,
+                arcsecs_per_pixel,
+                cam_num_buffers,
+                cam_ctlval_exposure,
+                x_axis_name = 'ra',
+                y_axis_name = 'dec'
+            )
+        else:
+            raise ValueError('unrecognized axis names')
         self.max_divergence = max_divergence
         self.max_optical_no_signal_frames = max_optical_no_signal_frames
         self.state = 'blind'
@@ -469,10 +590,9 @@ class HybridErrorSource(ErrorSource):
         # get optical target position, which is the mount's current position plus the optical
         # error vector
         mount_position = self.blind.mount_position_cached
-        target_position_optical = {
-            'az': mount_position['az'] + optical_error['az'],
-            'alt': mount_position['alt'] + optical_error['alt']
-        }
+        target_position_optical = {}
+        for axis in self.axes:
+            target_position_optical[axis] = mount_position[axis] + optical_error[axis]
 
         # get blind object position, which is what PyEphem says it is
         target_position_blind = self.blind.target_position_cached

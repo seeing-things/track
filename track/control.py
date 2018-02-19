@@ -36,6 +36,16 @@ class ErrorSource(object):
         pass
 
     @abc.abstractmethod
+    def get_axis_names(self):
+        """Get axis names
+
+        Returns:
+            A list of strings giving abbreviated names of each axis. These must
+            be the keys of the dict returned by the compute_error method.
+        """
+        pass
+
+    @abc.abstractmethod
     def compute_error(self, retries=0):
         """Computes the error signal.
 
@@ -46,10 +56,7 @@ class ErrorSource(object):
                 giving up.
 
         Returns:
-            The pointing error as a dict with entries for each axis. For an
-            Az-Alt mount, the expected entries would have keys 'az' and 'alt'.
-            The error values have units of degrees. Azimuth range is [0,360)
-            and altitude range is [-180,180).
+            The pointing error as a dict with entries for each axis.
 
         Raises:
             NoSignalException: If the error cannot be computed.
@@ -67,25 +74,39 @@ class TelescopeMount(object):
     """
     __metaclass__ = abc.ABCMeta
 
-    class AltitudeLimitException(Exception):
-        """Raised when altitude reaches or exceeds limits."""
-        pass
+    class AxisLimitException(Exception):
+        """Raised when an axis reaches or exceeds limits."""
+        def __init__(self, axes):
+            self.axes = axes
 
     @abc.abstractmethod
-    def get_azalt(self, max_cache_age=0.0):
+    def get_axis_names(self):
+        """Get axis names
+
+        Returns:
+            A list of strings giving abbreviated names of each axis. These must
+            be the keys of the dicts used by the get_position,
+            get_aligned_slew_dir, remove_backlash, and get_max_slew_rates
+            methods and the names accepted for the axis argument of the slew
+            method.
+        """
+
+    @abc.abstractmethod
+    def get_position(self, max_cache_age=0.0):
         """Gets the current position of the mount.
 
         Args:
-            max_cache_age: If the position has been read from the mount less than this many seconds
-                ago, the function may return a cached position value in lieu of reading the
-                position from the mount. In cases where reading from the mount is relatively slow
-                this may allow the function to return much more quickly. The default value is set
-                to 0 seconds, in which case the function will never return a cached value.
+            max_cache_age: If the position has been read from the mount less
+                than this many seconds ago, the function may return a cached
+                position value in lieu of reading the position from the mount.
+                In cases where reading from the mount is relatively slow this
+                may allow the function to return much more quickly. The default
+                value is set to 0 seconds, in which case the function will
+                never return a cached value.
 
         Returns:
-            A dict with keys 'az' and 'alt' where the values are the azimuth
-            and altitude positions in degrees. The azimuth range is [0,360) and
-            the altitude range is [-180,+180).
+            A dict with keys for each axis where the values are the positions
+            in degrees.
         """
         pass
 
@@ -94,7 +115,7 @@ class TelescopeMount(object):
         """Gets the slew directions used during alignment.
 
         Returns:
-            A dict with keys 'az' and 'alt' where the values are +1 or -1
+            A dict with keys for each axis where the values are +1 or -1
             indicating the slew direction used during alignment for that axis.
         """
         pass
@@ -104,16 +125,14 @@ class TelescopeMount(object):
         """Adjusts positions to compensate for backlash deadband.
 
         Args:
-            position: A dict with keys 'az' and 'alt' with values corresponding
-                to the azimuth and altitude positions in degrees to be
-                corrected.
-            axes_to_adjust: A dict with keys 'az' and 'alt' and values True
+            position: A dict with keys for each axis with values corresponding
+                to the positions in degrees to be corrected.
+            axes_to_adjust: A dict with keys for each axis and values True
                 or False indicating which axes should be compensated.
 
         Returns:
-            A dict with keys 'az' and 'alt' where the values are the azimuth
-            and altitude positions in degrees with corrections applied. The
-            azimuth range is [0,360) and the altitude range is [-180,+180).
+            A dict with keys for each axis where the values are the positions
+            in degrees with corrections applied.
         """
         pass
 
@@ -134,11 +153,12 @@ class TelescopeMount(object):
         pass
 
     @abc.abstractmethod
-    def get_max_slew_rate(self):
-        """Get the max supported slew rate.
+    def get_max_slew_rates(self):
+        """Get the max supported slew rates.
 
         Returns:
-            The maximum supported slew rate in degrees per second.
+            A dict with keys for each axis where the values are the maximum
+            allowed slew rates in degrees per second.
         """
         pass
 
@@ -254,7 +274,7 @@ class Tracker(object):
     and the damping factor.
 
     Attributes:
-        loop_filter: A dict with keys 'az' and 'alt' where the values are
+        loop_filter: A dict with keys for each axis where the values are
             LoopFilter objects. Each axis has its own independent loop filter.
         mount: An object of type TelescopeMount. This represents the interface
             to the mount.
@@ -262,10 +282,10 @@ class Tracker(object):
             in many ways so an abstract class with a generic interface is used.
         error: Cached error value returned by the error_source object's
             compute_error() method. This is cached so that callback methods
-            can make use of it if needed. A dict with keys 'az' and 'alt'.
+            can make use of it if needed. A dict with keys for each axis.
         slew_rate: Cached slew rates from the most recent loop filter output.
-            Cached to make it available to callbacks. A dict with keys 'az' and
-            'alt'.
+            Cached to make it available to callbacks. A dict with keys for each
+            axis.
         num_iterations: A running count of the number of iterations.
         callback: A callback function. The callback will be called once at the
             end of every control loop iteration. Set to None if no callback is
@@ -281,8 +301,10 @@ class Tracker(object):
         initializing state information.
 
         Args:
-            mount: Object of type TelescopeMount
-            error_source: Object of type ErrorSource
+            mount: Object of type TelescopeMount. Must use the same set of axes
+                as error_source.
+            error_source: Object of type ErrorSource. Must use the same set of
+                axes as mount.
             loop_bandwidth: The loop bandwidth in Hz.
             damping_factor: The damping factor. Keep in mind that the motors in
                 the mount will not respond instantaneously to slew commands,
@@ -290,21 +312,21 @@ class Tracker(object):
                 ideal system would suggest. Common values like sqrt(2)/2 may be
                 too small to prevent oscillations.
         """
+        if set(mount.get_axis_names) != set(error_source.get_axis_names):
+            raise ValueError('error_source and mount must use same set of axes')
         self.loop_filter = {}
-        self.loop_filter['az'] = LoopFilter(
-            bandwidth=loop_bandwidth,
-            damping_factor=damping_factor,
-            rate_limit=mount.get_max_slew_rate()
-        )
-        self.loop_filter['alt'] = LoopFilter(
-            bandwidth=loop_bandwidth,
-            damping_factor=damping_factor,
-            rate_limit=mount.get_max_slew_rate()
-        )
+        self.error = {}
+        self.slew_rate = {}
+        for axis in mount.get_axis_names():
+            self.loop_filter[axis] = LoopFilter(
+                bandwidth=loop_bandwidth,
+                damping_factor=damping_factor,
+                rate_limit=mount.get_max_slew_rate()[axis]
+            )
+            self.error[axis] = None
+            self.slew_rate[axis] = 0.0
         self.mount = mount
         self.error_source = error_source
-        self.error = {'az': None, 'alt': None}
-        self.slew_rate = {'az': 0.0, 'alt': 0.0}
         self.num_iterations = 0
         self.callback = None
         self.stop = False
@@ -320,7 +342,7 @@ class Tracker(object):
         """
         self.callback = callback
 
-    def run(self, axes=['az', 'alt']):
+    def run(self, axes=None):
         """Run the control loop.
 
         Call this method to start the control loop. This function is blocking
@@ -332,9 +354,13 @@ class Tracker(object):
             axes: A list of strings indicating which axes should be under
                 active tracking control. The slew rate on any axis not included
                 in the list will not be commanded by the control loop. If an
-                empty list is passed the function returns immediately.
+                empty list is passed the function returns immediately. If None
+                is passed all axes will be active.
         """
         self.stop = False
+
+        if axes is None:
+            axes = self.mount.get_axis_names()
 
         if len(axes) == 0:
             return
@@ -348,10 +374,11 @@ class Tracker(object):
                     self.slew_rate[axis] = self.loop_filter[axis].update(self.error[axis])
                     self.mount.slew(axis, self.slew_rate[axis])
             except ErrorSource.NoSignalException:
-                self.error['az'] = None
-                self.error['alt'] = None
-            except TelescopeMount.AltitudeLimitException:
-                self.loop_filter['alt'].int = 0.0
+                for axis in self.mount.get_axis_names():
+                    self.error[axis] = None
+            except TelescopeMount.AxisLimitException as e:
+                for axis in e.axes:
+                    self.loop_filter[axis].int = 0.0
             finally:
                 if self.callback is not None:
                     self.callback()

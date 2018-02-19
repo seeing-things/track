@@ -31,12 +31,12 @@ def main():
     # Create object with base type TelescopeMount
     mount = track.NexStarMount(args.scope)
 
-    position_start = mount.get_azalt()
+    position_start = mount.get_position()
 
     while True:
         mount.slew(axis, args.slew_rate / 3600.0)
         while True:
-            position = mount.get_azalt()
+            position = mount.get_position()
             position_change = {
                 'az': track.wrap_error(position['az'] - position_start['az']) * 3600.0,
                 'alt': track.wrap_error(position['alt'] - position_start['alt']) * 3600.0,
@@ -46,7 +46,7 @@ def main():
                 break
         mount.slew(axis, -args.slew_rate / 3600.0)
         while True:
-            position = mount.get_azalt()
+            position = mount.get_position()
             position_change = {
                 'az': track.wrap_error(position['az'] - position_start['az']) * 3600.0,
                 'alt': track.wrap_error(position['alt'] - position_start['alt']) * 3600.0,

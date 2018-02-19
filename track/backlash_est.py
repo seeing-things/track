@@ -17,7 +17,7 @@ def main():
     args = parser.parse_args()
 
     mount = track.NexStarMount(args.scope, bypass_alt_limits=args.bypass_alt_limits)
-    position_start = mount.get_azalt()
+    position_start = mount.get_position()
     deadband_az = 100.0
     deadband_alt = 100.0
     slew_rate = 100.0 / 3600.0
@@ -112,7 +112,7 @@ def main():
         old_gray = frame_gray.copy()
         p0 = good_new.reshape(-1,1,2)
 
-        position = mount.get_azalt()
+        position = mount.get_position()
         position_change = {
             'az': track.wrap_error(position['az'] - position_start['az']) * 3600.0,
             'alt': track.wrap_error(position['alt'] - position_start['alt']) * 3600.0,
