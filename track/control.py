@@ -9,18 +9,6 @@ from __future__ import print_function
 import time
 import abc
 
-def clamp(val, limit):
-    """Limit value to symmetric range.
-
-    Args:
-        val: Value to be adjusted.
-        limit: Absolute value of return value will not be greater than this.
-
-    Returns:
-        The input value limited to the range [-limit,+limit].
-    """
-    return max(min(limit, val), -limit)
-
 
 class ErrorSource(object):
     """Abstract parent class for error sources.
