@@ -111,6 +111,15 @@ class TelescopeMount(object):
         pass
 
     @abc.abstractmethod
+    def backlash_supported(self):
+        """Indicates whether this mount class supports backlash compensation.
+
+        Returns:
+            True if backlash compensation is supported, False otherwise.
+        """
+        pass
+
+    @abc.abstractmethod
     def get_aligned_slew_dir(self):
         """Gets the slew directions used during alignment.
 
@@ -312,7 +321,7 @@ class Tracker(object):
                 ideal system would suggest. Common values like sqrt(2)/2 may be
                 too small to prevent oscillations.
         """
-        if set(mount.get_axis_names) != set(error_source.get_axis_names):
+        if set(mount.get_axis_names()) != set(error_source.get_axis_names()):
             raise ValueError('error_source and mount must use same set of axes')
         self.loop_filter = {}
         self.error = {}
@@ -321,7 +330,7 @@ class Tracker(object):
             self.loop_filter[axis] = LoopFilter(
                 bandwidth=loop_bandwidth,
                 damping_factor=damping_factor,
-                rate_limit=mount.get_max_slew_rate()[axis]
+                rate_limit=mount.get_max_slew_rates()[axis]
             )
             self.error[axis] = None
             self.slew_rate[axis] = 0.0

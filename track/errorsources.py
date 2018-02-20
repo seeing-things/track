@@ -314,15 +314,19 @@ class BlindErrorSource(ErrorSource):
         observer: PyEphem Observer object.
         target: PyEphem Target object.
         mount: TelescopeMount object.
+        backlash_compensation: A boolean, True to enable backlash compensation.
         offset_callback: A function that can make adjustments to the target position.
         mount_position_cached: Cached position of the mount from last call to compute_error().
         target_position_cached: Cached position of the target from last call to compute_error().
     """
 
-    def __init__(self, mount, observer, target):
+    def __init__(self, mount, observer, target, backlash_compensation=False):
+        if backlash_compensation and not mount.backlash_supported():
+            raise ValueError('mount does not support backlash compensation')
         self.observer = observer
         self.target = target
         self.mount = mount
+        self.backlash_compensation = backlash_compensation
         self.offset_callback = None
         self.mount_position_cached = None
         self.target_position_cached = None
@@ -356,6 +360,7 @@ class BlindErrorSource(ErrorSource):
 
         # get current position of telescope (degrees)
         mount_position = self.mount.get_position()
+        self.mount_position_cached = mount_position
 
         # make any corrections to predicted position
         if self.offset_callback is not None:
@@ -367,20 +372,21 @@ class BlindErrorSource(ErrorSource):
         else:
             adjusted_position = target_position
 
-        target_motion_direction = {}
-        for axis in self.axes:
-            target_motion_direction[axis] = np.sign(
-                wrap_error(target_position[axis] - target_position_prev[axis])
-            )
+        if self.backlash_compensation:
+            target_motion_direction = {}
+            for axis in self.axes:
+                target_motion_direction[axis] = np.sign(
+                    wrap_error(target_position[axis] - target_position_prev[axis])
+                )
 
-        # compensate for backlash if object is moving against the slew
-        # direction used during alignment
-        align_dir = self.mount.get_aligned_slew_dir()
-        axes_to_adjust = {}
-        for axis in self.axes:
-            axes_to_adjust[axis] = align_dir[axis] != target_motion_direction[axis]
-        mount_position = self.mount.remove_backlash(mount_position, axes_to_adjust)
-        self.mount_position_cached = mount_position
+            # compensate for backlash if object is moving against the slew
+            # direction used during alignment
+            align_dir = self.mount.get_aligned_slew_dir()
+            axes_to_adjust = {}
+            for axis in self.axes:
+                axes_to_adjust[axis] = align_dir[axis] != target_motion_direction[axis]
+            mount_position = self.mount.remove_backlash(mount_position, axes_to_adjust)
+            self.mount_position_cached = mount_position
 
         # compute pointing errors in degrees
         error = {}
@@ -538,10 +544,11 @@ class HybridErrorSource(ErrorSource):
             cam_num_buffers,
             cam_ctlval_exposure,
             max_divergence=5.0,
-            max_optical_no_signal_frames=4
+            max_optical_no_signal_frames=4,
+            backlash_compensation=False,
         ):
         self.axes = mount.get_axis_names()
-        self.blind = BlindErrorSource(mount, observer, target)
+        self.blind = BlindErrorSource(mount, observer, target, backlash_compensation)
         # FIXME: Have to do this because OpticalErrorSource has a crappy way of specifying how the
         # camera is oriented with respect to the mount axes.
         if set(self.axes) == set(['az', 'alt']):

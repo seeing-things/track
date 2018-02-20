@@ -36,10 +36,13 @@ def main():
 
     args = parser.parse_args()
 
+    backlash_enable = args.backlash_az > 0.0 or args.backlash_alt > 0.0
+
     # Create object with base type TelescopeMount
     mount = track.NexStarMount(args.scope)
-    mount.set_backlash('az', args.align_dir_az, args.backlash_az / 3600.0)
-    mount.set_backlash('alt', args.align_dir_alt, args.backlash_alt  / 3600.0)
+    if backlash_enable:
+        mount.set_backlash('az', args.align_dir_az, args.backlash_az / 3600.0)
+        mount.set_backlash('alt', args.align_dir_alt, args.backlash_alt  / 3600.0)
 
     # Create a PyEphem Observer object
     observer = ephem.Observer()
@@ -77,7 +80,7 @@ def main():
             raise Exception('The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name))
 
     # Create object with base type ErrorSource
-    error_source = track.BlindErrorSource(mount, observer, target)
+    error_source = track.BlindErrorSource(mount, observer, target, backlash_enable)
 
     try:
         # Create gamepad object and register callback

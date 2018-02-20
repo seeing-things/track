@@ -104,6 +104,9 @@ class NexStarMount(TelescopeMount):
     def get_axis_names(self):
         return ['az', 'alt']
 
+    def backlash_supported(self):
+        return True
+
     def get_aligned_slew_dir(self):
         """Gets the slew directions used during alignment.
 
@@ -292,6 +295,9 @@ class LosmandyGeminiMount(TelescopeMount):
         }
         self.cached_position_time = time.time()
         return self.cached_position
+
+    def backlash_supported(self):
+        return False
 
     def get_aligned_slew_dir(self):
         raise RuntimeError('not supported')

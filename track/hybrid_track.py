@@ -39,10 +39,13 @@ def main():
 
     args = parser.parse_args()
 
+    backlash_enable = args.backlash_az > 0.0 or args.backlash_alt > 0.0
+
     # Create object with base type TelescopeMount
     mount = track.NexStarMount(args.scope)
-    mount.set_backlash('az', args.align_dir_az, args.backlash_az / 3600.0)
-    mount.set_backlash('alt', args.align_dir_alt, args.backlash_alt  / 3600.0)
+    if backlash_enable:
+        mount.set_backlash('az', args.align_dir_az, args.backlash_az / 3600.0)
+        mount.set_backlash('alt', args.align_dir_alt, args.backlash_alt  / 3600.0)
 
     # Create a PyEphem Observer object
     observer = ephem.Observer()
@@ -87,7 +90,8 @@ def main():
         args.camera,
         args.camera_res,
         args.camera_exposure,
-        args.max_divergence
+        args.max_divergence,
+        backlash_enable
     )
 
     try:
