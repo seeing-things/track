@@ -221,3 +221,105 @@ class NexStarMount(TelescopeMount):
 
     def get_max_slew_rates(self):
         return {'az': self.max_slew_rate, 'alt': self.max_slew_rate}
+
+
+class LosmandyGeminiMount(TelescopeMount):
+    """Interface class for Losmandy equatorial mounts with Gemini 2.
+
+    This class implements the abstract methods in the TelescopeMount base
+    class. The interface to the Gemini 2 mount computer is provided by the
+    point package.
+
+    Attributes:
+        mount: A point.Gemini2 object which abstracts the low-level serial or
+            UDP command interface to Gemini 2.
+        max_slew_rate: Maximum slew rate supported by the mount in degrees per
+            second.
+    """
+
+    def __init__(
+        self,
+        device_name,
+        max_slew_rate=2.0
+    ):
+        """Inits LosmandyGeminiMount object.
+
+        Initializes a LosmandyGeminiMount object by constructing a
+        point.Gemini2 object to communicate with Gemini 2 and sets initial
+        svalues for several class attributes.
+
+        Args:
+            device_name: A string with the name of the serial device connected
+                to Gemini 2. For example, '/dev/ttyACM0'.
+            max_slew_rate: The maximum slew rate supported by the mount. Higher
+                limits increase the likelihood of motor stalls.
+        """
+        self.mount = point.Gemini2(device_name)
+        self.max_slew_rate = max_slew_rate
+        self.cached_position = None
+        self.cached_position_time = None
+
+    def get_axis_names(self):
+        return ['ra', 'dec']
+
+    def get_position(self, max_cache_age=0.0):
+        """Gets the current position of the mount.
+
+        Gets the current position coordinates of the mount in azimuth-altitude
+        format. The positions returned are as reported by the mount with no
+        corrections applied.
+
+        Args:
+            max_cache_age: If the position has been read from the mount less than this many seconds
+                ago, the function may return a cached position value in lieu of reading the
+                position from the mount. In cases where reading from the mount is relatively slow
+                this may allow the function to return much more quickly. The default value is set
+                to 0 seconds, in which case the function will never return a cached value.
+
+        Returns:
+            A dict with keys 'ra' and 'dec' where the values are the right
+            ascension and declination positions in degrees. The right ascension
+            range is [0,360) and the declination range is [-90, +90].
+        """
+        if self.cached_position is not None:
+            time_since_cached = time.time() - self.cached_position_time
+            if time_since_cached < max_cache_age:
+                return self.cached_position
+
+        self.cached_position = {
+            'ra': self.mount.get_ra() * 360.0 / 24.0, # hours to degrees
+            'dec': self.mount.get_dec()
+        }
+        self.cached_position_time = time.time()
+        return self.cached_position
+
+    def get_aligned_slew_dir(self):
+        raise RuntimeError('not supported')
+
+    def remove_backlash(self, position, axes_to_adjust):
+        raise RuntimeError('not supported')
+
+    def slew(self, axis, rate):
+        """Command the mount to slew on one axis.
+
+        Commands the mount to slew at a paritcular rate in one axis. Each axis
+        is controlled independently. To slew in both axes, call this function
+        twice: once for each axis.
+
+        Args:
+            axis: A string indicating the axis: 'ra' or 'dec'.
+            rate: A float giving the slew rate in degrees per second. The sign
+                of the value indicates the direction of the slew.
+
+        Raises:
+            ValueError: If axis name is not 'ra' or 'dec'.
+        """
+        if axis == 'ra':
+            self.mount.slew_ra(rate)
+        elif axis == 'dec':
+            self.mount.slew_dec(rate)
+        else:
+            raise ValueError("axis must be 'ra' or 'dec'")
+
+    def get_max_slew_rates(self):
+        return {'ra': self.max_slew_rate, 'dec': self.max_slew_rate}
