@@ -13,6 +13,9 @@ import mounts
 import errorsources
 import track
 import time
+import ephem
+import datetime
+import math
 
 
 def track_until_converged_callback():
@@ -80,7 +83,32 @@ for d in ['az', 'alt']:
 print('Time: ' + str(now))
 print('Position: ' + str(position))
 print('Directions: ' + str(directions))
-raw_input('Name of object: ')
+object_name = raw_input('Name of object: ')
+
+# try to find object in database to get true coordinates
+try:
+    target = ephem.star(object_name)
+except KeyError:
+    ss_objs = [n for _0, _1, n in ephem._libastro.builtin_planets()]
+    if object_name in ss_objs:
+        body_type = getattr(ephem, object_name)
+        target = body_type()
+    else:
+        target = None
+        print('Could not find ' + object_name + ' in database')
+
+if target is not None:
+    observer.date = ephem.Date(datetime.datetime.utcfromtimestamp(now))
+    target.compute(observer)
+    actual_position = {
+        'az': float(target.az) * 180 / math.pi,
+        'alt': float(target.alt) * 180 / math.pi
+    }
+else:
+    actual_position = {
+        'az': float('nan'),
+        'alt': float('nan')
+    }
 
 with open(args.filename, 'a') as f:
     f.write(','.join([
@@ -89,5 +117,7 @@ with open(args.filename, 'a') as f:
         str(position['az']),
         str(position['alt']),
         str(directions['az']),
-        str(directions['alt'])
+        str(directions['alt']),
+        str(actual_position['az']),
+        str(actual_position['alt']),
     ]) + '\n')
