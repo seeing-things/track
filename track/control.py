@@ -8,6 +8,7 @@ feedback control loop.
 from __future__ import print_function
 import time
 import abc
+from mathutils import clamp
 
 
 class ErrorSource(object):
