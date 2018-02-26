@@ -45,7 +45,8 @@ class ErrorSource(object):
                 giving up.
 
         Returns:
-            The pointing error as a dict with entries for each axis.
+            The pointing error as a dict with entries for each axis. The units
+            should be degrees.
 
         Raises:
             NoSignalException: If the error cannot be computed.
@@ -160,6 +161,16 @@ class TelescopeMount(object):
         """
         pass
 
+    @abc.abstractmethod
+    def get_max_slew_accels(self):
+        """Get the max supported slew accelerations.
+
+        Returns:
+            A dict with keys for each axis where the values are the maximum
+            allowed slew accelerations in degrees per second squared.
+        """
+        pass
+
 class LoopFilter(object):
     """Proportional plus integral (PI) loop filter.
 
@@ -172,30 +183,39 @@ class LoopFilter(object):
         damping_factor: Loop damping factor.
         max_update_period: Maximum tolerated loop update period in seconds.
         rate_limit: Maximum allowed slew rate in degrees per second.
+        accel_limit: Maximum allowed slew acceleration in degrees per second
+            squared.
         int: Integrator value.
         last_iteration_time: Unix time of last call to update().
+        last_rate: Output value returned on last call to update().
     """
     def __init__(
             self,
             bandwidth,
             damping_factor,
-            rate_limit,
-            max_update_period=1.0
+            rate_limit=None,
+            accel_limit=None,
+            max_update_period=0.1
         ):
         """Inits a Loop Filter object.
 
         Args:
             bandwidth: Loop bandwidth in Hz.
             damping_factor: Loop damping factor.
-            rate_limit: Slew rate limit in degrees per second.
+            rate_limit: Slew rate limit in degrees per second. Set to None to
+                remove limit.
+            accel_limit: Slew acceleration limit in degrees per second squared.
+                Set to None to remove limit.
             max_update_period: Maximum tolerated loop update period in seconds.
         """
         self.bandwidth = bandwidth
         self.damping_factor = damping_factor
         self.max_update_period = max_update_period
         self.rate_limit = rate_limit
+        self.accel_limit = accel_limit
         self.int = 0.0
         self.last_iteration_time = None
+        self.last_rate = 0.0
 
     def update(self, error):
         """Update the loop filter using new error signal input.
@@ -214,7 +234,9 @@ class LoopFilter(object):
 
         The integrator and output of the loop filter will be limited to not
         exceed the maximum slew rate as defined by the rate_limit constructor
-        argument.
+        argument. The integrator and output will also be limited to prevent
+        the slew acceleration from exceeding the accel_limit constructor
+        argument, if specified.
 
         Args:
             error: The error in phase units (typically degrees).
@@ -248,10 +270,28 @@ class LoopFilter(object):
         prop = prop_gain * error
 
         # integral term
-        self.int = clamp(self.int + int_gain * error, self.rate_limit)
+        if self.rate_limit is not None:
+            self.int = clamp(self.int + int_gain * error, self.rate_limit)
+        else:
+            self.int = self.int + int_gain * error
 
         # new slew rate is the sum of P and I terms subject to rate limit
-        return clamp(prop + self.int, self.rate_limit)
+        if self.rate_limit is not None:
+            rate = clamp(prop + self.int, self.rate_limit)
+        else:
+            rate = prop + self.int
+
+        # enforce slew acceleration limit
+        if self.accel_limit is not None:
+            rate_change = rate - self.last_rate
+            if abs(rate_change) / update_period > self.accel_limit:
+                rate_change = clamp(rate_change, self.accel_limit * update_period)
+                rate = self.last_rate + rate_change
+                self.int = clamp(self.int, abs(rate))
+
+        self.last_rate = rate
+
+        return rate
 
 
 class Tracker(object):
@@ -319,7 +359,8 @@ class Tracker(object):
             self.loop_filter[axis] = LoopFilter(
                 bandwidth=loop_bandwidth,
                 damping_factor=damping_factor,
-                rate_limit=mount.get_max_slew_rates()[axis]
+                rate_limit=mount.get_max_slew_rates()[axis],
+                accel_limit=mount.get_max_slew_accels()[axis],
             )
             self.error[axis] = None
             self.slew_rate[axis] = 0.0
