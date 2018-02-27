@@ -211,8 +211,8 @@ class NexStarMount(TelescopeMount):
                 of the value indicates the direction of the slew.
 
         Raises:
-            AltitudeLimitException: Altitude limit has been exceeded and the
-                altitude slew rate has been set to zero.
+            AxisLimitException: Altitude limit has been exceeded and the
+                altitude slew rate is not away from the limit.
         """
         assert axis in ['az', 'alt']
         if abs(rate) > self.max_slew_rate:
@@ -246,14 +246,24 @@ class LosmandyGeminiMount(TelescopeMount):
     Attributes:
         mount: A point.Gemini2 object which abstracts the low-level serial or
             UDP command interface to Gemini 2.
+        ra_west_limit: Right ascension west of meridian limit in degrees.
+        ra_east_limit: Right ascension east of meridian limit in degrees.
+        bypass_ra_limits: Boolean, True when RA limits are bypassed.
         max_slew_rate: Maximum slew rate supported by the mount in degrees per
             second.
         max_slew_accel: Maximum slew acceleration in degrees per second squared.
+        cached_position: Cached position dict from last time position was read
+            from the mount.
+        cached_position_time: Unix timestamp corresponding to the time when
+            cached_position was read from the mount.
     """
 
     def __init__(
         self,
         device_name,
+        ra_west_limit=110.0,
+        ra_east_limit=110.0,
+        bypass_ra_limits=False,
         max_slew_rate=4.0,
         max_slew_accel=10.0,
     ):
@@ -266,6 +276,11 @@ class LosmandyGeminiMount(TelescopeMount):
         Args:
             device_name: A string with the name of the serial device connected
                 to Gemini 2. For example, '/dev/ttyACM0'.
+            ra_west_limit: Limit right ascension axis to less than this many
+                degrees from the meridian to the west.
+            ra_east_limit: Limit right ascension axis to less than this many
+                degrees from the meridian to the east.
+            bypass_ra_limits: If True RA axis limits will not be enforced.
             max_slew_rate: The maximum slew rate supported by the mount in
                 degrees per second.
             max_slew_accel: The maximum slew acceleration supported by the
@@ -273,6 +288,9 @@ class LosmandyGeminiMount(TelescopeMount):
                 the likelihood of motor stalls.
         """
         self.mount = point.Gemini2(device_name)
+        self.ra_west_limit = ra_west_limit
+        self.ra_east_limit = ra_east_limit
+        self.bypass_ra_limits = bypass_ra_limits
         self.max_slew_rate = max_slew_rate
         self.max_slew_accel = max_slew_accel
         self.cached_position = None
@@ -296,18 +314,25 @@ class LosmandyGeminiMount(TelescopeMount):
                 to 0 seconds, in which case the function will never return a cached value.
 
         Returns:
-            A dict with keys 'ra' and 'dec' where the values are the right
-            ascension and declination positions in degrees. The right ascension
-            range is [0,360) and the declination range is [-90, +90].
+            A dict with the following keys:
+                'ra': right ascension [0, 360)
+                'dec': declination [-90, +90]
+                'ha': hour angle [-180, 180)
+                'pra': physical right ascension position [0, 360)
+                'pdec': physical declination position [0, 360)
         """
         if self.cached_position is not None:
             time_since_cached = time.time() - self.cached_position_time
             if time_since_cached < max_cache_age:
                 return self.cached_position
 
+        enq = self.mount.enq_macro()
         self.cached_position = {
-            'ra': self.mount.get_ra() * 360.0 / 24.0, # hours to degrees
-            'dec': self.mount.get_dec()
+            'ra': enq['ra'] * 360.0 / 24.0, # hours to degrees
+            'dec': enq['dec'],
+            'ha': enq['ha'] * 360.0 / 24.0, # hours to degrees
+            'pra': enq['pra'] * 180.0 / 1152000, # motor ticks to degrees
+            'pdec': enq['pdec'] * 180.0 / 115200, # motor ticks to degrees
         }
         self.cached_position_time = time.time()
         return self.cached_position
@@ -335,8 +360,17 @@ class LosmandyGeminiMount(TelescopeMount):
 
         Raises:
             ValueError: If axis name is not 'ra' or 'dec'.
+            AxisLimitException: RA limit has been exceeded and the RA slew rate
+                is not away from the limit.
         """
         if axis == 'ra':
+            if not self.bypass_ra_limits:
+                pra = self.get_position()['pra']
+                print('pra: {:10.6f}'.format(pra) + ' rate: ' + str(rate))
+                if ((pra < 180 - self.ra_west_limit and rate < 0.0) or
+                    (pra > 180 + self.ra_east_limit and rate > 0.0)):
+                    self.mount.slew_ra(0.0)
+                    raise self.AxisLimitException(['ra'])
             self.mount.slew_ra(rate)
         elif axis == 'dec':
             self.mount.slew_dec(rate)
