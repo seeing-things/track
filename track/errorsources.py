@@ -39,18 +39,45 @@ class BlindErrorSource(ErrorSource):
         target: PyEphem Target object.
         mount: TelescopeMount object.
         backlash_compensation: A boolean, True to enable backlash compensation.
+        meridian_side: Selected side of meridian (equatorial only): 'east' or 'west'.
         offset_callback: A function that can make adjustments to the target position.
         mount_position_cached: Cached position of the mount from last call to compute_error().
         target_position_cached: Cached position of the target from last call to compute_error().
     """
 
-    def __init__(self, mount, observer, target, backlash_compensation=False):
+    def __init__(
+        self,
+        mount,
+        observer,
+        target,
+        backlash_compensation=False,
+        meridian_side='west'
+    ):
+        """Inits BlindErrorSource object.
+
+        Args:
+            mount: A TelescopeMount object.
+            observer: A PyEphem Observer object for the observer's location.
+            target: A PyEphem Target object for the thing to point to.
+            backlash_compensation: A boolean. When True, this class will
+                attempt to compensate for the deadband caused by backlash
+                in the mount's drive train.
+            meridian_side: A string with values 'east' or 'west' that indicates
+                which side of the meridian the mount should favor. Only applies
+                to equatorial mounts.
+
+        Raises:
+            ValueError: For invalid argument values.
+        """
         if backlash_compensation and not mount.backlash_supported():
             raise ValueError('mount does not support backlash compensation')
+        if meridian_side not in ['east', 'west']:
+            raise ValueError("meridian_side must be 'east' or 'west'")
         self.observer = observer
         self.target = target
         self.mount = mount
         self.backlash_compensation = backlash_compensation
+        self.meridian_side = meridian_side
         self.offset_callback = None
         self.mount_position_cached = None
         self.target_position_cached = None
@@ -61,6 +88,9 @@ class BlindErrorSource(ErrorSource):
 
     def get_axis_names(self):
         return self.axes
+
+    def meridian_flip(self):
+        self.meridian_side = 'east' if self.meridian_side == 'west' else 'west'
 
     def compute_error(self, retries=0):
 
@@ -115,7 +145,38 @@ class BlindErrorSource(ErrorSource):
         # compute pointing errors in degrees
         error = {}
         for axis in self.axes:
-            error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis])
+            if axis == 'dec':
+                # error depends on which side of meridian is selected and which
+                # side of meridian the mount is on currently
+                if self.meridian_side == 'east':
+                    if mount_position['pdec'] < 180.0:
+                        error[axis] = mount_position[axis] - adjusted_position[axis]
+                    else:
+                        error[axis] = 180.0 - mount_position[axis] - adjusted_position[axis]
+                else:
+                    if mount_position['pdec'] < 180.0:
+                        error[axis] = adjusted_position[axis] + mount_position[axis] - 180.0
+                    else:
+                        error[axis] = adjusted_position[axis] - mount_position[axis]
+            elif axis == 'ra':
+                # error depends on which side of meridian is selected
+                mount_side = 'east' if mount_position['pdec'] < 180.0 else 'west'
+                if self.meridian_side == mount_side:
+                    error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis])
+                else:
+                    error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis] + 180.0)
+
+                # avoid crossing through axis limit region (path to target
+                # should not require counter weight to ever point up)
+                if mount_position['pra'] - error[axis] > 360.0:
+                    print('RA axis would have crossed through limits')
+                    error[axis] = error[axis] + 360.0
+                elif mount_position['pra'] - error[axis] < 0.0:
+                    print('RA axis would have crossed through limits')
+                    error[axis] = error[axis] - 360.0
+
+            else:
+                error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis])
 
         return error
 
