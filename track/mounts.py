@@ -332,7 +332,7 @@ class LosmandyGeminiMount(TelescopeMount):
             'dec': enq['dec'],
             'ha': enq['ha'] * 360.0 / 24.0, # hours to degrees
             'pra': enq['pra'] * 180.0 / 1152000, # motor ticks to degrees
-            'pdec': enq['pdec'] * 180.0 / 115200, # motor ticks to degrees
+            'pdec': enq['pdec'] * 180.0 / 1152000, # motor ticks to degrees
         }
         self.cached_position_time = time.time()
         return self.cached_position
@@ -366,7 +366,6 @@ class LosmandyGeminiMount(TelescopeMount):
         if axis == 'ra':
             if not self.bypass_ra_limits:
                 pra = self.get_position()['pra']
-                print('pra: {:10.6f}'.format(pra) + ' rate: ' + str(rate))
                 if ((pra < 180 - self.ra_west_limit and rate < 0.0) or
                     (pra > 180 + self.ra_east_limit and rate > 0.0)):
                     self.mount.slew_ra(0.0)
