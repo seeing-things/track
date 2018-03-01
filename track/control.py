@@ -267,13 +267,13 @@ class LoopFilter(object):
         int_gain = 4.0 / denom**2.0 * bt**2.0 / k0
 
         # proportional term
-        prop = prop_gain * error
+        prop = prop_gain * -error
 
         # integral term
         if self.rate_limit is not None:
-            self.int = clamp(self.int + int_gain * error, self.rate_limit)
+            self.int = clamp(self.int + int_gain * -error, self.rate_limit)
         else:
-            self.int = self.int + int_gain * error
+            self.int = self.int + int_gain * -error
 
         # new slew rate is the sum of P and I terms subject to rate limit
         if self.rate_limit is not None:

@@ -115,7 +115,7 @@ class BlindErrorSource(ErrorSource):
         # compute pointing errors in degrees
         error = {}
         for axis in self.axes:
-            error[axis] = wrap_error(adjusted_position[axis] - mount_position[axis])
+            error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis])
 
         return error
 
@@ -237,8 +237,8 @@ class OpticalErrorSource(ErrorSource):
                     raise self.NoSignalException('No target identified')
 
             # error is distance of first keypoint from center frame
-            error_x_px = keypoints[0].pt[0] - self.frame_center_px[0]
-            error_y_px = self.frame_center_px[1] - keypoints[0].pt[1]
+            error_x_px = self.frame_center_px[0] - keypoints[0].pt[0]
+            error_y_px = keypoints[0].pt[1] - self.frame_center_px[1]
             error_x_deg = error_x_px * self.degrees_per_pixel
             error_y_deg = error_y_px * self.degrees_per_pixel
 
