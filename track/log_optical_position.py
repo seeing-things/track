@@ -1,21 +1,19 @@
 #!/usr/bin/env python
 
-# This intent of this script is to append the positions of a variety of
-# celestial objects to a file for post processing. The assumption is that the
-# position data corresponds to raw encoder readings without any corrections
-# or alignment. This data can then be processed to develop a model for the
-# mount and to assess systematic errors that may reflect deficiencies in the
-# mount hardware.
+"""Appends mount-reported position to a file.
 
-import config
-import configargparse
-import mounts
-import errorsources
-import track
+This intent of this script is to append the positions of a variety of celestial objects to a file
+for post processing. The assumption is that the position data corresponds to raw encoder readings
+without any corrections or alignment. This data can then be processed to develop a model for the
+mount and to assess systematic errors that may reflect deficiencies in the mount hardware.
+"""
+
+from __future__ import print_function
 import time
-import ephem
 import datetime
 import math
+import ephem
+import track
 
 
 def track_until_converged_callback():
@@ -39,35 +37,77 @@ def track_until_converged_callback():
         tracker.low_error_iterations = 0
         tracker.stop = True
 
-parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
-parser.add_argument('--camera', help='device node path for tracking webcam', default='/dev/video0')
-parser.add_argument('--camera-res', help='webcam resolution in arcseconds per pixel', required=True, type=float)
-parser.add_argument('--camera-bufs', help='number of webcam capture buffers', required=True, type=int)
-parser.add_argument('--camera-exposure', help='webcam exposure level', default=2000, type=int)
-parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
-parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.5, type=float)
-parser.add_argument('--loop-damping', help='control loop damping factor', default=2.0, type=float)
-parser.add_argument('--loop-period', help='control loop period', default=0.3, type=float)
-parser.add_argument('--filename', help='output log filename', default='object_data')
+parser = track.ArgParser()
+parser.add_argument(
+    '--lat',
+    required=True,
+    help='latitude of observer (+N)')
+parser.add_argument(
+    '--lon',
+    required=True,
+    help='longitude of observer (+E)')
+parser.add_argument(
+    '--elevation',
+    required=True,
+    help='elevation of observer (m)',
+    type=float)
+parser.add_argument(
+    '--camera',
+    help='device node path for tracking webcam',
+    default='/dev/video0')
+parser.add_argument(
+    '--camera-res',
+    help='webcam resolution in arcseconds per pixel',
+    required=True,
+    type=float)
+parser.add_argument(
+    '--camera-bufs',
+    help='number of webcam capture buffers',
+    required=True,
+    type=int)
+parser.add_argument(
+    '--camera-exposure',
+    help='webcam exposure level',
+    default=2000,
+    type=int)
+parser.add_argument(
+    '--scope',
+    help='serial device for connection to telescope',
+    default='/dev/ttyUSB0')
+parser.add_argument(
+    '--loop-bw',
+    help='control loop bandwidth (Hz)',
+    default=0.5,
+    type=float)
+parser.add_argument(
+    '--loop-damping',
+    help='control loop damping factor',
+    default=2.0,
+    type=float)
+parser.add_argument(
+    '--filename',
+    help='output log filename',
+    default='object_data')
 args = parser.parse_args()
 
 # Create object with base type TelescopeMount
-mount = mounts.NexStarMount(args.scope)
+mount = track.NexStarMount(args.scope)
 
 # Create object with base type ErrorSource
-error_source = errorsources.OpticalErrorSource(
+error_source = track.OpticalErrorSource(
     args.camera,
     args.camera_res,
     args.camera_bufs,
-    args.camera_exposure
+    args.camera_exposure,
+    x_axis_name='az',
+    y_axis_name='alt'
 )
 
 tracker = track.Tracker(
-    mount = mount,
-    error_source = error_source,
-    update_period = args.loop_period,
-    loop_bandwidth = args.loop_bw,
-    damping_factor = args.loop_damping
+    mount=mount,
+    error_source=error_source,
+    loop_bandwidth=args.loop_bw,
+    damping_factor=args.loop_damping
 )
 
 print('Tracking object until converged...')
@@ -98,6 +138,10 @@ except KeyError:
         print('Could not find ' + object_name + ' in database')
 
 if target is not None:
+    observer = ephem.Observer()
+    observer.lat = args.lat
+    observer.lon = args.lon
+    observer.elevation = args.elevation
     observer.date = ephem.Date(datetime.datetime.utcfromtimestamp(now))
     target.compute(observer)
     actual_position = {

@@ -1,3 +1,5 @@
+"""A collection of assorted math operations."""
+
 import math
 import numpy as np
 

@@ -1,7 +1,13 @@
-import inputs
+"""Gamepad support.
+
+Defines a single class Gamepad that provide support for game controller interfaces. When run as a
+program the integrated x- and y- values are printed to the console.
+"""
+
+from __future__ import print_function
 import threading
-import signal
 import time
+import inputs
 import numpy as np
 
 class Gamepad(object):
@@ -35,12 +41,12 @@ class Gamepad(object):
     MIN_LEVEL = 0.01
 
     def __init__(
-        self,
-        left_gain=1.0,
-        right_gain=0.1,
-        int_limit=1.0,
-        int_loop_period=0.01
-    ):
+            self,
+            left_gain=1.0,
+            right_gain=0.1,
+            int_limit=1.0,
+            int_loop_period=0.01
+        ):
         """Inits Gamepad object.
 
         Initializes a Gamepad object and starts two daemon threads to read
@@ -75,14 +81,17 @@ class Gamepad(object):
         self.integrator_thread.start()
 
     def get_proportional(self):
+        """Returns a tuple containing the instantaneous x/y values."""
         x = np.clip(self.left_gain*self.left_x + self.right_gain*self.right_x, -1.0, 1.0)
         y = np.clip(self.left_gain*self.left_y + self.right_gain*self.right_y, -1.0, 1.0)
         return (x, y)
 
     def get_integrator(self):
+        """Returns a tuple containing the integrated x/y values."""
         return (self.int_x, self.int_y)
 
     def get_value(self):
+        """Returns a tuple containing instantaneous or integrated x/y values based on mode."""
         if self.integrator_mode:
             return self.get_integrator()
         else:
@@ -141,6 +150,7 @@ class Gamepad(object):
             time.sleep(self.int_loop_period)
 
 def main():
+    """Prints integrated x/y values to the console every 10 ms."""
     try:
         gamepad = Gamepad()
         while True:

@@ -1,19 +1,37 @@
 #!/usr/bin/env python
 
-import config
-import ephem
-import ephem.stars
+"""Prints the position of an object from observer's location."""
+
+from __future__ import print_function
 import datetime
 import math
+import ephem
+import ephem.stars
+import track
+
 
 def main():
 
-    parser = config.ArgParser()
+    parser = track.ArgParser()
 
-    parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
-    parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
-    parser.add_argument('--elevation', required=True, help='elevation of observer (m)', type=float)
-    parser.add_argument('--timestamp', required=False, help='UNIX timestamp', type=float)
+    parser.add_argument(
+        '--lat',
+        required=True,
+        help='latitude of observer (+N)')
+    parser.add_argument(
+        '--lon',
+        required=True,
+        help='longitude of observer (+E)')
+    parser.add_argument(
+        '--elevation',
+        required=True,
+        help='elevation of observer (m)',
+        type=float)
+    parser.add_argument(
+        '--timestamp',
+        required=False,
+        help='UNIX timestamp',
+        type=float)
 
     subparsers = parser.add_subparsers(title='modes', dest='mode')
 
@@ -35,18 +53,18 @@ def main():
     if args.mode == 'star':
         print('In named star mode: looking up \'{}\''.format(args.name))
         target = None
-        for name, star in ephem.stars.stars.items():
+        for name, in ephem.stars.stars.items():
             if args.name.lower() == name.lower():
                 print('Found named star: \'{}\''.format(name))
                 target = ephem.star(name)
                 break
-        if target == None:
+        if target is None:
             raise Exception('The named star \'{}\' isn\' present in PyEphem.'.format(args.name))
 
     # Get the PyEphem Body object corresonding to the given named solar system body
     if args.mode == 'solarsystem':
         print('In named solar system body mode: looking up \'{}\''.format(args.name))
-        ss_objs = [name.lower() for _0, _1, name in ephem._libastro.builtin_planets()]
+        ss_objs = [name.lower() for _, _, name in ephem._libastro.builtin_planets()]
         if args.name.lower() in ss_objs:
             body_type = None
             for attr in dir(ephem):
@@ -57,7 +75,9 @@ def main():
             assert body_type != None
             target = body_type()
         else:
-            raise Exception('The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name))
+            raise Exception(
+                'The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name)
+            )
 
     if args.timestamp is not None:
         observer.date = ephem.Date(datetime.datetime.utcfromtimestamp(args.timestamp))

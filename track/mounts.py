@@ -1,6 +1,14 @@
-from .control import TelescopeMount
-import point
+"""mounts for use in telescope tracking control loop.
+
+A set of classes that inherit from the abstract base class TelescopeMount (defined in control.py).
+Each class is a wrapper for a lower level interface to the mount, creating a common interface that
+can be incorporated into the Tracker class. The abstraction is not perfect and some mounts require
+special interfaces that go beyond what is required by TelescopeMount.
+"""
+
 import time
+import point
+from .control import TelescopeMount
 
 class NexStarMount(TelescopeMount):
     """Interface class to facilitate tracking with NexStar telescopes.
@@ -36,14 +44,14 @@ class NexStarMount(TelescopeMount):
     """
 
     def __init__(
-        self,
-        device_name,
-        alt_min_limit=0.0,
-        alt_max_limit=65.0,
-        bypass_alt_limits=False,
-        max_slew_rate=16319.0/3600.0,
-        max_slew_accel=None,
-    ):
+            self,
+            device_name,
+            alt_min_limit=0.0,
+            alt_max_limit=65.0,
+            bypass_alt_limits=False,
+            max_slew_rate=16319.0/3600.0,
+            max_slew_accel=None,
+        ):
         """Inits NexStarMount object.
 
         Initializes a NexStarMount object by constructing a point.NexStar
@@ -219,8 +227,8 @@ class NexStarMount(TelescopeMount):
             raise ValueError('slew rate exceeds limit')
 
         # enforce altitude limits
-        if axis == 'alt' and self.bypass_alt_limits == False:
-            position = self.get_azalt(0.25)
+        if axis == 'alt' and not self.bypass_alt_limits:
+            position = self.get_position(0.25)
             if ((position['alt'] >= self.alt_max_limit and rate > 0.0) or
                 (position['alt'] <= self.alt_min_limit and rate < 0.0)):
                 self.mount.slew_var('alt', 0.0)
@@ -259,14 +267,14 @@ class LosmandyGeminiMount(TelescopeMount):
     """
 
     def __init__(
-        self,
-        device_name,
-        ra_west_limit=110.0,
-        ra_east_limit=110.0,
-        bypass_ra_limits=False,
-        max_slew_rate=4.0,
-        max_slew_accel=10.0,
-    ):
+            self,
+            device_name,
+            ra_west_limit=110.0,
+            ra_east_limit=110.0,
+            bypass_ra_limits=False,
+            max_slew_rate=4.0,
+            max_slew_accel=10.0,
+        ):
         """Inits LosmandyGeminiMount object.
 
         Initializes a LosmandyGeminiMount object by constructing a

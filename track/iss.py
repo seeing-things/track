@@ -1,16 +1,34 @@
 #!/usr/bin/env python
 
-import ephem
+"""Prints position of ISS.
+
+Simple program grabs the latest TLE for the ISS from Celestrak and then uses the PyEphem package
+to print the current Az/Alt position of ISS relative to the observer's location.
+"""
+
+from __future__ import print_function
 import time
+import ephem
 import requests
 import track
 
 def main():
 
     parser = track.ArgParser()
-    parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
-    parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
-    parser.add_argument('--elevation', required=False, default=0.0, help='elevation of observer (m)', type=float)
+    parser.add_argument(
+        '--lat',
+        required=True,
+        help='latitude of observer (+N)')
+    parser.add_argument(
+        '--lon',
+        required=True,
+        help='longitude of observer (+E)')
+    parser.add_argument(
+        '--elevation',
+        required=False,
+        default=0.0,
+        help='elevation of observer (m)',
+        type=float)
     args = parser.parse_args()
 
     # Grab the latest space station TLE file from Celestrak
@@ -27,10 +45,10 @@ def main():
 
     # Print current Az-Alt of ISS once per second
     while True:
-            home.date = ephem.now()
-            iss.compute(home)
-            print('Az: %s Alt: %s' % (iss.az, iss.alt))
-            time.sleep(1)
+        home.date = ephem.now()
+        iss.compute(home)
+        print('Az: %s Alt: %s' % (iss.az, iss.alt))
+        time.sleep(1)
 
 if __name__ == "__main__":
     main()
