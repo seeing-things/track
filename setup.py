@@ -1,7 +1,7 @@
-from setuptools import setup, find_packages
 # To use a consistent encoding
 from codecs import open
 from os import path
+from setuptools import setup, find_packages
 
 here = path.abspath(path.dirname(__file__))
 
@@ -53,8 +53,8 @@ setup(
     ],
 
     dependency_links=[
-        'http://github.com/gebart/python-v4l2capture/tarball/master#egg=v4l2capture-1.5', 
-        'http://github.com/bgottula/point/tarball/master#egg=point-0.1', 
+        'http://github.com/gebart/python-v4l2capture/tarball/master#egg=v4l2capture-1.5',
+        'http://github.com/bgottula/point/tarball/master#egg=point-0.1',
     ],
 
     entry_points={

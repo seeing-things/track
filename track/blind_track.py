@@ -1,23 +1,86 @@
 #!/usr/bin/env python
 
-import config
-import track
+"""Blind tracking of objects.
+
+This program uses a feedback control loop to cause a telescope mount to track an object based on
+the object's predicted position in the sky and the mount's self-reported position. It is called
+"blind" tracking because it does not rely on any direct measurement or observation of the object
+to function; it relies entirely on the accuracy of the mount's alignment and on the accuracy of
+the predicted position.
+
+The object may be anything supported by the PyEmphem package which includes built-in lists of
+bright stars and solar system objects, ephemeris derived from two-line element (TLE) file for
+Earth-orbiting artificial satellites, and raw RA/DEC coordinates.
+
+An optional gamepad can be used to provide adjustments to the pointing in real time.
+These adjustments are relative to the motion vector of the object across the sky.
+"""
+
+from __future__ import print_function
 import ephem
+import track
 
 def main():
 
-    parser = config.ArgParser()
+    parser = track.ArgParser()
 
-    parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
-    parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
-    parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
-    parser.add_argument('--elevation', required=True, help='elevation of observer (m)', type=float)
-    parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.5, type=float)
-    parser.add_argument('--loop-damping', help='control loop damping factor', default=2.0, type=float)
-    parser.add_argument('--backlash-az', help='backlash in azimuth (arcseconds)', default=0.0, type=float)
-    parser.add_argument('--backlash-alt', help='backlash in altitude (arcseconds)', default=0.0, type=float)
-    parser.add_argument('--align-dir-az', help='azimuth alignment approach direction (-1 or +1)', default=+1, type=int)
-    parser.add_argument('--align-dir-alt', help='altitude alignment approach direction (-1 or +1)', default=+1, type=int)
+    parser.add_argument(
+        '--scope',
+        help='serial device for connection to telescope',
+        default='/dev/ttyUSB0'
+    )
+    parser.add_argument(
+        '--lat',
+        required=True,
+        help='latitude of observer (+N)'
+    )
+    parser.add_argument(
+        '--lon',
+        required=True,
+        help='longitude of observer (+E)'
+    )
+    parser.add_argument(
+        '--elevation',
+        required=True,
+        help='elevation of observer (m)',
+        type=float
+    )
+    parser.add_argument(
+        '--loop-bw',
+        help='control loop bandwidth (Hz)',
+        default=0.5,
+        type=float
+    )
+    parser.add_argument(
+        '--loop-damping',
+        help='control loop damping factor',
+        default=2.0,
+        type=float
+    )
+    parser.add_argument(
+        '--backlash-az',
+        help='backlash in azimuth (arcseconds)',
+        default=0.0,
+        type=float
+    )
+    parser.add_argument(
+        '--backlash-alt',
+        help='backlash in altitude (arcseconds)',
+        default=0.0,
+        type=float
+    )
+    parser.add_argument(
+        '--align-dir-az',
+        help='azimuth alignment approach direction (-1 or +1)',
+        default=+1,
+        type=int
+    )
+    parser.add_argument(
+        '--align-dir-alt',
+        help='altitude alignment approach direction (-1 or +1)',
+        default=+1,
+        type=int
+    )
 
     subparsers = parser.add_subparsers(title='modes', dest='mode')
 
@@ -72,12 +135,14 @@ def main():
     # Get the PyEphem Body object corresonding to the given named solar system body
     if args.mode == 'solarsystem':
         print('In named solar system body mode: \'{}\''.format(args.name))
-        ss_objs = [name for _0, _1, name in ephem._libastro.builtin_planets()]
+        ss_objs = [name for _, _, name in ephem._libastro.builtin_planets()]
         if args.name in ss_objs:
             body_type = getattr(ephem, args.name)
             target = body_type()
         else:
-            raise Exception('The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name))
+            raise Exception(
+                'The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name)
+            )
 
     # Create object with base type ErrorSource
     error_source = track.BlindErrorSource(mount, observer, target, backlash_enable)
@@ -85,9 +150,9 @@ def main():
     try:
         # Create gamepad object and register callback
         game_pad = track.Gamepad(
-            left_gain = 2.0,  # left stick degrees per second
-            right_gain = 0.5, # right stick degrees per second
-            int_limit = 5.0,  # max correction in degrees for either axis
+            left_gain=2.0,  # left stick degrees per second
+            right_gain=0.5, # right stick degrees per second
+            int_limit=5.0,  # max correction in degrees for either axis
         )
         game_pad.integrator_mode = True
         error_source.register_offset_callback(game_pad.get_integrator)
@@ -96,17 +161,16 @@ def main():
         print('No gamepads found.')
 
     tracker = track.Tracker(
-        mount = mount,
-        error_source = error_source,
-        loop_bandwidth = args.loop_bw,
-        damping_factor = args.loop_damping
+        mount=mount,
+        error_source=error_source,
+        loop_bandwidth=args.loop_bw,
+        damping_factor=args.loop_damping
     )
 
     try:
         tracker.run()
     except KeyboardInterrupt:
         print('Goodbye!')
-        pass
 
 if __name__ == "__main__":
     main()

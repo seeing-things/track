@@ -11,8 +11,6 @@ or by intelligently switching between sources.
 from __future__ import print_function
 import datetime
 import math
-from .control import ErrorSource
-from .mathutils import *
 import ephem
 import numpy as np
 try:
@@ -21,8 +19,10 @@ try:
 except ImportError as e:
     if 'cv2' in e.message:
         print('Failed to import cv2. Optical tracking requires OpenCV.')
-        pass
     raise
+from .control import ErrorSource
+from .mathutils import wrap_error, adjust_position, angle_between
+
 
 
 class BlindErrorSource(ErrorSource):
@@ -46,13 +46,13 @@ class BlindErrorSource(ErrorSource):
     """
 
     def __init__(
-        self,
-        mount,
-        observer,
-        target,
-        backlash_compensation=False,
-        meridian_side='west'
-    ):
+            self,
+            mount,
+            observer,
+            target,
+            backlash_compensation=False,
+            meridian_side='west'
+        ):
         """Inits BlindErrorSource object.
 
         Args:
@@ -84,12 +84,26 @@ class BlindErrorSource(ErrorSource):
         self.axes = mount.get_axis_names()
 
     def register_offset_callback(self, callback):
+        """Register a callback function for position adjustments.
+
+        When a callback is registered it will be called each time compute_error is invoked. The
+        return value of the callback contains values that are then used to adjust the predicted
+        position of the object.
+
+        Args:
+            callback: A function that returns a two-element list or numpy array giving the offset
+            adjustments in degrees. The first element is the x-axis offset and the second element
+            is the y-axis offset. The +y axis is in the direction of the object's motion. The
+            x-axis is perpendicular to the object's motion. To un-register pass None.
+        """
         self.offset_callback = callback
 
     def get_axis_names(self):
+        """Returns a list of strings containing the axis names."""
         return self.axes
 
     def meridian_flip(self):
+        """Cause an equatorial mount to perform a meridian flip."""
         self.meridian_side = 'east' if self.meridian_side == 'west' else 'west'
 
     def compute_error(self, retries=0):
@@ -182,6 +196,24 @@ class BlindErrorSource(ErrorSource):
 
 
 class OpticalErrorSource(ErrorSource):
+    """Computer vision based error source.
+
+    This class implements an error source based on computer vision recognition of a target in an
+    image from a camera. The error vector of the detected target from image center is transformed
+    to an error vector in the mount's coordinate system.
+
+    Attributes:
+        degrees_per_pixel: Apparent size of a photosize in degrees.
+        webcam: A WebCam object instance.
+        x_axis_name: Name of mount axis parallel to the camera's x-axis.
+        y_axis_name: Name of mount axis parallel to the camera's y-axis.
+        frame_width_px: Width of the image in pixels.
+        frame_height_px: Height of the image in pixels.
+        frame_center_px: A tuple with the coordinates of the image center.
+        concec_detect_frames: Number of consecutive frames where a target was detected.
+        consec_no_detect_frames: Number of consecutive frames since a target was last detected.
+        detector: An OpenCV SimpleBlobDetector object.
+    """
 
     def __init__(
             self,
@@ -232,15 +264,17 @@ class OpticalErrorSource(ErrorSource):
         cv2.createTrackbar('block size', 'frame', 7, 31, self.block_size_validate)
         cv2.createTrackbar('C', 'frame', 3, 255, self.do_nothing)
 
-    # validator for block size trackbar
-    def block_size_validate(self, x):
+    @staticmethod
+    def block_size_validate(x):
+        """Validator for block size trackbar."""
         if x % 2 == 0:
             cv2.setTrackbarPos('block size', 'frame', x + 1)
         elif x < 3:
             cv2.setTrackbarPos('block size', 'frame', 3)
 
-    # validator for OpenCV trackbar
-    def do_nothing(self, x):
+    @staticmethod
+    def do_nothing(x):
+        """Validator for OpenCV trackbar."""
         pass
 
     def get_axis_names(self):
@@ -319,6 +353,25 @@ class OpticalErrorSource(ErrorSource):
 
 
 class HybridErrorSource(ErrorSource):
+    """Hybrid of blind and computer vision error sources.
+
+    This class is a hybrid of the BlindErrorSource and the OpticalErrorSource classes. It computes
+    error vectors using both and uses a simple state machine to select between them. This allows
+    for an acquisition phase that relies on blind tracking and then switches to (hopefully) more
+    accurate tracking with a camera when the target is detected within the camera's field of view.
+    Falls back on blind tracking if the two error sources diverge too much or if the optical error
+    source is unable to detect the target for too long. Fall back on blind tracking on divergence
+    is based on the assumption that the blind error source is generally more reliable but less
+    accurate--for example, the computer vision algorithm can be tricked by false targets.
+
+    Attributes:
+        axes: List of mount axis names.
+        blind: BlindErrorSource object instance.
+        optical: OpticalErrorSource object instance.
+        max_divergence: Max allowed divergence between error sources in degrees.
+        max_optical_no_signal_frames: Reverts to blind mode after this many frames with no target.
+        state: String used as an enum to represent state: 'blind' or 'optical'.
+    """
     def __init__(
             self,
             mount,
@@ -342,8 +395,8 @@ class HybridErrorSource(ErrorSource):
                 arcsecs_per_pixel,
                 cam_num_buffers,
                 cam_ctlval_exposure,
-                x_axis_name = 'az',
-                y_axis_name = 'alt'
+                x_axis_name='az',
+                y_axis_name='alt'
             )
         elif set(self.axes) == set(['ra', 'dec']):
             self.optical = OpticalErrorSource(
@@ -351,8 +404,8 @@ class HybridErrorSource(ErrorSource):
                 arcsecs_per_pixel,
                 cam_num_buffers,
                 cam_ctlval_exposure,
-                x_axis_name = 'ra',
-                y_axis_name = 'dec'
+                x_axis_name='ra',
+                y_axis_name='dec'
             )
         else:
             raise ValueError('unrecognized axis names')
@@ -361,7 +414,11 @@ class HybridErrorSource(ErrorSource):
         self.state = 'blind'
         print('Hybrid error source starting in blind tracking state')
 
+    def get_axis_names(self):
+        return self.axes
+
     def register_blind_offset_callback(self, callback):
+        """See BlindErrorSource documentation."""
         self.blind.register_offset_callback(callback)
 
     def compute_error(self, retries=0):
