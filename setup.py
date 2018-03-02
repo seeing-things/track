@@ -46,15 +46,16 @@ setup(
         'ephem>=3.7',
         'inputs>=0.1',
         'numpy',
-        'v4l2>=0.2',
-        'v4l2capture>=1.5',
+        'v4l2==0.2.1',
+        'v4l2capture==1.5',
         'requests',
         'MonthDelta>=1.0b',
     ],
 
     dependency_links=[
-        'http://github.com/gebart/python-v4l2capture/tarball/master#egg=v4l2capture-1.5',
-        'http://github.com/bgottula/point/tarball/master#egg=point-0.1',
+        'https://github.com/bgottula/python-v4l2/tarball/master#egg=v4l2-0.2.1',
+        'https://github.com/gebart/python-v4l2capture/tarball/master#egg=v4l2capture-1.5',
+        'https://github.com/bgottula/point/tarball/master#egg=point-0.1',
     ],
 
     entry_points={
