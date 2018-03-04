@@ -42,7 +42,7 @@ setup(
 
     install_requires=[
         'point>=0.1',
-        'ConfigArgParse>=0.12',
+        'ConfigArgParse==0.12.0',
         'ephem>=3.7',
         'inputs>=0.1',
         'numpy',
