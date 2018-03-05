@@ -47,6 +47,11 @@ def main():
         default='/dev/ttyACM0'
     )
     parser.add_argument(
+        '--meridian-side',
+        help='side of meridian for equatorial mounts to prefer',
+        default='west'
+    )
+    parser.add_argument(
         '--lat',
         required=True,
         help='latitude of observer (+N)')
@@ -184,7 +189,8 @@ def main():
         args.camera_res,
         args.camera_exposure,
         args.max_divergence,
-        backlash_enable
+        backlash_enable,
+        meridian_side=args.meridian_side
     )
 
     try:

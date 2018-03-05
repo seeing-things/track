@@ -384,9 +384,16 @@ class HybridErrorSource(ErrorSource):
             max_divergence=5.0,
             max_optical_no_signal_frames=4,
             backlash_compensation=False,
+            meridian_side='west'
         ):
         self.axes = mount.get_axis_names()
-        self.blind = BlindErrorSource(mount, observer, target, backlash_compensation)
+        self.blind = BlindErrorSource(
+            mount,
+            observer,
+            target,
+            backlash_compensation
+            meridian_side=meridian_side
+        )
         # FIXME: Have to do this because OpticalErrorSource has a crappy way of specifying how the
         # camera is oriented with respect to the mount axes.
         if set(self.axes) == set(['az', 'alt']):

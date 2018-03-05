@@ -36,6 +36,11 @@ def main():
         default='/dev/ttyACM0'
     )
     parser.add_argument(
+        '--meridian-side',
+        help='side of meridian for equatorial mounts to prefer',
+        default='west'
+    )
+    parser.add_argument(
         '--lat',
         required=True,
         help='latitude of observer (+N)'
@@ -160,7 +165,13 @@ def main():
         sys.exit(1)
 
     # Create object with base type ErrorSource
-    error_source = track.BlindErrorSource(mount, observer, target, backlash_enable)
+    error_source = track.BlindErrorSource(
+        mount,
+        observer,
+        target,
+        backlash_enable,
+        meridian_side=args.meridian_side
+    )
 
     try:
         # Create gamepad object and register callback
