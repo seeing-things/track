@@ -391,7 +391,7 @@ class HybridErrorSource(ErrorSource):
             mount,
             observer,
             target,
-            backlash_compensation
+            backlash_compensation,
             meridian_side=meridian_side
         )
         # FIXME: Have to do this because OpticalErrorSource has a crappy way of specifying how the
