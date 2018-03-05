@@ -295,7 +295,7 @@ class LosmandyGeminiMount(TelescopeMount):
                 mount in degrees per second squared. Higher limits increase
                 the likelihood of motor stalls.
         """
-        self.mount = point.Gemini2(device_name)
+        self.mount = point.Gemini2(point.gemini_backend.Gemini2BackendUDP(0.25, device_name))
         self.ra_west_limit = ra_west_limit
         self.ra_east_limit = ra_east_limit
         self.bypass_ra_limits = bypass_ra_limits
