@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+"""Sets mount time and location. Only supports NexStar mounts."""
+
 import math
 import time
 import point

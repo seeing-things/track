@@ -54,7 +54,7 @@ def main():
     if args.mode == 'star':
         print('In named star mode: looking up \'{}\''.format(args.name))
         target = None
-        for name, in ephem.stars.stars.items():
+        for name, _ in ephem.stars.stars.items():
             if args.name.lower() == name.lower():
                 print('Found named star: \'{}\''.format(name))
                 target = ephem.star(name)
