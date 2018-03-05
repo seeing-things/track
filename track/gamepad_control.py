@@ -7,15 +7,21 @@ are controlled by the analog sticks.
 """
 
 from __future__ import print_function
+import sys
 import track
 
 def main():
 
     parser = track.ArgParser()
     parser.add_argument(
-        '--scope',
-        help='serial device for connection to telescope',
-        default='/dev/ttyUSB0'
+        '--mount-type',
+        help='select mount type (nexstar or gemini)',
+        default='gemini'
+    )
+    parser.add_argument(
+        '--mount-path',
+        help='serial device node or hostname for mount command interface',
+        default='/dev/ttyACM0'
     )
     parser.add_argument(
         '--bypass-alt-limits',
@@ -24,9 +30,15 @@ def main():
     )
     args = parser.parse_args()
 
-    mount = track.NexStarMount(args.scope, bypass_alt_limits=args.bypass_alt_limits)
-    if args.bypass_alt_limits:
-        print('Warning: Altitude limits disabled! Be careful!')
+    if args.mount_type == 'nexstar':
+        mount = track.NexStarMount(args.mount_path, bypass_alt_limits=args.bypass_alt_limits)
+        if args.bypass_alt_limits:
+            print('Warning: Altitude limits disabled! Be careful!')
+    elif args.mount_type == 'gemini':
+        mount = track.LosmandyGeminiMount(args.mount_path)
+    else:
+        print('mount-type not supported: ' + args.mount_type)
+        sys.exit(1)
 
     game_pad = track.Gamepad()
 
@@ -34,8 +46,8 @@ def main():
         while True:
             try:
                 x, y = game_pad.get_value()
-                mount.slew('az', mount.max_slew_rate * x)
-                mount.slew('alt', mount.max_slew_rate * y)
+                mount.slew('ra', mount.max_slew_rate * x)
+                mount.slew('dec', mount.max_slew_rate * y)
             except mount.AxisLimitException:
                 pass
     except KeyboardInterrupt:

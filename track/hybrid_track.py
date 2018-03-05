@@ -9,6 +9,7 @@ tracking mode are handled automatically.
 """
 
 from __future__ import print_function
+import sys
 import ephem
 import track
 
@@ -36,9 +37,15 @@ def main():
         default=2000,
         type=int)
     parser.add_argument(
-        '--scope',
-        help='serial device for connection to telescope',
-        default='/dev/ttyUSB0')
+        '--mount-type',
+        help='select mount type (nexstar or gemini)',
+        default='gemini'
+    )
+    parser.add_argument(
+        '--mount-path',
+        help='serial device node or hostname for mount command interface',
+        default='/dev/ttyACM0'
+    )
     parser.add_argument(
         '--lat',
         required=True,
@@ -120,10 +127,16 @@ def main():
     backlash_enable = args.backlash_az > 0.0 or args.backlash_alt > 0.0
 
     # Create object with base type TelescopeMount
-    mount = track.NexStarMount(args.scope)
-    if backlash_enable:
-        mount.set_backlash('az', args.align_dir_az, args.backlash_az / 3600.0)
-        mount.set_backlash('alt', args.align_dir_alt, args.backlash_alt / 3600.0)
+    if args.mount_type == 'nexstar':
+        mount = track.NexStarMount(args.mount_path)
+        if backlash_enable:
+            mount.set_backlash('az', args.align_dir_az, args.backlash_az / 3600.0)
+            mount.set_backlash('alt', args.align_dir_alt, args.backlash_alt / 3600.0)
+    elif args.mount_type == 'gemini':
+        mount = track.LosmandyGeminiMount(args.mount_path)
+    else:
+        print('mount-type not supported: ' + args.mount_type)
+        sys.exit(1)
 
     # Create a PyEphem Observer object
     observer = ephem.Observer()

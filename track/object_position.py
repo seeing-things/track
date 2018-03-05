@@ -3,6 +3,7 @@
 """Prints the position of an object from observer's location."""
 
 from __future__ import print_function
+import sys
 import datetime
 import math
 import ephem

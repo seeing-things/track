@@ -9,6 +9,7 @@ mount and to assess systematic errors that may reflect deficiencies in the mount
 """
 
 from __future__ import print_function
+import sys
 import time
 import datetime
 import math
@@ -71,9 +72,15 @@ parser.add_argument(
     default=2000,
     type=int)
 parser.add_argument(
-    '--scope',
-    help='serial device for connection to telescope',
-    default='/dev/ttyUSB0')
+    '--mount-type',
+    help='select mount type (nexstar or gemini)',
+    default='gemini'
+)
+parser.add_argument(
+    '--mount-path',
+    help='serial device node or hostname for mount command interface',
+    default='/dev/ttyACM0'
+)
 parser.add_argument(
     '--loop-bw',
     help='control loop bandwidth (Hz)',
@@ -91,7 +98,13 @@ parser.add_argument(
 args = parser.parse_args()
 
 # Create object with base type TelescopeMount
-mount = track.NexStarMount(args.scope)
+if args.mount_type == 'nexstar':
+    mount = track.NexStarMount(args.mount_path)
+elif args.mount_type == 'gemini':
+    mount = track.LosmandyGeminiMount(args.mount_path)
+else:
+    print('mount-type not supported: ' + args.mount_type)
+    sys.exit(1)
 
 # Create object with base type ErrorSource
 error_source = track.OpticalErrorSource(

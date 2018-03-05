@@ -1,18 +1,61 @@
 #!/usr/bin/env python
 
+import sys
 import track
 
 def main():
 
     parser = track.ArgParser()
-    parser.add_argument('--camera', help='device node path for tracking webcam', default='/dev/video0')
-    parser.add_argument('--camera-res', help='webcam resolution in arcseconds per pixel', required=True, type=float)
-    parser.add_argument('--camera-bufs', help='number of webcam capture buffers', required=True, type=int)
-    parser.add_argument('--camera-exposure', help='webcam exposure level', default=2000, type=int)
-    parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
-    parser.add_argument('--loop-bw', help='control loop bandwidth (Hz)', default=0.5, type=float)
-    parser.add_argument('--loop-damping', help='control loop damping factor', default=2.0, type=float)
-    parser.add_argument('--bypass-alt-limits', help='bypass mount altitude limits', action='store_true')
+    parser.add_argument(
+        '--camera',
+        help='device node path for tracking webcam',
+        default='/dev/video0'
+    )
+    parser.add_argument(
+        '--camera-res',
+        help='webcam resolution in arcseconds per pixel',
+        required=True,
+        type=float
+    )
+    parser.add_argument(
+        '--camera-bufs',
+        help='number of webcam capture buffers',
+        required=True,
+        type=int
+    )
+    parser.add_argument(
+        '--camera-exposure',
+        help='webcam exposure level',
+        default=2000,
+        type=int
+    )
+    parser.add_argument(
+        '--mount-type',
+        help='select mount type (nexstar or gemini)',
+        default='gemini'
+    )
+    parser.add_argument(
+        '--mount-path',
+        help='serial device node or hostname for mount command interface',
+        default='/dev/ttyACM0'
+    )
+    parser.add_argument(
+        '--loop-bw',
+        help='control loop bandwidth (Hz)',
+        default=0.5,
+        type=float
+    )
+    parser.add_argument(
+        '--loop-damping',
+        help='control loop damping factor',
+        default=2.0,
+        type=float
+    )
+    parser.add_argument(
+        '--bypass-alt-limits',
+        help='bypass mount altitude limits',
+        action='store_true'
+    )
     args = parser.parse_args()
 
     # this callback allows manual control of the slew rate via a gamepad when the
@@ -28,9 +71,15 @@ def main():
                 pass
 
     # Create object with base type TelescopeMount
-    mount = track.NexStarMount(args.scope, bypass_alt_limits=args.bypass_alt_limits)
-    if args.bypass_alt_limits:
-        print('Warning: Altitude limits disabled! Be careful!')
+    if args.mount_type == 'nexstar':
+        mount = track.NexStarMount(args.mout_path, bypass_alt_limits=args.bypass_alt_limits)
+        if args.bypass_alt_limits:
+            print('Warning: Altitude limits disabled! Be careful!')
+    elif args.mount_type == 'gemini':
+        mount = track.LosmandyGeminiMount(args.mount_path)
+    else:
+        print('mount-type not supported: ' + args.mount_type)
+        sys.exit(1)
 
     # Create object with base type ErrorSource
     error_source = track.OpticalErrorSource(args.camera, args.camera_res, args.camera_bufs, args.camera_exposure)

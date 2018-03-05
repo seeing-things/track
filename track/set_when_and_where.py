@@ -9,7 +9,7 @@ import track
 def main():
 
     parser = track.ArgParser()
-    parser.add_argument('--scope', help='serial device for connection to telescope', default='/dev/ttyUSB0')
+    parser.add_argument('--mount-path', help='serial device node for connection to telescope', default='/dev/ttyUSB0')
     parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
     parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
     args = parser.parse_args()
@@ -27,7 +27,7 @@ def main():
     lon = observer.lon * 180.0 / math.pi
 
     # Shove data into telescope
-    mount = point.NexStar(args.scope)
+    mount = point.NexStar(args.mount_path)
     mount.set_location(lat, lon)
     mount.set_time(time.time())
 

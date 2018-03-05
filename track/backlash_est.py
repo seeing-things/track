@@ -15,6 +15,7 @@ http://docs.opencv.org/trunk/d7/d8b/tutorial_py_lucas_kanade.html
 """
 
 from __future__ import print_function
+import sys
 import numpy as np
 import cv2
 import track
@@ -40,9 +41,14 @@ def main():
         type=int
     )
     parser.add_argument(
-        '--scope',
-        help='serial device for connection to telescope',
-        default='/dev/ttyUSB0'
+        '--mount-type',
+        help='select mount type (nexstar or gemini)',
+        default='gemini'
+    )
+    parser.add_argument(
+        '--mount-path',
+        help='serial device node or hostname for mount command interface',
+        default='/dev/ttyACM0'
     )
     parser.add_argument(
         '--bypass-alt-limits',
@@ -51,7 +57,13 @@ def main():
     )
     args = parser.parse_args()
 
-    mount = track.NexStarMount(args.scope, bypass_alt_limits=args.bypass_alt_limits)
+    if args.mount_type == 'nexstar':
+        mount = track.NexStarMount(args.mount_path, bypass_alt_limits=args.bypass_alt_limits)
+    elif args.mount_type == 'gemini':
+        mount = track.LosmandyGeminiMount(args.mount_path)
+    else:
+        print('mount-type not supported: ' + args.mount_type)
+        sys.exit(1)
     position_start = mount.get_position()
     deadband_az = 100.0
     deadband_alt = 100.0
