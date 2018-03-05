@@ -63,7 +63,7 @@ def main():
             raise Exception('The named star \'{}\' isn\' present in PyEphem.'.format(args.name))
 
     # Get the PyEphem Body object corresonding to the given named solar system body
-    if args.mode == 'solarsystem':
+    elif args.mode == 'solarsystem':
         print('In named solar system body mode: looking up \'{}\''.format(args.name))
         ss_objs = [name.lower() for _, _, name in ephem._libastro.builtin_planets()]
         if args.name.lower() in ss_objs:
@@ -79,6 +79,9 @@ def main():
             raise Exception(
                 'The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name)
             )
+    else:
+        print('You must specify a target.')
+        sys.exit(1)
 
     if args.timestamp is not None:
         observer.date = ephem.Date(datetime.datetime.utcfromtimestamp(args.timestamp))
