@@ -38,7 +38,6 @@ class BlindErrorSource(ErrorSource):
         observer: PyEphem Observer object.
         target: PyEphem Target object.
         mount: TelescopeMount object.
-        backlash_compensation: A boolean, True to enable backlash compensation.
         meridian_side: Selected side of meridian (equatorial only): 'east' or 'west'.
         offset_callback: A function that can make adjustments to the target position.
         mount_position_cached: Cached position of the mount from last call to compute_error().
@@ -50,7 +49,6 @@ class BlindErrorSource(ErrorSource):
             mount,
             observer,
             target,
-            backlash_compensation=False,
             meridian_side='west'
         ):
         """Inits BlindErrorSource object.
@@ -59,9 +57,6 @@ class BlindErrorSource(ErrorSource):
             mount: A TelescopeMount object.
             observer: A PyEphem Observer object for the observer's location.
             target: A PyEphem Target object for the thing to point to.
-            backlash_compensation: A boolean. When True, this class will
-                attempt to compensate for the deadband caused by backlash
-                in the mount's drive train.
             meridian_side: A string with values 'east' or 'west' that indicates
                 which side of the meridian the mount should favor. Only applies
                 to equatorial mounts.
@@ -69,14 +64,11 @@ class BlindErrorSource(ErrorSource):
         Raises:
             ValueError: For invalid argument values.
         """
-        if backlash_compensation and not mount.backlash_supported():
-            raise ValueError('mount does not support backlash compensation')
         if meridian_side not in ['east', 'west']:
             raise ValueError("meridian_side must be 'east' or 'west'")
         self.observer = observer
         self.target = target
         self.mount = mount
-        self.backlash_compensation = backlash_compensation
         self.meridian_side = meridian_side
         self.offset_callback = None
         self.mount_position_cached = None
@@ -139,22 +131,6 @@ class BlindErrorSource(ErrorSource):
             )
         else:
             adjusted_position = target_position
-
-        if self.backlash_compensation:
-            target_motion_direction = {}
-            for axis in self.axes:
-                target_motion_direction[axis] = np.sign(
-                    wrap_error(target_position[axis] - target_position_prev[axis])
-                )
-
-            # compensate for backlash if object is moving against the slew
-            # direction used during alignment
-            align_dir = self.mount.get_aligned_slew_dir()
-            axes_to_adjust = {}
-            for axis in self.axes:
-                axes_to_adjust[axis] = align_dir[axis] != target_motion_direction[axis]
-            mount_position = self.mount.remove_backlash(mount_position, axes_to_adjust)
-            self.mount_position_cached = mount_position
 
         # compute pointing errors in degrees
         error = {}
@@ -383,7 +359,6 @@ class HybridErrorSource(ErrorSource):
             cam_ctlval_exposure,
             max_divergence=5.0,
             max_optical_no_signal_frames=4,
-            backlash_compensation=False,
             meridian_side='west'
         ):
         self.axes = mount.get_axis_names()
@@ -391,7 +366,6 @@ class HybridErrorSource(ErrorSource):
             mount,
             observer,
             target,
-            backlash_compensation,
             meridian_side=meridian_side
         )
         # FIXME: Have to do this because OpticalErrorSource has a crappy way of specifying how the

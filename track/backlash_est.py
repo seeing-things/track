@@ -10,6 +10,8 @@ dimensions of this movement pattern are set to the maximum size possible without
 movement of features in the camera. The resulting values are the estimates of the backlash
 deadbands.
 
+Currently hard-coded for Az-Alt axis names. Could be refactored to support equatorial mounts.
+
 OpenCV code for optical flow is adapted from this example:
 http://docs.opencv.org/trunk/d7/d8b/tutorial_py_lucas_kanade.html
 """

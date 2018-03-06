@@ -29,18 +29,6 @@ class NexStarMount(TelescopeMount):
         max_slew_rate: Maximum slew rate supported by the mount in degrees per
             second.
         max_slew_accel: Maximum slew acceleration in degrees per second squared.
-        last_slew_dir: A dict storing the directions of the last commanded
-            slews in each axis. Keys are 'az' and 'alt'. Values are +1 when
-            the last slew was in the positive direction and -1 when the last
-            slew was in the negative direction. The values may be either +1
-            or -1 after class construction or when the last slew has rate 0.
-        backlash: A dict storing the magnitudes of the backlash in each axis.
-            Keys are 'az' and 'alt'. The values have units of degrees and are
-            non-negative.
-        aligned_slew_dir: A dict storing the final approach direction used
-            during alignment on each axis. Keys are 'az' and 'alt'. Values
-            are +1 to indicate that the final approach slew was in the positive
-            direction or -1 to indicate the opposite.
     """
 
     def __init__(
@@ -81,8 +69,6 @@ class NexStarMount(TelescopeMount):
         self.bypass_alt_limits = bypass_alt_limits
         self.max_slew_rate = max_slew_rate
         self.max_slew_accel = max_slew_accel
-        self.backlash = {'az': 0.0, 'alt': 0.0}
-        self.aligned_slew_dir = {'az': +1, 'alt': +1}
         self.cached_position = None
         self.cached_position_time = None
 
@@ -118,79 +104,6 @@ class NexStarMount(TelescopeMount):
 
     def get_axis_names(self):
         return ['az', 'alt']
-
-    def backlash_supported(self):
-        return True
-
-    def get_aligned_slew_dir(self):
-        """Gets the slew directions used during alignment.
-
-        Returns:
-            A dict with keys 'az' and 'alt' where the values are +1 or -1
-            indicating the slew direction used during alignment for that axis.
-        """
-        return self.aligned_slew_dir
-
-    def remove_backlash(self, position, axes_to_adjust):
-        """Adjusts positions to compensate for backlash deadband.
-
-        The position in a given axis will be corrected to remove the backlash
-        deadband if the set_backlash function has been called with a non-zero
-        correction factor and the axis appears in the axes_to_compensate list.
-        It is the responsibility of the caller to decide when backlash
-        compensation should be applied. Generally compensation should only be
-        applied when the mount is slewing against the direction used during
-        alignment. No attempt is made to handle the special case where the mount
-        is within the deadband region.
-
-        Args:
-            position: A dict with keys 'az' and 'alt' with values corresponding
-                to the azimuth and altitude positions in degrees to be
-                corrected.
-            axes_to_adjust: A dict with keys 'az' and 'alt' and values True
-                or False indicating which axes should be compensated.
-
-        Returns:
-            A dict with keys 'az' and 'alt' where the values are the azimuth
-            and altitude positions in degrees with corrections applied. The
-            azimuth range is [0,360) and the altitude range is [-180,+180).
-        """
-        az = position['az']
-        alt = position['alt']
-
-        if axes_to_adjust['az']:
-            az += self.backlash['az'] * self.aligned_slew_dir['az']
-            az = az % 360.0
-
-        if axes_to_adjust['alt']:
-            alt += self.backlash['alt'] * self.aligned_slew_dir['alt']
-            alt = (alt + 180.0) % 360.0 - 180.0
-
-        return {'az': az, 'alt': alt}
-
-    def set_backlash(self, axis, aligned_slew_dir, backlash):
-        """Sets the backlash compensation in one axis.
-
-        Sets the magnitude of the backlash compensation to be applied on a
-        specified axis and sets the direction in which the compensation is to
-        be applied.
-
-        Args:
-            axis: A string indicating the axis: 'az' or 'alt'.
-            aligned_slew_dir: An integer indicating which slew direction was
-                used on final approach during alignment. May be either +1,
-                indicating that final approach was in the positive direction,
-                or -1 to indicate the opposite. The backlash compensation will
-                only be applied when the slew direction is opposite of the
-                approach direction used during alignment.
-            backlash: The non-negative magnitude of the backlash adjustment in
-                degrees.
-        """
-        assert axis in ['az', 'alt']
-        assert aligned_slew_dir in [-1, +1]
-        assert backlash >= 0.0
-        self.backlash[axis] = backlash
-        self.aligned_slew_dir[axis] = aligned_slew_dir
 
     def slew(self, axis, rate):
         """Command the mount to slew on one axis.
@@ -344,15 +257,6 @@ class LosmandyGeminiMount(TelescopeMount):
         }
         self.cached_position_time = time.time()
         return self.cached_position
-
-    def backlash_supported(self):
-        return False
-
-    def get_aligned_slew_dir(self):
-        raise RuntimeError('not supported')
-
-    def remove_backlash(self, position, axes_to_adjust):
-        raise RuntimeError('not supported')
 
     def slew(self, axis, rate):
         """Command the mount to slew on one axis.

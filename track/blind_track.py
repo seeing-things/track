@@ -68,30 +68,6 @@ def main():
         default=2.0,
         type=float
     )
-    parser.add_argument(
-        '--backlash-az',
-        help='backlash in azimuth (arcseconds)',
-        default=0.0,
-        type=float
-    )
-    parser.add_argument(
-        '--backlash-alt',
-        help='backlash in altitude (arcseconds)',
-        default=0.0,
-        type=float
-    )
-    parser.add_argument(
-        '--align-dir-az',
-        help='azimuth alignment approach direction (-1 or +1)',
-        default=+1,
-        type=int
-    )
-    parser.add_argument(
-        '--align-dir-alt',
-        help='altitude alignment approach direction (-1 or +1)',
-        default=+1,
-        type=int
-    )
 
     subparsers = parser.add_subparsers(title='modes', dest='mode')
 
@@ -110,14 +86,9 @@ def main():
 
     args = parser.parse_args()
 
-    backlash_enable = args.backlash_az > 0.0 or args.backlash_alt > 0.0
-
     # Create object with base type TelescopeMount
     if args.mount_type == 'nexstar':
         mount = track.NexStarMount(args.mount_path)
-        if backlash_enable:
-            mount.set_backlash('az', args.align_dir_az, args.backlash_az / 3600.0)
-            mount.set_backlash('alt', args.align_dir_alt, args.backlash_alt  / 3600.0)
     elif args.mount_type == 'gemini':
         mount = track.LosmandyGeminiMount(args.mount_path)
     else:
@@ -169,7 +140,6 @@ def main():
         mount,
         observer,
         target,
-        backlash_enable,
         meridian_side=args.meridian_side
     )
 

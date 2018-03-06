@@ -101,41 +101,6 @@ class TelescopeMount(object):
         pass
 
     @abc.abstractmethod
-    def backlash_supported(self):
-        """Indicates whether this mount class supports backlash compensation.
-
-        Returns:
-            True if backlash compensation is supported, False otherwise.
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_aligned_slew_dir(self):
-        """Gets the slew directions used during alignment.
-
-        Returns:
-            A dict with keys for each axis where the values are +1 or -1
-            indicating the slew direction used during alignment for that axis.
-        """
-        pass
-
-    @abc.abstractmethod
-    def remove_backlash(self, position, axes_to_adjust):
-        """Adjusts positions to compensate for backlash deadband.
-
-        Args:
-            position: A dict with keys for each axis with values corresponding
-                to the positions in degrees to be corrected.
-            axes_to_adjust: A dict with keys for each axis and values True
-                or False indicating which axes should be compensated.
-
-        Returns:
-            A dict with keys for each axis where the values are the positions
-            in degrees with corrections applied.
-        """
-        pass
-
-    @abc.abstractmethod
     def slew(self, axis, rate):
         """Command the mount to slew on one axis.
 
