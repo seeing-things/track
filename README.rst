@@ -5,6 +5,8 @@ Computer vision support is provided by OpenCV. To use these features you will ne
 
 Camera support uses the v4l2capture package which compiles C code. This code #includes the libv4l2.h header file which is part of the libv4l-dev package on Debian Linux distributions. You will need to install this package.
 
+Something requires Python.h to compile. You will need to install the python3-dev package to make this header file available.
+
 Furthermore, the v4l2capture project has forked. This project requires a fork that is *not* registered in PyPi; it exists here instead: https://github.com/gebart/python-v4l2capture/. To ensure that this package is installed correctly, pass the --process-dependency-links option to pip:
 
 pip3 install --process-dependency-links .
