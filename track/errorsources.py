@@ -226,77 +226,113 @@ class OpticalErrorSource(ErrorSource):
         params.filterByColor = False
         params.filterByConvexity = False
         params.filterByInertia = False
-        params.maxArea = 50000.0
-        #params.thresholdStep = 1
-        params.minThreshold = 100
+        params.minArea = 0.0
+        params.maxArea = 50.0
+        params.minThreshold = 180
         params.maxThreshold = 200
-        params.minDistBetweenBlobs = 200
+        params.minDistBetweenBlobs = 50
         if opencv_ver == 2:
             self.detector = cv2.SimpleBlobDetector(params)
         else:
             self.detector = cv2.SimpleBlobDetector_create(params)
 
         cv2.namedWindow('frame')
-        cv2.createTrackbar('block size', 'frame', 7, 31, self.block_size_validate)
-        cv2.createTrackbar('C', 'frame', 3, 255, self.do_nothing)
-
-    @staticmethod
-    def block_size_validate(x):
-        """Validator for block size trackbar."""
-        if x % 2 == 0:
-            cv2.setTrackbarPos('block size', 'frame', x + 1)
-        elif x < 3:
-            cv2.setTrackbarPos('block size', 'frame', 3)
-
-    @staticmethod
-    def do_nothing(x):
-        """Validator for OpenCV trackbar."""
-        pass
 
     def get_axis_names(self):
         return [self.x_axis_name, self.y_axis_name]
 
+    def find_features(self, frame):
+        """Find bright features in a camera frame.
+
+        Args:
+            frame: A camera frame.
+
+        Returns:
+            A list of keypoints.
+        """
+
+        # convert to grayscale
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # pick a threshold as the max of these two methods:
+        # - 99.99th percentile of histogram
+        # - peak of histogram plus a magic number
+        hist, bins = np.histogram(gray.ravel(), 256, [0,256])
+        cumsum = np.cumsum(hist)
+        threshold_1 = np.argmax(cumsum >= 0.9999*cumsum[-1])
+        threshold_2 = np.argmax(hist) + 4
+        threshold = max(threshold_1, threshold_2)
+
+        retval, thresh = cv2.threshold(
+            gray,
+            threshold,
+            255,
+            cv2.THRESH_BINARY
+        )
+
+        # SimpleBlobDetector to find centroids of features
+        return self.detector.detect(thresh)
+
+    def show_annotated_frame(self, frame, keypoints, target_keypoint):
+        """Displays camera frame in a window with features circled and crosshairs.
+
+        Args:
+            frame: Camera frame.
+            keypoints: List of all keypoints.
+            target_keypoint: The keypoint identified as the target.
+        """
+
+        frame_annotated = frame.copy()
+
+        # add grey crosshairs
+        cv2.line(
+            frame_annotated,
+            (int(self.frame_center_px[0]), 0),
+            (int(self.frame_center_px[0]), int(self.frame_height_px) - 1),
+            (50, 50, 50),
+            1
+        )
+        cv2.line(
+            frame_annotated,
+            (0, int(self.frame_center_px[1])),
+            (int(self.frame_width_px) - 1, int(self.frame_center_px[1])),
+            (50, 50, 50),
+            1
+        )
+
+        # lower bound on keypoint size so the annotation is visible (okay to modify size because
+        # we only really care about the center)
+        for point in keypoints:
+            point.size = max(point.size, 10.0)
+
+        # cicle non-target keypoints in blue
+        frame_annotated = cv2.drawKeypoints(
+            frame_annotated,
+            keypoints,
+            np.array([]),
+            (255, 0, 0),
+            cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+        )
+
+        # circle target keypoint in red
+        target_keypoint.size = max(target_keypoint.size, 10.0)
+        frame_annotated = cv2.drawKeypoints(
+            frame_annotated,
+            [target_keypoint],
+            np.array([]),
+            (0, 0, 255),
+            cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+        )
+
+        # display the frame in a window
+        cv2.imshow('frame', frame_annotated)
+        cv2.waitKey(1)
+
     def compute_error(self, retries=0):
 
         while True:
-            frame = self.webcam.get_fresh_frame()
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-            thresh = cv2.adaptiveThreshold(
-                gray,
-                255,
-                cv2.ADAPTIVE_THRESH_MEAN_C,
-                cv2.THRESH_BINARY,
-                cv2.getTrackbarPos('block size', 'frame'),
-                cv2.getTrackbarPos('C', 'frame')
-            )
-
-            keypoints = self.detector.detect(thresh)
-
-            # display the original frame with keypoints circled in red
-            frame_annotated = cv2.drawKeypoints(
-                frame,
-                keypoints,
-                np.array([]),
-                (0, 0, 255),
-                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
-            )
-            cv2.line(
-                frame_annotated,
-                (int(self.frame_center_px[0]), 0),
-                (int(self.frame_center_px[0]), int(self.frame_height_px) - 1),
-                (100, 0, 0),
-                1
-            )
-            cv2.line(
-                frame_annotated,
-                (0, int(self.frame_center_px[1])),
-                (int(self.frame_width_px) - 1, int(self.frame_center_px[1])),
-                (100, 0, 0),
-                1
-            )
-            cv2.imshow('frame', frame_annotated)
-            cv2.waitKey(1)
+            self.webcam.get_fresh_frame()
+            keypoints = self.find_features(frame)
 
             if not keypoints:
                 if retries > 0:
@@ -307,9 +343,21 @@ class OpticalErrorSource(ErrorSource):
                     self.consec_no_detect_frames += 1
                     raise self.NoSignalException('No target identified')
 
-            # error is distance of first keypoint from center frame
-            error_x_px = self.frame_center_px[0] - keypoints[0].pt[0]
-            error_y_px = keypoints[0].pt[1] - self.frame_center_px[1]
+            # use the keypoint closest to the center of the frame
+            min_error = None
+            target_keypoint = None
+            for keypoint in keypoints:
+                # error is the vector between the keypoint and center frame
+                e_x = self.frame_center_px[0] - keypoint.pt[0]
+                e_y = keypoint.pt[1] - self.frame_center_px[1]
+                error_mag = np.abs(e_x + 1j*e_y)
+
+                if min_error is None or error_mag < min_error:
+                    target_keypoint = keypoint
+                    min_error = error_mag
+                    error_x_px = e_x
+                    error_y_px = e_y
+
             error_x_deg = error_x_px * self.degrees_per_pixel
             error_y_deg = error_y_px * self.degrees_per_pixel
 
@@ -324,6 +372,8 @@ class OpticalErrorSource(ErrorSource):
 
             self.consec_detect_frames += 1
             self.consec_no_detect_frames = 0
+
+            self.show_annotated_frame(frame, keypoints, target_keypoint)
 
             return error
 
