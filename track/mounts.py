@@ -90,7 +90,7 @@ class NexStarMount(TelescopeMount):
         Returns:
             A dict with keys 'az' and 'alt' where the values are the azimuth
             and altitude positions in degrees. The azimuth range is [0,360) and
-            the altitude range is [-180,+180).
+            the altitude range is [-90,+90].
         """
         if self.cached_position is not None:
             time_since_cached = time.time() - self.cached_position_time
