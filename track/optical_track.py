@@ -68,6 +68,28 @@ def main():
         help='bypass mount altitude limits',
         action='store_true'
     )
+    parser.add_argument(
+        '--telem-enable',
+        help='enable logging of telemetry to database',
+        action='store_true'
+    )
+    parser.add_argument(
+        '--telem-db-host',
+        help='hostname of InfluxDB database server',
+        default='localhost'
+    )
+    parser.add_argument(
+        '--telem-db-port',
+        help='port number of InfluxDB database server',
+        default=8086,
+        type=int
+    )
+    parser.add_argument(
+        '--telem-period',
+        help='telemetry sampling period in seconds',
+        default=1.0,
+        type=float
+    )
     args = parser.parse_args()
 
     def gamepad_callback():
@@ -125,6 +147,19 @@ def main():
         print('Gamepad found and registered.')
     except RuntimeError:
         print('No gamepads found.')
+
+    if args.telem_enable:
+        telem_logger = track.TelemLogger(
+            host=args.telem_db_host,
+            port=args.telem_db_port,
+            period=args.telem_period,
+            sources={
+                'tracker': tracker,
+                'error_optical': error_source,
+                'gamepad': game_pad
+            }
+        )
+        telem_logger.start()
 
     try:
         tracker.run()

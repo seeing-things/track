@@ -8,6 +8,7 @@ feedback control loop.
 from __future__ import print_function
 import time
 import abc
+from track.telem import TelemSource
 from track.mathutils import clamp
 
 
@@ -259,7 +260,7 @@ class LoopFilter(object):
         return rate
 
 
-class Tracker(object):
+class Tracker(TelemSource):
     """Main tracking loop class.
 
     This class is the core of the track package. A tracking loop or control
@@ -387,3 +388,12 @@ class Tracker(object):
                 if self.callback is not None:
                     self.callback()
                 self.num_iterations += 1
+
+    def get_telem_channels(self):
+        chans = {}
+        chans['num_iterations'] = self.num_iterations
+        for axis in self.mount.get_axis_names():
+            chans['rate_' + axis] = self.slew_rate[axis]
+            chans['error_' + axis] = self.error[axis]
+            chans['loop_filt_int_' + axis] = self.loop_filter[axis].int
+        return chans

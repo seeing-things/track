@@ -68,6 +68,28 @@ def main():
         default=2.0,
         type=float
     )
+    parser.add_argument(
+        '--telem-enable',
+        help='enable logging of telemetry to database',
+        action='store_true'
+    )
+    parser.add_argument(
+        '--telem-db-host',
+        help='hostname of InfluxDB database server',
+        default='localhost'
+    )
+    parser.add_argument(
+        '--telem-db-port',
+        help='port number of InfluxDB database server',
+        default=8086,
+        type=int
+    )
+    parser.add_argument(
+        '--telem-period',
+        help='telemetry sampling period in seconds',
+        default=1.0,
+        type=float
+    )
 
     subparsers = parser.add_subparsers(title='modes', dest='mode')
 
@@ -162,6 +184,19 @@ def main():
         loop_bandwidth=args.loop_bw,
         damping_factor=args.loop_damping
     )
+
+    if args.telem_enable:
+        telem_logger = track.TelemLogger(
+            host=args.telem_db_host,
+            port=args.telem_db_port,
+            period=args.telem_period,
+            sources={
+                'tracker': tracker,
+                'error_blind': error_source,
+                'gamepad': game_pad
+            }
+        )
+        telem_logger.start()
 
     try:
         tracker.run()

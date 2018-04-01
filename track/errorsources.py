@@ -22,10 +22,11 @@ except ImportError as e:
     raise
 from .control import ErrorSource
 from .mathutils import wrap_error, adjust_position, angle_between
+from track.telem import TelemSource
 
 
 
-class BlindErrorSource(ErrorSource):
+class BlindErrorSource(ErrorSource, TelemSource):
     """Ephemeris based error source.
 
     This class implements an error source based on computed ephemeris information. It is dubbed
@@ -71,8 +72,10 @@ class BlindErrorSource(ErrorSource):
         self.mount = mount
         self.meridian_side = meridian_side
         self.offset_callback = None
-        self.mount_position_cached = None
-        self.target_position_cached = None
+        self.mount_position_cached = {}
+        self.target_position_cached = {}
+        self.adjusted_position_cached = {}
+        self.error_cached = {}
         self.axes = mount.get_axis_names()
 
     def register_offset_callback(self, callback):
@@ -129,6 +132,7 @@ class BlindErrorSource(ErrorSource):
                 target_position,
                 self.offset_callback()
             )
+            self.adjusted_position_cached = adjusted_position
         else:
             adjusted_position = target_position
 
@@ -168,10 +172,24 @@ class BlindErrorSource(ErrorSource):
             else:
                 error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis])
 
+        self.error_cached = error
         return error
 
+    def get_telem_channels(self):
+        chans = {}
+        chans['meridian_side'] = self.meridian_side
+        for key, val in self.target_position_cached.items():
+            chans['target_' + key] = val
+        for key, val in self.adjusted_position_cached.items():
+            chans['adjusted_target_' + key] = val
+        for key, val in self.mount_position_cached.items():
+            chans['mount_' + key] = val
+        for key, val in self.error_cached.items():
+            chans['error_' + key] = val
+        return chans
 
-class OpticalErrorSource(ErrorSource):
+
+class OpticalErrorSource(ErrorSource, TelemSource):
     """Computer vision based error source.
 
     This class implements an error source based on computer vision recognition of a target in an
@@ -212,6 +230,9 @@ class OpticalErrorSource(ErrorSource):
         self.frame_height_px = self.webcam.get_res_y()
 
         self.frame_center_px = (self.frame_width_px / 2.0, self.frame_height_px / 2.0)
+
+        # cached values from last error calculation (for telemetry)
+        self.error_cached = {}
 
         # counts of consecutive frames with detections or no detections
         self.consec_detect_frames = 0
@@ -341,6 +362,7 @@ class OpticalErrorSource(ErrorSource):
                 else:
                     self.consec_detect_frames = 0
                     self.consec_no_detect_frames += 1
+                    self.error_cached = {}
                     raise self.NoSignalException('No target identified')
 
             # use the keypoint closest to the center of the frame
@@ -369,6 +391,7 @@ class OpticalErrorSource(ErrorSource):
             error = {}
             error[self.x_axis_name] = error_x_deg
             error[self.y_axis_name] = error_y_deg
+            self.error_cached = error
 
             self.consec_detect_frames += 1
             self.consec_no_detect_frames = 0
@@ -377,8 +400,16 @@ class OpticalErrorSource(ErrorSource):
 
             return error
 
+    def get_telem_channels(self):
+        chans = {}
+        chans['consec_detect_frames'] = self.consec_detect_frames
+        chans['consec_no_detect_frames'] = self.consec_no_detect_frames
+        for key, val in self.error_cached.items():
+            chans['error_' + key] = val
+        return chans
 
-class HybridErrorSource(ErrorSource):
+
+class HybridErrorSource(ErrorSource, TelemSource):
     """Hybrid of blind and computer vision error sources.
 
     This class is a hybrid of the BlindErrorSource and the OpticalErrorSource classes. It computes
@@ -443,6 +474,7 @@ class HybridErrorSource(ErrorSource):
         self.max_divergence = max_divergence
         self.max_optical_no_signal_frames = max_optical_no_signal_frames
         self.state = 'blind'
+        self.divergence_angle = None
         print('Hybrid error source starting in blind tracking state')
 
     def get_axis_names(self):
@@ -458,6 +490,7 @@ class HybridErrorSource(ErrorSource):
         try:
             optical_error = self.optical.compute_error(retries)
         except ErrorSource.NoSignalException:
+            self.divergence_angle = None
             if self.state == 'blind':
                 return blind_error
             else:
@@ -480,13 +513,19 @@ class HybridErrorSource(ErrorSource):
         # Get angle between optical and blind target position solutions. This is a measure of how
         # far the two solutions have diverged. A large divergence angle could mean that the
         # computer vision algorithm is not tracking the correct object.
-        divergence_angle = angle_between(target_position_optical, target_position_blind)
+        self.divergence_angle = angle_between(target_position_optical, target_position_blind)
 
-        if self.state == 'blind' and divergence_angle < self.max_divergence:
+        if self.state == 'blind' and self.divergence_angle < self.max_divergence:
             print('A target is in view, switching to optical tracking')
             self.state = 'optical'
-        elif self.state == 'optical' and divergence_angle > self.max_divergence:
+        elif self.state == 'optical' and self.divergence_angle > self.max_divergence:
             print('Solutions diverged, switching to blind tracking')
             self.state = 'blind'
 
         return blind_error if self.state == 'blind' else optical_error
+
+    def get_telem_channels(self):
+        chans = {}
+        chans['state'] = 0 if self.state == 'blind' else 1
+        chans['divergence_angle'] = self.divergence_angle
+        return chans

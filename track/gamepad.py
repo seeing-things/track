@@ -9,8 +9,9 @@ import threading
 import time
 import inputs
 import numpy as np
+from track.telem import TelemSource
 
-class Gamepad(object):
+class Gamepad(TelemSource):
     """Class for interfacing with gamepads.
 
     This class implements some useful functionality to allow a human to control
@@ -148,6 +149,13 @@ class Gamepad(object):
                 self.int_y = np.clip(self.int_y, -self.int_limit, self.int_limit)
 
             time.sleep(self.int_loop_period)
+
+    def get_telem_channels(self):
+        names = ['left_x', 'left_y', 'right_x', 'right_y', 'int_x', 'int_y']
+        chans = {}
+        for name in names:
+            chans[name] = self.__dict__[name]
+        return chans
 
 def main():
     """Prints integrated x/y values to the console every 10 ms."""
