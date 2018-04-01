@@ -20,17 +20,20 @@ def main():
     parser.add_argument(
         '--camera',
         help='device node path for tracking webcam',
-        default='/dev/video0')
+        default='/dev/video0'
+    )
     parser.add_argument(
         '--camera-res',
         help='webcam resolution in arcseconds per pixel',
         required=True,
-        type=float)
+        type=float
+    )
     parser.add_argument(
         '--camera-bufs',
         help='number of webcam capture buffers',
         required=True,
-        type=int)
+        type=int
+    )
     parser.add_argument(
         '--camera-exposure',
         help='webcam exposure level',
@@ -54,31 +57,37 @@ def main():
     parser.add_argument(
         '--lat',
         required=True,
-        help='latitude of observer (+N)')
+        help='latitude of observer (+N)'
+    )
     parser.add_argument(
         '--lon',
         required=True,
-        help='longitude of observer (+E)')
+        help='longitude of observer (+E)'
+    )
     parser.add_argument(
         '--elevation',
         required=True,
         help='elevation of observer (m)',
-        type=float)
+        type=float
+    )
     parser.add_argument(
         '--loop-bw',
         help='control loop bandwidth (Hz)',
         default=0.5,
-        type=float)
+        type=float
+    )
     parser.add_argument(
         '--loop-damping',
         help='control loop damping factor',
         default=2.0,
-        type=float)
+        type=float
+    )
     parser.add_argument(
         '--max-divergence',
         help='max divergence of optical and blind sources (degrees)',
         default=2.0,
-        type=float)
+        type=float
+    )
     parser.add_argument(
         '--telem-enable',
         help='enable logging of telemetry to database',
