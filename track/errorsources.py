@@ -163,10 +163,8 @@ class BlindErrorSource(ErrorSource, TelemSource):
                 # avoid crossing through axis limit region (path to target
                 # should not require counter weight to ever point up)
                 if mount_position['pra'] - error[axis] > 360.0:
-                    print('RA axis would have crossed through limits')
                     error[axis] = error[axis] + 360.0
                 elif mount_position['pra'] - error[axis] < 0.0:
-                    print('RA axis would have crossed through limits')
                     error[axis] = error[axis] - 360.0
 
             else:
