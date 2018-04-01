@@ -352,7 +352,7 @@ class OpticalErrorSource(ErrorSource, TelemSource):
     def compute_error(self, retries=0):
 
         while True:
-            self.webcam.get_fresh_frame()
+            frame = self.webcam.get_fresh_frame()
             keypoints = self.find_features(frame)
 
             if not keypoints:
