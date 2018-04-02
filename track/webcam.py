@@ -94,6 +94,51 @@ class WebCam(object):
             self.started = False
 
 
+    def _enum_pixel_formats(self):
+        return self._enum_common(v4l2.VIDIOC_ENUM_FMT,
+            lambda idx: v4l2.v4l2_fmtdesc(
+                type  = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE,
+                index = idx,
+            )
+        )
+
+    def _enum_frame_sizes(self, pixel_format):
+        # TODO: handle types other than V4L2_FRMSIZE_TYPE_DISCRETE sanely
+        return self._enum_common(v4l2.VIDIOC_ENUM_FRAMESIZES,
+            lambda idx: v4l2.v4l2_frmsizeenum(
+                index        = idx,
+                pixel_format = pixel_format,
+            )
+        )
+
+    def _enum_frame_intervals(self, pixel_format, width, height):
+        # TODO: handle types other than V4L2_FRMIVAL_TYPE_DISCRETE sanely
+        return self._enum_common(v4l2.VIDIOC_ENUM_FRAMEINTERVALS,
+            lambda idx: v4l2.v4l2_frmivalenum(
+                index        = idx,
+                pixel_format = pixel_format,
+                width        = width,
+                height       = height,
+            )
+        )
+
+    def _enum_common(self, req, l_getreq):
+        idx = 0
+        results = []
+        while True:
+            request = l_getreq(idx)
+            try:
+                self._v4l2_ioctl(req, request)
+            except OSError as e:
+                if e.errno == errno.EINVAL:
+                    break
+                else:
+                    raise
+            results += [request]
+            idx += 1
+        return results
+
+
     def _verify_capabilities(self):
         fmt = v4l2.v4l2_format(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE)
         self._v4l2_ioctl(v4l2.VIDIOC_G_FMT, fmt)
