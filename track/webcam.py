@@ -205,6 +205,8 @@ class V4L2WebCam(object):
         result = self.buffers[buf.index].start.read(buf.bytesused)
         self.buffers[buf.index].start.seek(0)
 
+        self._v4l2_ioctl(v4l2.VIDIOC_QBUF, buf)
+
         return result
 
     def close(self):
