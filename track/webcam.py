@@ -10,9 +10,12 @@ import v4l2
 
 class WebCam(object):
 
-    def __init__(self, dev_path, num_buffers, ctrlval_exposure):
+    def __init__(self, dev_path, bufs_wanted, ctrl_exposure):
         self.dev_path    = dev_path
-        self.num_buffers = num_buffers
+        self.bufs_wanted = bufs_wanted
+        self.dev_fd      = -1
+        self.bufmaps     = []
+        self.started     = False
 
         # detect OpenCV version to handle API differences between 2 and 3
         self.opencv_ver = int(cv2.__version__.split('.')[0])
@@ -20,46 +23,33 @@ class WebCam(object):
 
         self.dev_fd = os.open(self.dev_path, os.O_RDWR | os.O_NONBLOCK);
 
-        self._set_exposure(ctrlval_exposure)
+        self.res_wanted = self._verify_capabilities()
+
+        self._set_exposure(ctrl_exposure)
         self._set_autogain(False)
         self._set_jpeg_quality(100)
 
-        fmt = self._get_capture_format()
+        self.res_actual = self._set_format(self.res_wanted, v4l2.V4L2_PIX_FMT_JPEG)
 
-        # TODO: check whether VIDIOC_G_FMT is even the right IOCTL for determining POSSIBLE pixfmts and not just the current one
-        # ensure that the device supports 'JFIF JPEG' format video capture
-        assert (fmt.pix.pixelformat == v4l2.V4L2_PIX_FMT_JPEG)
+        self._setup_buffers(self.bufs_wanted)
+        self._queue_all_buffers()
 
-        # TODO: check whether VIDIOC_G_FMT is even the right IOCTL for determining POSSIBLE resolutions and not just the current one
-        # sanity-check the allegedly supported camera width and height
-        assert (fmt.win.w.left > 0 and fmt.win.w.left <= 10240)
-        assert (fmt.win.w.top  > 0 and fmt.win.w.top  <= 10240)
-        self.res_wanted = (fmt.win.w.left, fmt.win.w.top)
-
-        self.camera = V4L2WebCam(self.dev_fd)
-
-        fmt = self.camera.set_format(self.res_wanted[0], self.res_wanted[1], fourcc=v4l2.V4L2_PIX_FMT_JPEG)
-        self.res_actual_x = fmt.fmt.pix.width
-        self.res_actual_y = fmt.fmt.pix.height
-
-        self.camera.create_buffers(self.num_buffers)
-        self.camera.queue_all_buffers()
-        self.camera.start()
+        self.start()
 
     def __del__(self):
-        if hasattr(self, 'camera'):
-            self.camera.stop()
-            self.camera.close()
-        if hasattr(self, 'dev_fd'):
+        self.stop()
+        for bufmap in self.bufmaps:
+            bufmap.close()
+        if self.dev_fd != -1:
             os.close(self.dev_fd)
 
     # get the ACTUAL webcam frame width
     def get_res_x(self):
-        return self.res_actual_x
+        return self.res_actual[0]
 
     # get the ACTUAL webcam frame height
     def get_res_y(self):
-        return self.res_actual_y
+        return self.res_actual[1]
 
     # get the most recent frame from the webcam, waiting if necessary, and throwing away stale frames if any
     # (the frame is a numpy array in BGR format)
@@ -79,9 +69,7 @@ class WebCam(object):
     # get one frame from the webcam buffer; the frame is not guaranteed to be the most recent frame available!
     # (the frame is a JPEG byte string)
     def get_one_frame(self):
-#        return self.camera.read_and_queue()
-        x = self.camera.read_and_queue()
-        return x
+        return self._read_and_queue()
 
     # block until the webcam has at least one frame ready
     def block_until_frame_ready(self):
@@ -92,74 +80,78 @@ class WebCam(object):
         readable, writable, exceptional = select.select((self.dev_fd,), (), (), 0.0)
         return (len(readable) != 0)
 
+    # tell the camera to start capturing
+    def start(self):
+        if not self.started:
+            self._v4l2_ioctl(v4l2.VIDIOC_STREAMON, ctypes.c_int(int(v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE)))
+            self.started = True
 
-    def _set_exposure(self, level):
-        self._set_ctrl(v4l2.V4L2_CID_EXPOSURE, int(level), 'exposure level')
+    # tell the camera to stop capturing
+    def stop(self):
+        if self.started:
+            self._v4l2_ioctl(v4l2.VIDIOC_STREAMOFF, ctypes.c_int(int(v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE)))
+            self.started = False
 
-    def _set_autogain(self, enable):
-        self._set_ctrl(v4l2.V4L2_CID_AUTOGAIN, int(enable), 'automatic gain')
+
+    def _verify_capabilities(self):
+        fmt      = v4l2.v4l2_format()
+        fmt.type = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
+        self._v4l2_ioctl(v4l2.VIDIOC_G_FMT, fmt)
+        # TODO: check whether VIDIOC_G_FMT is even the right IOCTL for determining POSSIBLE pixel formats
+        #       and not just the current one
+        # TODO: check whether VIDIOC_G_FMT is even the right IOCTL for determining POSSIBLE resolutions
+        #       and not just the current one
+
+        # ensure that the device supports 'JFIF JPEG' format video capture
+        assert (fmt.fmt.pix.pixelformat == v4l2.V4L2_PIX_FMT_JPEG)
+
+        # sanity-check the allegedly supported camera width and height
+        assert (fmt.fmt.win.w.left > 0 and fmt.fmt.win.w.left <= 10240)
+        assert (fmt.fmt.win.w.top  > 0 and fmt.fmt.win.w.top  <= 10240)
+
+        # return supported resolution
+        return [fmt.fmt.win.w.left, fmt.fmt.win.w.top]
+
+    def _set_exposure(self, level):  self._set_ctrl(v4l2.V4L2_CID_EXPOSURE, int (level),  'exposure level')
+    def _set_autogain(self, enable): self._set_ctrl(v4l2.V4L2_CID_AUTOGAIN, bool(enable), 'automatic gain')
 
     def _set_ctrl(self, id, value, desc):
-        try:
-            data = v4l2.v4l2_control()
-            data.id    = id
-            data.value = value
-            self._v4l2_ioctl(v4l2.VIDIOC_S_CTRL, data)
-        except (IOError, OSError):
-            print('WebCam: failed to set control: {}'.format(desc))
+        ctrl       = v4l2.v4l2_control()
+        ctrl.id    = id
+        ctrl.value = value
+        self._v4l2_ioctl_nonfatal(v4l2.VIDIOC_S_CTRL, ctrl, 'failed to set control: {}'.format(desc))
 
     def _set_jpeg_quality(self, quality):
-        try:
-            # get current JPEG settings first; then change quality; then set
-            data = v4l2.v4l2_jpegcompression()
-            self._v4l2_ioctl(v4l2.VIDIOC_G_JPEGCOMP, data)
-            data.quality = quality
-            self._v4l2_ioctl(v4l2.VIDIOC_S_JPEGCOMP, data)
-        except (IOError, OSError):
-            print('WebCam: failed to set JPEG compression quality')
+        jpegcomp         = v4l2.v4l2_jpegcompression()
+        self._v4l2_ioctl_nonfatal(v4l2.VIDIOC_G_JPEGCOMP, jpegcomp, 'failed to set JPEG compression quality')
+        jpegcomp.quality = quality
+        self._v4l2_ioctl_nonfatal(v4l2.VIDIOC_S_JPEGCOMP, jpegcomp, 'failed to set JPEG compression quality')
 
-    def _get_capture_format(self):
-        data = v4l2.v4l2_format()
-        data.type = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
-        self._v4l2_ioctl(v4l2.VIDIOC_G_FMT, data)
-        return data.fmt
+    # roughly equivalent to v4l2capture's set_format
+    def _set_format(self, res_wanted, fourcc):
+        assert (not self.started)
 
-    def _v4l2_ioctl(self, req, arg):
-        fcntl.ioctl(self.dev_fd, req, arg)
-
-
-# TODO: eliminate this and integrate it into WebCam, if feasible & non-ugly
-class V4L2WebCam(object):
-
-    def __init__(self, dev_fd):
-        self.dev_fd     = dev_fd
-        self.buffers    = []
-
-    def __del__(self):
-        self._unmap()
-
-    def set_format(self, size_x, size_y, fourcc):
-        # size_x, size_y, fourcc='JPEG'
-
-        fmt = v4l2.v4l2_format()
+        fmt      = v4l2.v4l2_format()
         fmt.type = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
-
         self._v4l2_ioctl(v4l2.VIDIOC_G_FMT, fmt)
 
-        # TODO: double-check the sanity of some of the values below...
         fmt.type                 = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
-        fmt.fmt.pix.width        = size_x
-        fmt.fmt.pix.height       = size_y
+        fmt.fmt.pix.width        = res_wanted[0]
+        fmt.fmt.pix.height       = res_wanted[1]
         fmt.fmt.pix.bytesperline = 0
         fmt.fmt.pix.pixelformat  = fourcc
         fmt.fmt.pix.field        = v4l2.V4L2_FIELD_ANY
-
         self._v4l2_ioctl(v4l2.VIDIOC_S_FMT, fmt)
 
-        return fmt
+        # return actual resolution
+        return [fmt.fmt.pix.width, fmt.fmt.pix.height]
 
-    def create_buffers(self, buf_count):
-        reqbuf = v4l2.v4l2_requestbuffers()
+    # roughly equivalent to v4l2capture's create_buffers
+    def _setup_buffers(self, buf_count):
+        assert (not self.started)
+        assert (len(self.bufmaps) == 0)
+
+        reqbuf        = v4l2.v4l2_requestbuffers()
         reqbuf.count  = buf_count
         reqbuf.type   = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
         reqbuf.memory = v4l2.V4L2_MEMORY_MMAP
@@ -167,49 +159,47 @@ class V4L2WebCam(object):
         assert (reqbuf.count > 0)
 
         for idx in range(reqbuf.count):
-            buf = v4l2.v4l2_buffer()
+            buf        = v4l2.v4l2_buffer()
             buf.index  = idx
             buf.type   = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
             buf.memory = v4l2.V4L2_MEMORY_MMAP
             self._v4l2_ioctl(v4l2.VIDIOC_QUERYBUF, buf)
 
-            self.buffers += [mmap.mmap(self.dev_fd, buf.length, access=mmap.ACCESS_WRITE, offset=buf.m.offset)]
+            self.bufmaps += [mmap.mmap(self.dev_fd, buf.length, access=mmap.ACCESS_WRITE, offset=buf.m.offset)]
 
-    def queue_all_buffers(self):
-        for idx in range(len(self.buffers)):
-            buf = v4l2.v4l2_buffer()
+    # roughly equivalent to v4l2capture's queue_all_buffers
+    def _queue_all_buffers(self):
+        assert (not self.started)
+        assert (len(self.bufmaps) != 0)
+
+        for idx in range(len(self.bufmaps)):
+            buf        = v4l2.v4l2_buffer()
             buf.index  = idx
             buf.type   = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
             buf.memory = v4l2.V4L2_MEMORY_MMAP
             self._v4l2_ioctl(v4l2.VIDIOC_QBUF, buf)
 
-    def start(self):
-        self._v4l2_ioctl(v4l2.VIDIOC_STREAMON, ctypes.c_int(int(v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE)))
+    # roughly equivalent to v4l2capture's read_and_queue
+    def _read_and_queue(self):
+        assert (self.started)
 
-    def stop(self):
-        self._v4l2_ioctl(v4l2.VIDIOC_STREAMOFF, ctypes.c_int(int(v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE)))
-
-    def read_and_queue(self):
-        buf = v4l2.v4l2_buffer()
+        buf        = v4l2.v4l2_buffer()
         buf.type   = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
         buf.memory = v4l2.V4L2_MEMORY_MMAP
         self._v4l2_ioctl(v4l2.VIDIOC_DQBUF, buf)
 
-        result = self.buffers[buf.index].read(buf.bytesused)
-        self.buffers[buf.index].seek(0)
+        frame = self.bufmaps[buf.index].read(buf.bytesused)
+        self.bufmaps[buf.index].seek(0)
 
         self._v4l2_ioctl(v4l2.VIDIOC_QBUF, buf)
 
-        return result
+        return frame
 
-    def close(self):
-        self._unmap()
-
-
-    def _unmap(self):
-        for mapping in self.buffers:
-            mapping.close()
-        self.buffers = []
+    def _v4l2_ioctl_nonfatal(self, req, arg, err_msg):
+        try:
+            self._v4l2_ioctl(req, arg)
+        except (IOError, OSError):
+            print('WebCam: {}'.format(err_msg))
 
     def _v4l2_ioctl(self, req, arg):
         fcntl.ioctl(self.dev_fd, req, arg)
