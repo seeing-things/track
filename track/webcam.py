@@ -2,6 +2,7 @@ import os
 import fcntl
 import select
 import mmap
+import errno
 import ctypes
 import numpy as np
 import cv2
@@ -198,8 +199,8 @@ class WebCam(object):
     def _v4l2_ioctl_nonfatal(self, req, arg, err_msg):
         try:
             self._v4l2_ioctl(req, arg)
-        except (IOError, OSError):
+        except OSError:
             print('WebCam: {}'.format(err_msg))
 
     def _v4l2_ioctl(self, req, arg):
-        fcntl.ioctl(self.dev_fd, req, arg)
+        assert (fcntl.ioctl(self.dev_fd, req, arg) == 0)
