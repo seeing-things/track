@@ -20,7 +20,7 @@ def main():
 
     # Create object with base type TelescopeMount
     if args.mount_type == 'nexstar':
-        mount = track.NexStarMount(args.mout_path)
+        mount = track.NexStarMount(args.mount_path)
     elif args.mount_type == 'gemini':
         mount = track.LosmandyGeminiMount(args.mount_path)
     else:

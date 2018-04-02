@@ -111,7 +111,7 @@ def main():
 
     # Create object with base type TelescopeMount
     if args.mount_type == 'nexstar':
-        mount = track.NexStarMount(args.mout_path, bypass_alt_limits=args.bypass_alt_limits)
+        mount = track.NexStarMount(args.mount_path, bypass_alt_limits=args.bypass_alt_limits)
         if args.bypass_alt_limits:
             print('Warning: Altitude limits disabled! Be careful!')
         x_axis_name = 'az'
