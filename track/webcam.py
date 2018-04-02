@@ -3,7 +3,6 @@ import fcntl
 import select
 import mmap
 import ctypes
-from collections import namedtuple
 import numpy as np
 import cv2
 import v4l2
@@ -129,9 +128,6 @@ class WebCam(object):
         fcntl.ioctl(self.dev_fd, req, arg)
 
 
-Buffer = namedtuple('Buffer', ' '.join(['length', 'start']))
-
-
 # TODO: eliminate this and integrate it into WebCam, if feasible & non-ugly
 class V4L2WebCam(object):
 
@@ -177,13 +173,10 @@ class V4L2WebCam(object):
             buf.memory = v4l2.V4L2_MEMORY_MMAP
             self._v4l2_ioctl(v4l2.VIDIOC_QUERYBUF, buf)
 
-            ptr = mmap.mmap(self.dev_fd, buf.length, access=mmap.ACCESS_WRITE, offset=buf.m.offset)
-            self.buffers += [Buffer(length=buf.length, start=ptr)]
-
-        self.buf_count = reqbuf.count
+            self.buffers += [mmap.mmap(self.dev_fd, buf.length, access=mmap.ACCESS_WRITE, offset=buf.m.offset)]
 
     def queue_all_buffers(self):
-        for idx in range(self.buf_count):
+        for idx in range(len(self.buffers)):
             buf = v4l2.v4l2_buffer()
             buf.index  = idx
             buf.type   = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
@@ -202,8 +195,8 @@ class V4L2WebCam(object):
         buf.memory = v4l2.V4L2_MEMORY_MMAP
         self._v4l2_ioctl(v4l2.VIDIOC_DQBUF, buf)
 
-        result = self.buffers[buf.index].start.read(buf.bytesused)
-        self.buffers[buf.index].start.seek(0)
+        result = self.buffers[buf.index].read(buf.bytesused)
+        self.buffers[buf.index].seek(0)
 
         self._v4l2_ioctl(v4l2.VIDIOC_QBUF, buf)
 
@@ -214,8 +207,8 @@ class V4L2WebCam(object):
 
 
     def _unmap(self):
-        for buf in self.buffers:
-            buf.start.close()
+        for mapping in self.buffers:
+            mapping.close()
         self.buffers = []
 
     def _v4l2_ioctl(self, req, arg):
