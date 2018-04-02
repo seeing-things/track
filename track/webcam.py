@@ -95,8 +95,7 @@ class WebCam(object):
 
 
     def _verify_capabilities(self):
-        fmt      = v4l2.v4l2_format()
-        fmt.type = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
+        fmt = v4l2.v4l2_format(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE)
         self._v4l2_ioctl(v4l2.VIDIOC_G_FMT, fmt)
         # TODO: check whether VIDIOC_G_FMT is even the right IOCTL for determining POSSIBLE pixel formats
         #       and not just the current one
@@ -117,13 +116,11 @@ class WebCam(object):
     def _set_autogain(self, enable): self._set_ctrl(v4l2.V4L2_CID_AUTOGAIN, bool(enable), 'automatic gain')
 
     def _set_ctrl(self, id, value, desc):
-        ctrl       = v4l2.v4l2_control()
-        ctrl.id    = id
-        ctrl.value = value
+        ctrl = v4l2.v4l2_control(id=id, value=value)
         self._v4l2_ioctl_nonfatal(v4l2.VIDIOC_S_CTRL, ctrl, 'failed to set control: {}'.format(desc))
 
     def _set_jpeg_quality(self, quality):
-        jpegcomp         = v4l2.v4l2_jpegcompression()
+        jpegcomp = v4l2.v4l2_jpegcompression()
         self._v4l2_ioctl_nonfatal(v4l2.VIDIOC_G_JPEGCOMP, jpegcomp, 'failed to set JPEG compression quality')
         jpegcomp.quality = quality
         self._v4l2_ioctl_nonfatal(v4l2.VIDIOC_S_JPEGCOMP, jpegcomp, 'failed to set JPEG compression quality')
@@ -132,8 +129,7 @@ class WebCam(object):
     def _set_format(self, res_wanted, fourcc):
         assert (not self.started)
 
-        fmt      = v4l2.v4l2_format()
-        fmt.type = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
+        fmt = v4l2.v4l2_format(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE)
         self._v4l2_ioctl(v4l2.VIDIOC_G_FMT, fmt)
 
         fmt.type                 = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
@@ -152,20 +148,13 @@ class WebCam(object):
         assert (not self.started)
         assert (len(self.bufmaps) == 0)
 
-        reqbuf        = v4l2.v4l2_requestbuffers()
-        reqbuf.count  = buf_count
-        reqbuf.type   = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
-        reqbuf.memory = v4l2.V4L2_MEMORY_MMAP
+        reqbuf = v4l2.v4l2_requestbuffers(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE, count=buf_count, memory=v4l2.V4L2_MEMORY_MMAP)
         self._v4l2_ioctl(v4l2.VIDIOC_REQBUFS, reqbuf)
         assert (reqbuf.count > 0)
 
         for idx in range(reqbuf.count):
-            buf        = v4l2.v4l2_buffer()
-            buf.index  = idx
-            buf.type   = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
-            buf.memory = v4l2.V4L2_MEMORY_MMAP
+            buf = v4l2.v4l2_buffer(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE, index=idx, memory=v4l2.V4L2_MEMORY_MMAP)
             self._v4l2_ioctl(v4l2.VIDIOC_QUERYBUF, buf)
-
             self.bufmaps += [mmap.mmap(self.dev_fd, buf.length, access=mmap.ACCESS_WRITE, offset=buf.m.offset)]
 
     # roughly equivalent to v4l2capture's queue_all_buffers
@@ -174,19 +163,14 @@ class WebCam(object):
         assert (len(self.bufmaps) != 0)
 
         for idx in range(len(self.bufmaps)):
-            buf        = v4l2.v4l2_buffer()
-            buf.index  = idx
-            buf.type   = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
-            buf.memory = v4l2.V4L2_MEMORY_MMAP
+            buf = v4l2.v4l2_buffer(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE, index=idx, memory=v4l2.V4L2_MEMORY_MMAP)
             self._v4l2_ioctl(v4l2.VIDIOC_QBUF, buf)
 
     # roughly equivalent to v4l2capture's read_and_queue
     def _read_and_queue(self):
         assert (self.started)
 
-        buf        = v4l2.v4l2_buffer()
-        buf.type   = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
-        buf.memory = v4l2.V4L2_MEMORY_MMAP
+        buf = v4l2.v4l2_buffer(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE, memory=v4l2.V4L2_MEMORY_MMAP)
         self._v4l2_ioctl(v4l2.VIDIOC_DQBUF, buf)
 
         frame = self.bufmaps[buf.index].read(buf.bytesused)
