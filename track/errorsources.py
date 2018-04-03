@@ -292,7 +292,7 @@ class OpticalErrorSource(ErrorSource, TelemSource):
         # SimpleBlobDetector to find centroids of features
         return self.detector.detect(thresh)
 
-    def show_annotated_frame(self, frame, keypoints, target_keypoint):
+    def show_annotated_frame(self, frame, keypoints=[], target_keypoint=None):
         """Displays camera frame in a window with features circled and crosshairs.
 
         Args:
@@ -334,14 +334,15 @@ class OpticalErrorSource(ErrorSource, TelemSource):
         )
 
         # circle target keypoint in red
-        target_keypoint.size = max(target_keypoint.size, 10.0)
-        frame_annotated = cv2.drawKeypoints(
-            frame_annotated,
-            [target_keypoint],
-            np.array([]),
-            (0, 0, 255),
-            cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
-        )
+        if target_keypoint is not None:
+            target_keypoint.size = max(target_keypoint.size, 10.0)
+            frame_annotated = cv2.drawKeypoints(
+                frame_annotated,
+                [target_keypoint],
+                np.array([]),
+                (0, 0, 255),
+                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+            )
 
         # display the frame in a window
         cv2.imshow('frame', frame_annotated)
@@ -361,6 +362,7 @@ class OpticalErrorSource(ErrorSource, TelemSource):
                     self.consec_detect_frames = 0
                     self.consec_no_detect_frames += 1
                     self.error_cached = {}
+                    self.show_annotated_frame(frame)
                     raise self.NoSignalException('No target identified')
 
             # use the keypoint closest to the center of the frame
