@@ -355,6 +355,7 @@ class OpticalErrorSource(ErrorSource, TelemSource):
             keypoints = self.find_features(frame)
 
             if not keypoints:
+                self.show_annotated_frame(frame)
                 if retries > 0:
                     retries -= 1
                     continue
@@ -362,7 +363,6 @@ class OpticalErrorSource(ErrorSource, TelemSource):
                     self.consec_detect_frames = 0
                     self.consec_no_detect_frames += 1
                     self.error_cached = {}
-                    self.show_annotated_frame(frame)
                     raise self.NoSignalException('No target identified')
 
             # use the keypoint closest to the center of the frame
