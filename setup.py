@@ -46,13 +46,13 @@ setup(
         'ephem>=3.7',
         'inputs>=0.1',
         'numpy',
-        'v4l2==0.2.1',
+        'v4l2==0.2.2',
         'requests',
         'MonthDelta>=1.0b',
     ],
 
     dependency_links=[
-        'https://github.com/bgottula/python-v4l2/tarball/master#egg=v4l2-0.2.1',
+        'https://github.com/bgottula/python-v4l2/tarball/master#egg=v4l2-0.2.2',
         'https://github.com/bgottula/point/tarball/master#egg=point-0.1',
     ],
 
