@@ -188,13 +188,14 @@ def main():
 
     # Create object with base type ErrorSource
     error_source = track.HybridErrorSource(
-        mount,
-        observer,
-        target,
-        args.camera,
-        args.camera_res,
-        args.camera_exposure,
-        args.max_divergence,
+        mount=mount,
+        observer=observer,
+        target=target,
+        cam_dev_path=args.camera,
+        arcsecs_per_pixel=args.camera_res,
+        cam_num_buffers=args.camera_bufs,
+        cam_ctlval_exposure=args.camera_exposure,
+        max_divergence=args.max_divergence,
         meridian_side=args.meridian_side
     )
 
