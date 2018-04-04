@@ -26,8 +26,9 @@ class WebCam(object):
 
         self.res_wanted = self._verify_capabilities()
 
-        self._set_exposure(ctrl_exposure)
+        # disable autogain before setting exposure
         self._set_autogain(False)
+        self._set_exposure(ctrl_exposure)
         self._set_jpeg_quality(100)
 
         self.res_actual = self._set_format(self.res_wanted, v4l2.V4L2_PIX_FMT_JPEG)
