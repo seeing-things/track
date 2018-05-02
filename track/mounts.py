@@ -39,29 +39,30 @@ class NexStarMount(TelescopeMount):
             bypass_alt_limits=False,
             max_slew_rate=16319.0/3600.0,
             max_slew_accel=None,
+            max_slew_step=None,
         ):
         """Inits NexStarMount object.
 
-        Initializes a NexStarMount object by constructing a point.NexStar
-        object to communicate with the hand controller and sets initial values
-        for several class attributes.
+        Initializes a NexStarMount object by constructing a point.NexStar object to communicate
+        with the hand controller and sets initial values for several class attributes.
 
         Args:
-            device_name: A string with the name of the serial device connected
-                to the hand controller. For example, '/dev/ttyUSB0'.
-            alt_min_limit: Lower limit on the mount's altitude. The default
-                value is reasonable for a NexStar 130SLT.
-            alt_max_limit: Upper limit on the mount's altitude. The default
-                value is reasonable for a NexStar 130SLT.
+            device_name: A string with the name of the serial device connected to the hand
+                controller. For example, '/dev/ttyUSB0'.
+            alt_min_limit: Lower limit on the mount's altitude. The default value is reasonable for
+                a NexStar 130SLT.
+            alt_max_limit: Upper limit on the mount's altitude. The default value is reasonable for
+                a NexStar 130SLT.
             bypass_alt_limits: If True altitude limits will not be enforced.
-            max_slew_rate: The maximum slew rate supported by the mount. The
-                default value (about 4.5 deg/s) is the max rate supported by
-                the NexStar 130SLT hand controller as determined by
-                experimentation.
-            max_slew_accel: The maximum slew acceleration in degrees per second
-                squared. The NexStar 130SLT mount has very slow acceleration
-                and never stalls so there is little risk of leaving this set
-                to None (no limit).
+            max_slew_rate: The maximum slew rate supported by the mount. The default value (about
+                4.5 deg/s) is the max rate supported by the NexStar 130SLT hand controller as
+                determined by experimentation.
+            max_slew_accel: The maximum slew acceleration in degrees per second squared. The
+                NexStar 130SLT mount has very slow acceleration and never stalls so there is little
+                risk of leaving this set to None (no limit).
+            max_slew_step: The maximum change in slew rate between slew commands in degrees per
+                second. The NexStar 130SLT mount has very slow acceleration and never stalls so
+                there is little risk associated with leaving this set to None (no limit).
         """
         self.mount = point.NexStar(device_name)
         self.alt_min_limit = alt_min_limit
@@ -69,6 +70,7 @@ class NexStarMount(TelescopeMount):
         self.bypass_alt_limits = bypass_alt_limits
         self.max_slew_rate = max_slew_rate
         self.max_slew_accel = max_slew_accel
+        self.max_slew_step = max_slew_step
         self.cached_position = None
         self.cached_position_time = None
 
@@ -156,27 +158,28 @@ class NexStarMount(TelescopeMount):
     def get_max_slew_accels(self):
         return {'ra': self.max_slew_accel, 'dec': self.max_slew_accel}
 
+    def get_max_slew_steps(self):
+        return {'ra': self.max_slew_step, 'dec': self.max_slew_step}
+
 
 class LosmandyGeminiMount(TelescopeMount):
     """Interface class for Losmandy equatorial mounts with Gemini 2.
 
-    This class implements the abstract methods in the TelescopeMount base
-    class. The interface to the Gemini 2 mount computer is provided by the
-    point package.
+    This class implements the abstract methods in the TelescopeMount base class. The interface to
+    the Gemini 2 mount computer is provided by the point package.
 
     Attributes:
-        mount: A point.Gemini2 object which abstracts the low-level serial or
-            UDP command interface to Gemini 2.
+        mount: A point.Gemini2 object which abstracts the low-level serial or UDP command interface
+            to Gemini 2.
         ra_west_limit: Right ascension west of meridian limit in degrees.
         ra_east_limit: Right ascension east of meridian limit in degrees.
         bypass_ra_limits: Boolean, True when RA limits are bypassed.
-        max_slew_rate: Maximum slew rate supported by the mount in degrees per
-            second.
+        max_slew_rate: Maximum slew rate supported by the mount in degrees per second.
         max_slew_accel: Maximum slew acceleration in degrees per second squared.
-        cached_position: Cached position dict from last time position was read
-            from the mount.
-        cached_position_time: Unix timestamp corresponding to the time when
-            cached_position was read from the mount.
+        max_slew_step: Maximum slew rate change per command in degrees per second.
+        cached_position: Cached position dict from last time position was read from the mount.
+        cached_position_time: Unix timestamp corresponding to the time when cached_position was
+            read from the mount.
     """
 
     def __init__(
@@ -187,26 +190,26 @@ class LosmandyGeminiMount(TelescopeMount):
             bypass_ra_limits=False,
             max_slew_rate=4.0,
             max_slew_accel=10.0,
+            max_slew_step=0.4,
         ):
         """Inits LosmandyGeminiMount object.
 
-        Initializes a LosmandyGeminiMount object by constructing a
-        point.Gemini2 object to communicate with Gemini 2 and sets initial
-        svalues for several class attributes.
+        Initializes a LosmandyGeminiMount object by constructing a point.Gemini2 object to
+        communicate with Gemini 2 and sets initial values for several class attributes.
 
         Args:
-            device_name: A string with the name of the serial device connected
-                to Gemini 2. For example, '/dev/ttyACM0'.
-            ra_west_limit: Limit right ascension axis to less than this many
-                degrees from the meridian to the west.
-            ra_east_limit: Limit right ascension axis to less than this many
-                degrees from the meridian to the east.
+            device_name: A string with the name of the serial device connected to Gemini 2. For
+                example, '/dev/ttyACM0'.
+            ra_west_limit: Limit right ascension axis to less than this many degrees from the
+                meridian to the west.
+            ra_east_limit: Limit right ascension axis to less than this many degrees from the
+                meridian to the east.
             bypass_ra_limits: If True RA axis limits will not be enforced.
-            max_slew_rate: The maximum slew rate supported by the mount in
-                degrees per second.
-            max_slew_accel: The maximum slew acceleration supported by the
-                mount in degrees per second squared. Higher limits increase
-                the likelihood of motor stalls.
+            max_slew_rate: The maximum slew rate supported by the mount in degrees per second.
+            max_slew_accel: The maximum slew acceleration supported by the mount in degrees per
+                second squared. Higher limits increase the likelihood of motor stalls.
+            max_slew_step: The maximum change in slew rate per slew command in degrees per second.
+                Higher limits increase the likelihood of motor stalls.
         """
         self.mount = point.Gemini2(point.gemini_backend.Gemini2BackendUDP(0.25, device_name))
         self.ra_west_limit = ra_west_limit
@@ -214,6 +217,7 @@ class LosmandyGeminiMount(TelescopeMount):
         self.bypass_ra_limits = bypass_ra_limits
         self.max_slew_rate = max_slew_rate
         self.max_slew_accel = max_slew_accel
+        self.max_slew_step = max_slew_step
         self.cached_position = None
         self.cached_position_time = None
 
@@ -293,3 +297,6 @@ class LosmandyGeminiMount(TelescopeMount):
 
     def get_max_slew_accels(self):
         return {'ra': self.max_slew_accel, 'dec': self.max_slew_accel}
+
+    def get_max_slew_steps(self):
+        return {'ra': self.max_slew_step, 'dec': self.max_slew_step}

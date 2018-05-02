@@ -137,6 +137,18 @@ class TelescopeMount(object):
         """
         pass
 
+    @abc.abstractmethod
+    def get_max_slew_steps(self):
+        """Get the max supported slew steps.
+
+        Returns:
+            A dict with keys for each axis where the values are the maximum allowed slew steps in
+            degrees per second. The slew step is defined as the maximum magnitude change in slew
+            rate between consecutive slew commands.
+        """
+        pass
+
+
 class LoopFilter(object):
     """Proportional plus integral (PI) loop filter.
 
@@ -151,6 +163,7 @@ class LoopFilter(object):
         rate_limit: Maximum allowed slew rate in degrees per second.
         accel_limit: Maximum allowed slew acceleration in degrees per second
             squared.
+        step_limit: Maximum allowed change in slew rate per update in degrees per second.
         int: Integrator value.
         last_iteration_time: Unix time of last call to update().
         last_rate: Output value returned on last call to update().
@@ -161,6 +174,7 @@ class LoopFilter(object):
             damping_factor,
             rate_limit=None,
             accel_limit=None,
+            step_limit=None,
             max_update_period=0.1
         ):
         """Inits a Loop Filter object.
@@ -168,10 +182,11 @@ class LoopFilter(object):
         Args:
             bandwidth: Loop bandwidth in Hz.
             damping_factor: Loop damping factor.
-            rate_limit: Slew rate limit in degrees per second. Set to None to
+            rate_limit: Slew rate limit in degrees per second. Set to None to remove limit.
+            accel_limit: Slew acceleration limit in degrees per second squared. Set to None to
                 remove limit.
-            accel_limit: Slew acceleration limit in degrees per second squared.
-                Set to None to remove limit.
+            step_limit: Maximum change in slew rate allowed per update in degrees per second. Set
+                to None to remove limit.
             max_update_period: Maximum tolerated loop update period in seconds.
         """
         self.bandwidth = bandwidth
@@ -179,6 +194,7 @@ class LoopFilter(object):
         self.max_update_period = max_update_period
         self.rate_limit = rate_limit
         self.accel_limit = accel_limit
+        self.step_limit = step_limit
         self.int = 0.0
         self.last_iteration_time = None
         self.last_rate = 0.0
@@ -255,6 +271,13 @@ class LoopFilter(object):
                 rate = self.last_rate + rate_change
                 self.int = clamp(self.int, abs(rate))
 
+        # enforce a max slew rate step size
+        if self.step_limit is not None:
+            if abs(rate_change) > self.step_limit:
+                rate_change = clamp(rate_change, self.step_limit)
+                rate = self.last_rate + rate_change
+                self.int = clamp(self.int, abs(rate))
+
         self.last_rate = rate
 
         return rate
@@ -327,6 +350,7 @@ class Tracker(TelemSource):
                 damping_factor=damping_factor,
                 rate_limit=mount.get_max_slew_rates()[axis],
                 accel_limit=mount.get_max_slew_accels()[axis],
+                step_limit=mount.get_max_slew_steps()[axis],
             )
             self.error[axis] = None
             self.slew_rate[axis] = 0.0
