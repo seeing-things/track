@@ -395,23 +395,37 @@ class Tracker(TelemSource):
             return
 
         while True:
+
+            if self.stop:
+                return
+
+            # compute error
             try:
-                if self.stop:
-                    return
                 self.error = self.error_source.compute_error()
-                for axis in axes:
-                    self.slew_rate[axis] = self.loop_filter[axis].update(self.error[axis])
-                    self.mount.slew(axis, self.slew_rate[axis])
             except ErrorSource.NoSignalException:
                 for axis in self.mount.get_axis_names():
                     self.error[axis] = None
-            except TelescopeMount.AxisLimitException as e:
-                for axis in e.axes:
+                self.finish_control_cycle()
+                break
+
+            # update loop filters
+            for axis in axes:
+                self.slew_rate[axis] = self.loop_filter[axis].update(self.error[axis])
+
+            # set mount slew rates
+            for axis in axes:
+                try:
+                    self.mount.slew(axis, self.slew_rate[axis])
+                except TelescopeMount.AxisLimitException:
                     self.loop_filter[axis].int = 0.0
-            finally:
-                if self.callback is not None:
-                    self.callback()
-                self.num_iterations += 1
+
+            self.finish_control_cycle()
+
+    def finish_control_cycle(self):
+        """Final tasks to perform at the end of each control cycle."""
+        if self.callback is not None:
+            self.callback()
+        self.num_iterations += 1
 
     def get_telem_channels(self):
         chans = {}
