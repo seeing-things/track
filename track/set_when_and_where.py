@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """Sets mount time and location. Only supports NexStar mounts."""
 

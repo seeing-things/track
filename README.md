@@ -1,5 +1,8 @@
+# Python Version Support
 
-Installation
+This project is Python 3 compatible. Most of the code can probably run under Python 2.7 but the maintainers do not perform any testing with Python 2 and make no promises. The point package, on which this project depends, is Python 3 only.
+
+# Installation
 
 Computer vision support is provided by OpenCV. To use these features you will need to install OpenCV from your distribution's package manager or from source. You will also need to install the Python bindings. On Ubuntu these are found in the python3-opencv package.
 
@@ -9,6 +12,6 @@ Something requires Python.h to compile. You will need to install the python3-dev
 
 A patched version of the v4l2 package is required, since it contains a number of bugs and its maintainers are apparently deceased or otherwise incapacitated. A branch containing the patched version is available here: https://github.com/bgottula/python-v4l2
 
-To ensure that the patched version of the v4l2 package mentioned above is installed, pass the --process-dependency-links option to pip:
+To ensure that the patched version of the v4l2 package mentioned above is installed, pass the `--process-dependency-links` option to pip:
 
-pip3 install --process-dependency-links .
+`pip3 install --process-dependency-links .`
