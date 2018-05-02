@@ -165,17 +165,17 @@ def main():
         target = ephem.readtle(tle[0], tle[1], tle[2])
 
     # Create a PyEphem Body object corresonding to the given fixed coordinates
-    if args.mode == 'coord':
+    elif args.mode == 'coord':
         print('In fixed-body coordinate mode: (RA {}, dec {}).'.format(args.ra, args.dec))
         target = ephem.FixedBody(_ra=args.ra, _dec=args.dec)
 
     # Get the PyEphem Body object corresonding to the given named star
-    if args.mode == 'star':
+    elif args.mode == 'star':
         print('In named star mode: \'{}\''.format(args.name))
         target = ephem.star(args.name)
 
     # Get the PyEphem Body object corresonding to the given named solar system body
-    if args.mode == 'solarsystem':
+    elif args.mode == 'solarsystem':
         print('In named solar system body mode: \'{}\''.format(args.name))
         ss_objs = [name for _, _, name in ephem._libastro.builtin_planets()]
         if args.name in ss_objs:
@@ -185,6 +185,10 @@ def main():
             raise Exception(
                 'The solar system body \'{}\' isn\'t present in PyEphem.'.format(
                     args.name))
+
+    else:
+        print('No target specified!')
+        sys.exit(1)
 
     # Create object with base type ErrorSource
     error_source = track.HybridErrorSource(
