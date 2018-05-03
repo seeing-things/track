@@ -164,6 +164,7 @@ def main():
         target,
         meridian_side=args.meridian_side
     )
+    telem_sources = {'error_blind': error_source}
 
     try:
         # Create gamepad object and register callback
@@ -174,6 +175,7 @@ def main():
         )
         game_pad.integrator_mode = True
         error_source.register_offset_callback(game_pad.get_integrator)
+        telem_sources['gamepad'] = game_pad
         print('Gamepad found and registered.')
     except RuntimeError:
         print('No gamepads found.')
@@ -184,17 +186,14 @@ def main():
         loop_bandwidth=args.loop_bw,
         damping_factor=args.loop_damping
     )
+    telem_sources['tracker'] = tracker
 
     if args.telem_enable:
         telem_logger = track.TelemLogger(
             host=args.telem_db_host,
             port=args.telem_db_port,
             period=args.telem_period,
-            sources={
-                'tracker': tracker,
-                'error_blind': error_source,
-                'gamepad': game_pad
-            }
+            sources=telem_sources,
         )
         telem_logger.start()
 

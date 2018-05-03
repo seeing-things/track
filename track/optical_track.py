@@ -133,6 +133,7 @@ def main():
         x_axis_name=x_axis_name,
         y_axis_name=y_axis_name
     )
+    telem_sources = {'error_optical': error_source}
 
     tracker = track.Tracker(
         mount=mount,
@@ -140,10 +141,12 @@ def main():
         loop_bandwidth=args.loop_bw,
         damping_factor=args.loop_damping
     )
+    telem_sources['tracker'] = tracker
 
     try:
         game_pad = track.Gamepad()
         tracker.register_callback(gamepad_callback)
+        telem_sources['gamepad'] = game_pad
         print('Gamepad found and registered.')
     except RuntimeError:
         print('No gamepads found.')
@@ -153,11 +156,7 @@ def main():
             host=args.telem_db_host,
             port=args.telem_db_port,
             period=args.telem_period,
-            sources={
-                'tracker': tracker,
-                'error_optical': error_source,
-                'gamepad': game_pad
-            }
+            sources=telem_sources,
         )
         telem_logger.start()
 
