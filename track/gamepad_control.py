@@ -84,7 +84,9 @@ def main():
             except mount.AxisLimitException:
                 pass
     except KeyboardInterrupt:
-        pass
+        if args.telem_enable:
+            telem_logger.stop()
+        print('Goodbye!')
 
 if __name__ == "__main__":
     main()

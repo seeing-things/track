@@ -241,6 +241,8 @@ def main():
     try:
         tracker.run()
     except KeyboardInterrupt:
+        if args.telem_enable:
+            telem_logger.stop()
         print('Goodbye!')
 
 

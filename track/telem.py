@@ -38,6 +38,7 @@ class TelemLogger(object):
         thread: Thread for sampling telemetry from sources.
         period: Telemetry period in seconds.
         sources: Dict of TelemSource objects to be polled for telemetry.
+        running: Boolean indicating whether the logger is running or not.
     """
 
     def __init__(
@@ -65,17 +66,18 @@ class TelemLogger(object):
         """
         self.db = influxdb.InfluxDBClient(host=host, port=port, database=dbname)
         self.thread = threading.Thread(target=self._worker_thread)
-        self.thread.daemon = True
         self.period = period
         self.sources = sources
+        self.running = False
 
     def start(self):
         """Start sampling telemetry."""
+        self.running = True
         self.thread.start()
 
     def stop(self):
         """Stop sampling telemetry."""
-        self.thread.stop()
+        self.running = False
 
     def _post_point(self, name, channels):
         """Write a sample of telemetry channels to the database.
@@ -105,6 +107,8 @@ class TelemLogger(object):
     def _worker_thread(self):
         """Gathers telemetry and posts to database once per sample period."""
         while True:
+            if not self.running:
+                return
             start_time = time.time()
             for name, source in self.sources.items():
                 self._post_point(name, source.get_telem_channels())
