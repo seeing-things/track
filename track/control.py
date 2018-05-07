@@ -406,7 +406,7 @@ class Tracker(TelemSource):
                 for axis in self.mount.get_axis_names():
                     self.error[axis] = None
                 self.finish_control_cycle()
-                break
+                continue
 
             # update loop filters
             for axis in axes:
