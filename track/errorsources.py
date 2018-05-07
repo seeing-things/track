@@ -195,7 +195,7 @@ class OpticalErrorSource(ErrorSource, TelemSource):
     to an error vector in the mount's coordinate system.
 
     Attributes:
-        degrees_per_pixel: Apparent size of a photosize in degrees.
+        degrees_per_pixel: Apparent size of a photosite in degrees.
         webcam: A WebCam object instance.
         x_axis_name: Name of mount axis parallel to the camera's x-axis.
         y_axis_name: Name of mount axis parallel to the camera's y-axis.
