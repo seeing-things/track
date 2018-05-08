@@ -185,7 +185,7 @@ def cart_to_equatorial(v):
     phi = math.atan2(y, x)
 
     # spherical to equatorial
-    ra = phi
+    ra = phi % (2.0*math.pi)
     dec = math.pi / 2.0 - theta
 
     # radians to degrees
