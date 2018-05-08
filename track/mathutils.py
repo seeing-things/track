@@ -292,3 +292,60 @@ def adjust_position(target_position_prev, target_position, offset):
         return cart_to_horiz(tpos_new)
     else:
         return cart_to_equatorial(tpos_new)
+
+def camera_eq_error(mount_position, target_xy, degrees_per_pixel):
+    """Compute camera target error components in equatorial coordinate system.
+
+    When a camera is used to detect a target the location of the target is easily found in the 2-D
+    grid of the frame. This must somehow be transformed into error components for the two axes of
+    the mount which exist in a spherical coordinate system. This function performs that transform.
+    Unfortunately the mount position must be known to do a perfect transformation. However the
+    accuracy of the mount position need not be highly accurate. What is most important is that 90
+    degrees declination should correspond fairly closely to the point where the declination axis
+    actually crosses the meridian. The error terms are most sensitive when the mount is pointing
+    near the pole since it is a mathematical singularity.
+
+    Args:
+        mount_position: Dict with keys 'ra' and 'dec' giving the position of the mount in the
+            equatorial coordinate system in degrees.
+        target_xy: Position of target in the camera's frame in pixels where (0, 0) is the center
+            of the frame. The Y-axis of the camera frame is assumed to be parallel to the
+            declination axis.
+        degrees_per_pixel: Apparent size of a photosite in degrees.
+
+    Returns:
+        A dict with keys 'ra' and 'dec' giving the error components of the target relative to
+            the center of the camera frame in degrees.
+    """
+
+    z_axis = np.array([0, 0, 1])
+    x_axis = np.array([1, 0, 0])
+
+
+    # get equatorial coordinates of target
+
+    # start with cartesian coordinates of target assuming camera center is pointed at the
+    # celestial pole, normalized to unit magnitude
+    focal_length_px = 1.0 / np.tan(np.deg2rad(degrees_per_pixel))
+    target_cart = np.array([target_xy[0], target_xy[1], -focal_length_px])
+    target_cart = target_cart / np.linalg.norm(target_cart)
+
+    # rotate to account for where the mount is pointed in the equatorial coordinate system
+    target_cart = rotate(target_cart, x_axis, mount_position['dec'] + 90.0)
+    target_cart = rotate(target_cart, z_axis, mount_position['ra'] - 90.0)
+
+    # convert from cartesian to equatorial
+    target_eq = cart_to_equatorial(target_cart)
+
+
+    # determine error components
+    error = {
+        'ra': wrap_error(mount_position['ra'] - target_eq['ra']),
+        'dec': mount_position['dec'] - target_eq['dec']
+    }
+
+    # reversal to dec axis error required
+    if mount_position['pdec'] > 180.0:
+        error['dec'] = -error['dec']
+
+    return error
