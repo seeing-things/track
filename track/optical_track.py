@@ -131,7 +131,8 @@ def main():
         cam_num_buffers=args.camera_bufs,
         cam_ctlval_exposure=args.camera_exposure,
         x_axis_name=x_axis_name,
-        y_axis_name=y_axis_name
+        y_axis_name=y_axis_name,
+        mount=mount
     )
     telem_sources = {'error_optical': error_source}
 

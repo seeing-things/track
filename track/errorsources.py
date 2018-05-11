@@ -21,7 +21,7 @@ except ImportError as e:
         print('Failed to import cv2. Optical tracking requires OpenCV.')
     raise
 from .control import ErrorSource
-from .mathutils import wrap_error, adjust_position, angle_between
+from .mathutils import wrap_error, adjust_position, angle_between, camera_eq_error
 from track.telem import TelemSource
 
 
@@ -214,7 +214,8 @@ class OpticalErrorSource(ErrorSource, TelemSource):
             cam_num_buffers,
             cam_ctlval_exposure,
             x_axis_name,
-            y_axis_name
+            y_axis_name,
+            mount=None
         ):
 
         self.degrees_per_pixel = arcsecs_per_pixel / 3600.0
@@ -223,6 +224,8 @@ class OpticalErrorSource(ErrorSource, TelemSource):
 
         self.x_axis_name = x_axis_name
         self.y_axis_name = y_axis_name
+
+        self.mount = mount
 
         self.frame_width_px = self.webcam.get_res_x()
         self.frame_height_px = self.webcam.get_res_y()
@@ -383,14 +386,19 @@ class OpticalErrorSource(ErrorSource, TelemSource):
             error_x_deg = error_x_px * self.degrees_per_pixel
             error_y_deg = error_y_px * self.degrees_per_pixel
 
-            # FIXME: need to do proper coordinate transformation based on orientation of camera and
-            # type of mount (az-alt versus equatorial)! Part of this fix should include finding
-            # a better way of specifying the camera's orientation with respect to the mount axes
-            # and eliminating the y_axis_name and x_axis_name constructor arguments and class
-            # attributes.
-            error = {}
-            error[self.x_axis_name] = error_x_deg
-            error[self.y_axis_name] = error_y_deg
+            if self.mount is None:
+                # This is a crude approximation. It breaks down near the mount's pole.
+                error = {}
+                error[self.x_axis_name] = error_x_deg
+                error[self.y_axis_name] = error_y_deg
+            else:
+                # This is the "proper" way of doing things but it requires knowledge of the mount
+                # position.
+                error = camera_eq_error(
+                    self.mount.get_position(max_cache_age=0.1),
+                    [error_x_px, error_y_px],
+                    self.degrees_per_pixel
+                )
             self.error_cached = error
 
             self.consec_detect_frames += 1
@@ -467,7 +475,8 @@ class HybridErrorSource(ErrorSource, TelemSource):
                 cam_num_buffers,
                 cam_ctlval_exposure,
                 x_axis_name='ra',
-                y_axis_name='dec'
+                y_axis_name='dec',
+                mount=mount
             )
         else:
             raise ValueError('unrecognized axis names')
