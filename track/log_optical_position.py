@@ -17,7 +17,7 @@ import ephem
 import track
 
 
-def track_until_converged_callback():
+def track_until_converged_callback(tracker):
     ERROR_THRESHOLD = 20.0 / 3600.0
     MIN_ITERATIONS = 50
 

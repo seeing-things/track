@@ -18,6 +18,35 @@ import ephem.stars
 import track
 
 
+def track_until_converged_callback(tracker):
+    ERROR_THRESHOLD = 50.0 / 3600.0
+    MIN_ITERATIONS = 50
+
+    elapsed = time.time() - tracker.start_time
+    # FIXME: not using timeout specified in program args!
+    if elapsed > 120.0:
+        print('Timeout trying to converge on target')
+        tracker.stop = True
+        return
+
+    try:
+        error_mag = np.abs(tracker.error['ra'] + 1j*tracker.error['dec'])
+        if (error_mag > ERROR_THRESHOLD or tracker.error_source.state == 'blind'):
+            tracker.low_error_iterations = 0
+            return
+    except TypeError:
+        return
+
+    if hasattr(tracker, 'low_error_iterations'):
+        tracker.low_error_iterations += 1
+    else:
+        tracker.low_error_iterations = 1
+
+    if tracker.low_error_iterations >= MIN_ITERATIONS:
+        tracker.low_error_iterations = 0
+        tracker.stop = True
+
+
 def pick_next_star(
         observer,
         meridian_side,
@@ -197,7 +226,7 @@ def main():
     parser.add_argument(
         '--min-alt',
         help='minimum altitude of alignment stars in degrees',
-        default=10.0,
+        default=20.0,
         type=float
     )
     parser.add_argument(
@@ -259,8 +288,8 @@ def main():
         loop_bandwidth=args.loop_bw,
         damping_factor=args.loop_damping
     )
-    tracker_thread = threading.Thread(target=tracker.run)
     telem_sources['tracker'] = tracker
+    tracker.register_callback(track_until_converged_callback)
 
     if args.telem_enable:
         telem_logger = track.TelemLogger(
@@ -288,40 +317,22 @@ def main():
             )
             print('Slewing to ' + target.name)
             error_source.blind.target = target
-            if not tracker_thread.is_alive():
-                tracker_thread.start()
-            start_time = time.time()
-
-            # give the mount a chance to move away from the previous star before checking the error
-            time.sleep(2.0)
-
-            while True:
-                time.sleep(0.1)
-                elapsed_time = time.time() - start_time
-                if elapsed_time > args.timeout:
-                    print('Timed out trying to find ' + target.name + ', giving up')
-                    rejected_stars.append(target.name)
-                    break
-                try:
-                    error_mag = np.abs(tracker.error['ra'] + 1j*tracker.error['dec'])
-                except TypeError:
-                    continue
-                if error_source.state == 'optical' and error_mag < 100.0 / 3600.0:
-                    print('Converged on the target!')
-                    mount.mount.set_user_object_equatorial(
-                        target.ra * 180 / math.pi,
-                        target.dec * 180.0 / math.pi,
-                        target.name
-                    )
-                    if not synced:
-                        print('Synchronized to ' + target.name)
-                        mount.mount.sync_to_object()
-                        synced = True
-                    else:
-                        print('Added ' + target.name + ' to mount model')
-                        mount.mount.align_to_object()
-                    used_stars.append(target.name)
-                    break
+            tracker.start_time = time.time()
+            tracker.run()
+            print('Converged on the target!')
+            mount.mount.set_user_object_equatorial(
+                target.ra * 180.0 / math.pi,
+                target.dec * 180.0 / math.pi,
+                target.name
+            )
+            if not synced:
+                print('Synchronized to ' + target.name)
+                mount.mount.sync_to_object()
+                synced = True
+            else:
+                print('Added ' + target.name + ' to mount model')
+                mount.mount.align_to_object()
+            used_stars.append(target.name)
 
             if len(used_stars) >= args.num_stars:
                 break
@@ -331,7 +342,6 @@ def main():
     except KeyboardInterrupt:
         print('Goodbye')
 
-    tracker.stop = True
     if args.telem_enable:
         telem_logger.stop()
 

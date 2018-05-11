@@ -424,7 +424,7 @@ class Tracker(TelemSource):
     def finish_control_cycle(self):
         """Final tasks to perform at the end of each control cycle."""
         if self.callback is not None:
-            self.callback()
+            self.callback(self)
         self.num_iterations += 1
 
     def get_telem_channels(self):

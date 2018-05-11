@@ -92,7 +92,7 @@ def main():
     )
     args = parser.parse_args()
 
-    def gamepad_callback():
+    def gamepad_callback(tracker):
         """Callback for gamepad control.
 
         Allows manual control of the slew rate via a gamepad when the control loop is not tracking
