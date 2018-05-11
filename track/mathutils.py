@@ -340,12 +340,12 @@ def camera_eq_error(mount_position, target_xy, degrees_per_pixel):
 
     # determine error components
     error = {
-        'ra': wrap_error(mount_position['ra'] - target_eq['ra']),
-        'dec': mount_position['dec'] - target_eq['dec']
+        'ra': wrap_error(target_eq['ra'] - mount_position['ra']),
+        'dec': target_eq['dec'] - mount_position['dec']
     }
 
-    # reversal to dec axis error required
+    # RA reversal depending on side of meridian
     if mount_position['pdec'] > 180.0:
-        error['dec'] = -error['dec']
+        error['ra'] = -error['ra']
 
     return error
