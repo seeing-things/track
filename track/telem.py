@@ -110,8 +110,13 @@ class TelemLogger(object):
             if not self.running:
                 return
             start_time = time.time()
-            for name, source in self.sources.items():
-                self._post_point(name, source.get_telem_channels())
+            try:
+                for name, source in self.sources.items():
+                    self._post_point(name, source.get_telem_channels())
+            except Exception as e:
+                print('Failed to post telemetry to database, logger shutting down: ' + str(e))
+                self.running = False
+                return
             elapsed_time = time.time() - start_time
             sleep_time = self.period - elapsed_time
             if sleep_time > 0.0:
