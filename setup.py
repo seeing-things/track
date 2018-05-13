@@ -41,6 +41,7 @@ setup(
     packages=find_packages(exclude=['contrib', 'docs', 'tests']),
 
     install_requires=[
+        'bs4>=0.0.1',
         'point>=0.1',
         'ConfigArgParse==0.12.0',
         'ephem>=3.7',
