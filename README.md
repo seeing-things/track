@@ -4,14 +4,21 @@ This project is Python 3 compatible. Most of the code can probably run under Pyt
 
 # Installation
 
-Computer vision support is provided by OpenCV. To use these features you will need to install OpenCV from your distribution's package manager or from source. You will also need to install the Python bindings. On Ubuntu these are found in the python3-opencv package.
+## Dependencies
+One or more Python packages on which this project depends compile C or C++ code. On Debian-based distributions you can install the build-essential package which includes gcc. You will also need to install the python3-dev package to make the Python.h header file available.
 
-Camera support uses the v4l2capture package which compiles C code. This code #includes the libv4l2.h header file which is part of the libv4l-dev package on Debian Linux distributions. You will need to install this package.
+Computer vision support is provided by OpenCV. You will need the OpenCV packages and the Python bindings. On Ubuntu this can be accomplished by installing the python3-opencv package using apt which will take care of installing all of the dependencies including the OpenCV packages themselves. These packages are available in the following PPA: ppa:timsc/opencv-3.4.
 
-Something requires Python.h to compile. You will need to install the python3-dev package to make this header file available.
+Camera support requires libv4l to be installed on your system. On Debian-based Linux distributions this is the libv4l package.
 
-A patched version of the v4l2 package is required, since it contains a number of bugs and its maintainers are apparently deceased or otherwise incapacitated. A branch containing the patched version is available here: https://github.com/bgottula/python-v4l2
+Camera support also requires the python-v4l2 package. A patched version is needed since the official version contains a number of bugs and its maintainers are unresponsive. A branch containing the patched version is located here: https://github.com/bgottula/python-v4l2 (but there is no need to clone this). To ensure that the patched version of the v4l2 package mentioned above is installed, pass the `--process-dependency-links` option to pip when installing. You will see an angry warning from pip indicating that this feature is deprecated. We know. Use it anyway.
 
-To ensure that the patched version of the v4l2 package mentioned above is installed, pass the `--process-dependency-links` option to pip:
+### Optional Dependencies
+Telemetry logging requires InfluxDB to be installed. On Debian based systems this is the influxdb package. To use telemetry logging you will also need to start the InfluxDB service and create a new database.
 
-`pip3 install --process-dependency-links .`
+## Install Command
+For the default set of features, install the track package using the following command:
+`sudo pip3 install --process-dependency-links .`
+
+If you want to install with telemetry support, do:
+`sudo pip3 install --process-dependency-links .[telemetry]`

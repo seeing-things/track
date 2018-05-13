@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 here = path.abspath(path.dirname(__file__))
 
 # Get the long description from the README file
-with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
+with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
@@ -50,6 +50,12 @@ setup(
         'requests',
         'MonthDelta>=1.0b',
     ],
+
+    extras_require={
+        'telemetry': [
+            'influxdb>=5.0.0',
+        ],
+    },
 
     dependency_links=[
         'https://github.com/bgottula/python-v4l2/tarball/master#egg=v4l2-0.2.2',
