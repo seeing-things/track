@@ -43,7 +43,7 @@ def main():
     parser.add_argument('--year', required=False, help='observation year (default: now)', type=int)
     parser.add_argument('--month', required=False, help='observation month (default: now)', type=int)
     parser.add_argument('--day', required=False, help='observation day-of-month (default: now)', type=int)
-    parser.add_argument('--ampm', required=False, help='morning or evening (\'AM\' or \'PM\'; default: \'PM\')', default='PM')
+    parser.add_argument('--ampm', required=False, help='morning or evening (\'AM\' or \'PM\')', default='PM')
     parser.add_argument('--mag-limit', required=True, help='magnitude cutoff for object passes', type=float)
 
     args = parser.parse_args()
