@@ -213,10 +213,10 @@ def angle_between(u, v):
     """
 
     if isinstance(u, dict) and isinstance(v, dict):
-        if set(u.keys()) == set(['az', 'alt']):
+        if set(['az', 'alt']).issubset(set(u.keys())):
             u = horiz_to_cart(u)
             v = horiz_to_cart(v)
-        elif set(u.keys()) == set(['ra', 'dec']):
+        elif set(['ra', 'dec']).issubset(set(u.keys())):
             u = equatorial_to_cart(u)
             v = equatorial_to_cart(v)
         else:

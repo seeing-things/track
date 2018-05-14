@@ -17,27 +17,6 @@ import ephem
 import track
 
 
-def track_until_converged_callback(tracker):
-    ERROR_THRESHOLD = 20.0 / 3600.0
-    MIN_ITERATIONS = 50
-
-    try:
-        if (abs(tracker.error['az']) > ERROR_THRESHOLD or
-            abs(tracker.error['alt']) > ERROR_THRESHOLD):
-            tracker.low_error_iterations = 0
-            return
-    except TypeError:
-        return
-
-    if hasattr(tracker, 'low_error_iterations'):
-        tracker.low_error_iterations += 1
-    else:
-        tracker.low_error_iterations = 1
-
-    if tracker.low_error_iterations >= MIN_ITERATIONS:
-        tracker.low_error_iterations = 0
-        tracker.stop = True
-
 parser = track.ArgParser()
 parser.add_argument(
     '--lat',
@@ -122,9 +101,10 @@ tracker = track.Tracker(
     loop_bandwidth=args.loop_bw,
     damping_factor=args.loop_damping
 )
+tracker.converge_max_error_mag = 20.0 / 3600.0
+tracker.stop_when_converged = True
 
 print('Tracking object until converged...')
-tracker.register_callback(track_until_converged_callback)
 tracker.run()
 
 now = time.time()

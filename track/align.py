@@ -18,35 +18,6 @@ import ephem.stars
 import track
 
 
-def track_until_converged_callback(tracker):
-    ERROR_THRESHOLD = 50.0 / 3600.0
-    MIN_ITERATIONS = 50
-
-    elapsed = time.time() - tracker.start_time
-    # FIXME: not using timeout specified in program args!
-    if elapsed > 120.0:
-        print('Timeout trying to converge on target')
-        tracker.stop = True
-        return
-
-    try:
-        error_mag = np.abs(tracker.error['ra'] + 1j*tracker.error['dec'])
-        if (error_mag > ERROR_THRESHOLD or tracker.error_source.state == 'blind'):
-            tracker.low_error_iterations = 0
-            return
-    except TypeError:
-        return
-
-    if hasattr(tracker, 'low_error_iterations'):
-        tracker.low_error_iterations += 1
-    else:
-        tracker.low_error_iterations = 1
-
-    if tracker.low_error_iterations >= MIN_ITERATIONS:
-        tracker.low_error_iterations = 0
-        tracker.stop = True
-
-
 def pick_next_star(
         observer,
         meridian_side,
@@ -289,7 +260,10 @@ def main():
         damping_factor=args.loop_damping
     )
     telem_sources['tracker'] = tracker
-    tracker.register_callback(track_until_converged_callback)
+    tracker.stop_on_timer = True
+    tracker.max_run_time = args.timeout
+    tracker.stop_when_converged = True
+    tracker.converge_error_state = 'optical'
 
     if args.telem_enable:
         telem_logger = track.TelemLogger(
@@ -318,21 +292,27 @@ def main():
             print('Slewing to ' + target.name)
             error_source.blind.target = target
             tracker.start_time = time.time()
-            tracker.run()
-            print('Converged on the target!')
-            mount.mount.set_user_object_equatorial(
-                target.ra * 180.0 / math.pi,
-                target.dec * 180.0 / math.pi,
-                target.name
-            )
-            if not synced:
-                print('Synchronized to ' + target.name)
-                mount.mount.sync_to_object()
-                synced = True
+            stop_reason = tracker.run()
+            if stop_reason == 'converged':
+                print('Converged on the target!')
+                mount.mount.set_user_object_equatorial(
+                    target.ra * 180.0 / math.pi,
+                    target.dec * 180.0 / math.pi,
+                    target.name
+                )
+                if not synced:
+                    print('Synchronized to ' + target.name)
+                    mount.mount.sync_to_object()
+                    synced = True
+                else:
+                    print('Added ' + target.name + ' to mount model')
+                    mount.mount.align_to_object()
+                used_stars.append(target.name)
+            elif stop_reason == 'timer expired':
+                print('Timeout on ' + target.name + '; rejecting this star')
+                rejected_stars.append(target.name)
             else:
-                print('Added ' + target.name + ' to mount model')
-                mount.mount.align_to_object()
-            used_stars.append(target.name)
+                raise RuntimeError('Unexpected tracker stop reason: "' + stop_reason + '"')
 
             if len(used_stars) >= args.num_stars:
                 break

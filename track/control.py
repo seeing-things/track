@@ -359,6 +359,12 @@ class Tracker(TelemSource):
         self.num_iterations = 0
         self.callback = None
         self.stop = False
+        self.stop_on_timer = False
+        self.max_run_time = 0.0
+        self.stop_when_converged = False
+        self.converge_max_error_mag = 50.0 / 3600.0
+        self.converge_min_iterations = 50
+        self.converge_error_state = None
 
     def register_callback(self, callback):
         """Register a callback function.
@@ -387,17 +393,25 @@ class Tracker(TelemSource):
                 is passed all axes will be active.
         """
         self.stop = False
+        low_error_iterations = 0
+        start_time = time.time()
 
         if axes is None:
             axes = self.mount.get_axis_names()
 
         if len(axes) == 0:
-            return
+            return 'no axes selected'
 
         while True:
 
             if self.stop:
-                return
+                return 'stop flag set'
+
+            if self.stop_when_converged and low_error_iterations >= self.converge_min_iterations:
+                return 'converged'
+
+            if self.stop_on_timer and time.time() - start_time > self.max_run_time:
+                return 'timer expired'
 
             # compute error
             try:
@@ -407,6 +421,16 @@ class Tracker(TelemSource):
                     self.error[axis] = None
                 self.finish_control_cycle()
                 continue
+
+            if self.error['mag'] > self.converge_max_error_mag:
+                low_error_iterations = 0
+            else:
+                if self.converge_error_state is None:
+                    low_error_iterations += 1
+                elif self.error_source.state == self.converge_error_state:
+                    low_error_iterations +=1
+                else:
+                    low_error_iterations = 0
 
             # update loop filters
             for axis in axes:

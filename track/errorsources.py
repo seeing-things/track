@@ -170,6 +170,9 @@ class BlindErrorSource(ErrorSource, TelemSource):
             else:
                 error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis])
 
+        # compute angular separation between target and mount positions
+        error['mag'] = angle_between(mount_position, adjusted_position)
+
         self.error_cached = error
         return error
 
@@ -399,6 +402,8 @@ class OpticalErrorSource(ErrorSource, TelemSource):
                     [error_x_px, error_y_px],
                     self.degrees_per_pixel
                 )
+            # angular separation between detected target and center of camera frame in degrees
+            error['mag'] = np.abs(error_x_deg + 1j*error_y_deg)
             self.error_cached = error
 
             self.consec_detect_frames += 1
