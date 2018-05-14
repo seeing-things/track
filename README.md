@@ -7,7 +7,7 @@ This project is Python 3 compatible. Most of the code can probably run under Pyt
 ## Dependencies
 One or more Python packages on which this project depends compile C or C++ code. On Debian-based distributions you can install the build-essential package which includes gcc. You will also need to install the python3-dev package to make the Python.h header file available.
 
-Computer vision support is provided by OpenCV. You will need the OpenCV packages and the Python bindings. On Ubuntu this can be accomplished by installing the python3-opencv package using apt which will take care of installing all of the dependencies including the OpenCV packages themselves. These packages are available in the following PPA: ppa:timsc/opencv-3.4.
+Computer vision support is provided by OpenCV. You will need the OpenCV (3.0 or newer) packages and the Python bindings. On Ubuntu this can be accomplished by installing the python3-opencv package using apt which will take care of installing all of the dependencies including the OpenCV packages themselves. These packages are available in the following PPA: ppa:timsc/opencv-3.4.
 
 Camera support requires libv4l to be installed on your system. On Debian-based Linux distributions this is the libv4l package.
 
