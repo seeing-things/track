@@ -218,12 +218,18 @@ class OpticalErrorSource(ErrorSource, TelemSource):
             cam_ctlval_exposure,
             x_axis_name,
             y_axis_name,
-            mount=None
+            mount=None,
+            dump_frames_to_files=False
         ):
 
         self.degrees_per_pixel = arcsecs_per_pixel / 3600.0
 
-        self.webcam = webcam.WebCam(cam_dev_path, cam_num_buffers, cam_ctlval_exposure)
+        self.webcam = webcam.WebCam(
+            cam_dev_path,
+            cam_num_buffers,
+            cam_ctlval_exposure,
+            dump_frames_to_files
+        )
 
         self.x_axis_name = x_axis_name
         self.y_axis_name = y_axis_name
@@ -453,7 +459,8 @@ class HybridErrorSource(ErrorSource, TelemSource):
             cam_ctlval_exposure,
             max_divergence=5.0,
             max_optical_no_signal_frames=4,
-            meridian_side='west'
+            meridian_side='west',
+            dump_frames_to_files=False,
         ):
         self.axes = mount.get_axis_names()
         self.blind = BlindErrorSource(
@@ -471,7 +478,8 @@ class HybridErrorSource(ErrorSource, TelemSource):
                 cam_num_buffers,
                 cam_ctlval_exposure,
                 x_axis_name='az',
-                y_axis_name='alt'
+                y_axis_name='alt',
+                dump_frames_to_files=dump_frames_to_files,
             )
         elif set(self.axes) == set(['ra', 'dec']):
             self.optical = OpticalErrorSource(
@@ -481,7 +489,8 @@ class HybridErrorSource(ErrorSource, TelemSource):
                 cam_ctlval_exposure,
                 x_axis_name='ra',
                 y_axis_name='dec',
-                mount=mount
+                mount=mount,
+                dump_frames_to_files=dump_frames_to_files,
             )
         else:
             raise ValueError('unrecognized axis names')

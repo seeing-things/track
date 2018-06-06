@@ -112,6 +112,11 @@ def main():
         type=int
     )
     parser.add_argument(
+        '--dump-frames',
+        help='dump frames from webcam to jpeg files on disk',
+        action='store_true'
+    )
+    parser.add_argument(
         '--mount-type',
         help='select mount type (nexstar or gemini)',
         default='gemini'
@@ -232,7 +237,8 @@ def main():
         cam_num_buffers=args.camera_bufs,
         cam_ctlval_exposure=args.camera_exposure,
         max_divergence=args.max_divergence,
-        meridian_side=args.meridian_side
+        meridian_side=args.meridian_side,
+        dump_frames_to_files=args.dump_frames,
     )
     telem_sources = {}
     telem_sources['error_hybrid'] = error_source
