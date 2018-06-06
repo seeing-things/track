@@ -48,7 +48,7 @@ parser.add_argument(
 parser.add_argument(
     '--camera-exposure',
     help='webcam exposure level',
-    default=2000,
+    default=3200,
     type=int)
 parser.add_argument(
     '--dump-frames',
