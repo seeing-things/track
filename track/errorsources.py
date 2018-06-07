@@ -101,7 +101,7 @@ class BlindErrorSource(ErrorSource, TelemSource):
         """Cause an equatorial mount to perform a meridian flip."""
         self.meridian_side = 'east' if self.meridian_side == 'west' else 'west'
 
-    def compute_error(self, retries=0):
+    def compute_error(self):
 
         # Get coordinates of the target from a past time for use in determining direction of
         # motion. This needs to be far enough in the past that this position and the current
@@ -360,73 +360,64 @@ class OpticalErrorSource(ErrorSource, TelemSource):
         cv2.imshow('frame', frame_annotated)
         cv2.waitKey(1)
 
-    def compute_error(self, retries=0, blocking=True):
+    def compute_error(self, blocking=True):
 
-        while True:
-            frame = self.webcam.get_fresh_frame(blocking=blocking)
+        frame = self.webcam.get_fresh_frame(blocking=blocking)
 
-            if frame is None:
-                if retries > 0:
-                    retries -= 1
-                    continue
-                else:
-                    self.error_cached = {}
-                    raise self.NoSignalException('No target identified')
+        if frame is None:
+            self.error_cached = {}
+            raise self.NoSignalException('No frame was available')
 
-            keypoints = self.find_features(frame)
+        keypoints = self.find_features(frame)
 
-            if not keypoints:
-                self.show_annotated_frame(frame)
-                if retries > 0:
-                    retries -= 1
-                    continue
-                else:
-                    self.consec_detect_frames = 0
-                    self.consec_no_detect_frames += 1
-                    self.error_cached = {}
-                    raise self.NoSignalException('No target identified')
+        if not keypoints:
+            self.show_annotated_frame(frame)
+            self.consec_detect_frames = 0
+            self.consec_no_detect_frames += 1
+            self.error_cached = {}
+            raise self.NoSignalException('No target identified')
 
-            # use the keypoint closest to the center of the frame
-            min_error = None
-            target_keypoint = None
-            for keypoint in keypoints:
-                # error is the vector between the keypoint and center frame
-                e_x = self.frame_center_px[0] - keypoint.pt[0]
-                e_y = keypoint.pt[1] - self.frame_center_px[1]
-                error_mag = np.abs(e_x + 1j*e_y)
+        # use the keypoint closest to the center of the frame
+        min_error = None
+        target_keypoint = None
+        for keypoint in keypoints:
+            # error is the vector between the keypoint and center frame
+            e_x = self.frame_center_px[0] - keypoint.pt[0]
+            e_y = keypoint.pt[1] - self.frame_center_px[1]
+            error_mag = np.abs(e_x + 1j*e_y)
 
-                if min_error is None or error_mag < min_error:
-                    target_keypoint = keypoint
-                    min_error = error_mag
-                    error_x_px = e_x
-                    error_y_px = e_y
+            if min_error is None or error_mag < min_error:
+                target_keypoint = keypoint
+                min_error = error_mag
+                error_x_px = e_x
+                error_y_px = e_y
 
-            error_x_deg = error_x_px * self.degrees_per_pixel
-            error_y_deg = error_y_px * self.degrees_per_pixel
+        error_x_deg = error_x_px * self.degrees_per_pixel
+        error_y_deg = error_y_px * self.degrees_per_pixel
 
-            if self.mount is None:
-                # This is a crude approximation. It breaks down near the mount's pole.
-                error = {}
-                error[self.x_axis_name] = error_x_deg
-                error[self.y_axis_name] = error_y_deg
-            else:
-                # This is the "proper" way of doing things but it requires knowledge of the mount
-                # position.
-                error = camera_eq_error(
-                    self.mount.get_position(max_cache_age=0.1),
-                    [error_x_px, error_y_px],
-                    self.degrees_per_pixel
-                )
-            # angular separation between detected target and center of camera frame in degrees
-            error['mag'] = np.abs(error_x_deg + 1j*error_y_deg)
-            self.error_cached = error
+        if self.mount is None:
+            # This is a crude approximation. It breaks down near the mount's pole.
+            error = {}
+            error[self.x_axis_name] = error_x_deg
+            error[self.y_axis_name] = error_y_deg
+        else:
+            # This is the "proper" way of doing things but it requires knowledge of the mount
+            # position.
+            error = camera_eq_error(
+                self.mount.get_position(max_cache_age=0.1),
+                [error_x_px, error_y_px],
+                self.degrees_per_pixel
+            )
+        # angular separation between detected target and center of camera frame in degrees
+        error['mag'] = np.abs(error_x_deg + 1j*error_y_deg)
+        self.error_cached = error
 
-            self.consec_detect_frames += 1
-            self.consec_no_detect_frames = 0
+        self.consec_detect_frames += 1
+        self.consec_no_detect_frames = 0
 
-            self.show_annotated_frame(frame, keypoints, target_keypoint)
+        self.show_annotated_frame(frame, keypoints, target_keypoint)
 
-            return error
+        return error
 
     def get_telem_channels(self):
         chans = {}
@@ -516,11 +507,11 @@ class HybridErrorSource(ErrorSource, TelemSource):
         """See BlindErrorSource documentation."""
         self.blind.register_offset_callback(callback)
 
-    def compute_error(self, retries=0):
-        blind_error = self.blind.compute_error(retries)
+    def compute_error(self):
+        blind_error = self.blind.compute_error()
 
         try:
-            optical_error = self.optical.compute_error(retries, blocking=(self.state == 'optical'))
+            optical_error = self.optical.compute_error(blocking=(self.state == 'optical'))
         except ErrorSource.NoSignalException:
             self.divergence_angle = None
             if self.state == 'blind':

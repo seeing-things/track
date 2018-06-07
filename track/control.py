@@ -36,14 +36,8 @@ class ErrorSource(object):
         pass
 
     @abc.abstractmethod
-    def compute_error(self, retries=0):
+    def compute_error(self):
         """Computes the error signal.
-
-        Args:
-            retries: Some error sources rely on unreliable detectors such as
-                computer vision which may occasionally fail to work on the
-                first try. A positive value allows multiple tries before
-                giving up.
 
         Returns:
             The pointing error as a dict with entries for each axis. The units
