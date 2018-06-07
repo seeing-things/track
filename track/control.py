@@ -273,6 +273,7 @@ class LoopFilter(object):
 
         # enforce a max slew rate step size
         if self.step_limit is not None:
+            rate_change = rate - self.last_rate
             if abs(rate_change) > self.step_limit:
                 rate_change = clamp(rate_change, self.step_limit)
                 rate = self.last_rate + rate_change
