@@ -58,16 +58,22 @@ class WebCam(object):
     def get_res_y(self):
         return self.res_actual[1]
 
-    # get the most recent frame from the webcam, waiting if necessary, and throwing away stale frames if any
-    # (the frame is a numpy array in BGR format)
-    def get_fresh_frame(self):
-        self.block_until_frame_ready()
+    # Get the most recent frame from the webcam, waiting if blocking is True, and throwing away
+    # stale frames if any (the frame is a numpy array in BGR format). If enabled, all queued frames
+    # will also be saved as JPEG image files on disk.
+    def get_fresh_frame(self, blocking=True):
+
+        if blocking:
+            self.block_until_frame_ready()
 
         frames = []
         while self.has_frames_available():
             frames += [self.get_one_frame()]
             if self.dump_frames_to_files:
                 self._dump_one(frames[-1])
+
+        if len(frames) == 0:
+            return None
 
         # decode the JPEG from the webcam into BGR for OpenCV's use
         if self.opencv_ver == 2:

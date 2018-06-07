@@ -360,10 +360,19 @@ class OpticalErrorSource(ErrorSource, TelemSource):
         cv2.imshow('frame', frame_annotated)
         cv2.waitKey(1)
 
-    def compute_error(self, retries=0):
+    def compute_error(self, retries=0, blocking=True):
 
         while True:
-            frame = self.webcam.get_fresh_frame()
+            frame = self.webcam.get_fresh_frame(blocking=blocking)
+
+            if frame is None:
+                if retries > 0:
+                    retries -= 1
+                    continue
+                else:
+                    self.error_cached = {}
+                    raise self.NoSignalException('No target identified')
+
             keypoints = self.find_features(frame)
 
             if not keypoints:
@@ -511,7 +520,7 @@ class HybridErrorSource(ErrorSource, TelemSource):
         blind_error = self.blind.compute_error(retries)
 
         try:
-            optical_error = self.optical.compute_error(retries)
+            optical_error = self.optical.compute_error(retries, blocking=(self.state == 'optical'))
         except ErrorSource.NoSignalException:
             self.divergence_angle = None
             if self.state == 'blind':
