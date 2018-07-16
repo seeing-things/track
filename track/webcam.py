@@ -266,7 +266,7 @@ class WebCam(object):
                 break
 
     def _dump_one(self, jpeg):
-        file_name = 'frame_{:04d}.jpg'.format(self.dump_idx)
+        file_name = 'frame_{:06d}.jpg'.format(self.dump_idx)
         self.dump_idx += 1
 
         file_path = os.path.join(self.dump_dir, file_name)
