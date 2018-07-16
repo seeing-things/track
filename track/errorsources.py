@@ -248,25 +248,6 @@ class OpticalErrorSource(ErrorSource, TelemSource):
         self.consec_detect_frames = 0
         self.consec_no_detect_frames = 0
 
-        # detect OpenCV version to handle API differences between 2 and 3
-        opencv_ver = int(cv2.__version__.split('.')[0])
-        assert opencv_ver == 2 or opencv_ver == 3
-
-        # initialize blob detector
-        params = cv2.SimpleBlobDetector_Params()
-        params.filterByColor = False
-        params.filterByConvexity = False
-        params.filterByInertia = False
-        params.minArea = 0.0
-        params.maxArea = 50.0
-        params.minThreshold = 180
-        params.maxThreshold = 200
-        params.minDistBetweenBlobs = 50
-        if opencv_ver == 2:
-            self.detector = cv2.SimpleBlobDetector(params)
-        else:
-            self.detector = cv2.SimpleBlobDetector_create(params)
-
         cv2.namedWindow('frame')
 
     def get_axis_names(self):
@@ -301,8 +282,27 @@ class OpticalErrorSource(ErrorSource, TelemSource):
             cv2.THRESH_BINARY
         )
 
-        # SimpleBlobDetector to find centroids of features
-        return self.detector.detect(thresh)
+        # outer contours only
+        im2, contours, hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+        keypoints = []
+        for contour in contours:
+            moms = cv2.moments(contour);
+            if moms['m00'] == 0.0:
+                continue
+
+            # find the center of mass
+            center = np.array([moms['m10'] / moms['m00'], moms['m01'] / moms['m00']])
+
+            # find the maximum distance between the center and the contour
+            radius = 0.0
+            for p in contour:
+                dist = np.linalg.norm(center - p)
+                radius = max(radius, dist)
+
+            keypoints.append(cv2.KeyPoint(center[0], center[1], 2.0*radius))
+
+        return keypoints
 
     def show_annotated_frame(self, frame, keypoints=[], target_keypoint=None):
         """Displays camera frame in a window with features circled and crosshairs.
