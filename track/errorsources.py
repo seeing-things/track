@@ -286,11 +286,11 @@ class OpticalErrorSource(ErrorSource, TelemSource):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         # pick a threshold as the max of these two methods:
-        # - 99.99th percentile of histogram
+        # - 99th percentile of histogram
         # - peak of histogram plus a magic number
         hist, bins = np.histogram(gray.ravel(), 256, [0,256])
         cumsum = np.cumsum(hist)
-        threshold_1 = np.argmax(cumsum >= 0.9999*cumsum[-1])
+        threshold_1 = np.argmax(cumsum >= 0.99*cumsum[-1])
         threshold_2 = np.argmax(hist) + 4
         threshold = max(threshold_1, threshold_2)
 
