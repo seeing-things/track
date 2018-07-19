@@ -211,9 +211,10 @@ class LoopFilter(object):
         update_period = time.time() - self.last_iteration_time
         self.last_iteration_time = time.time()
         if update_period > self.max_update_period:
-            print('Warning: loop filter update period was '
-                  + str(update_period) + ' s, limit is '
-                  + str(self.max_update_period) + ' s.')
+            print('Warning: loop filter update period was {:.4f} s, limit is {:.4f} s.'.format(
+                update_period,
+                self.max_update_period,
+            ))
             return self.int
 
         # compute loop filter gains based on loop period
