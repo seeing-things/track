@@ -99,46 +99,26 @@ class TelescopeMount(object):
     def slew(self, axis, rate):
         """Command the mount to slew on one axis.
 
-        Commands the mount to slew at a paritcular rate in one axis.
+        Commands the mount to slew at a paritcular rate in one axis. A mount may enforce limits
+        on the slew rate such as a maximum rate limit, acceleration limit, or max change in
+        rate since the last command. Enforcement of such limits may result in the mount moving at
+        a rate that is different than requested. The return values indicate whether a limit was
+        exceeded and what slew rate was actually achieved.
 
         Args:
             axis: A string indicating the axis.
-            rate: A float giving the slew rate in degrees per second. The sign
-                of the value indicates the direction of the slew.
+            rate: A float giving the requested slew rate in degrees per second. The sign of the
+                value indicates the direction of the slew.
+
+        Returns:
+            A two-element tuple where the first element is a float giving the actual slew rate
+                achieved by the mount. The actual rate could differ from the requested rate due
+                to quantization or due to enforcement of slew rate or acceleration limits. The
+                second element is a boolean that is set to True if any of the limits enforced by
+                the mount were exceeded by the requested slew rate.
 
         Raises:
             AltitudeLimitException: Implementation dependent.
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_max_slew_rates(self):
-        """Get the max supported slew rates.
-
-        Returns:
-            A dict with keys for each axis where the values are the maximum
-            allowed slew rates in degrees per second.
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_max_slew_accels(self):
-        """Get the max supported slew accelerations.
-
-        Returns:
-            A dict with keys for each axis where the values are the maximum
-            allowed slew accelerations in degrees per second squared.
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_max_slew_steps(self):
-        """Get the max supported slew steps.
-
-        Returns:
-            A dict with keys for each axis where the values are the maximum allowed slew steps in
-            degrees per second. The slew step is defined as the maximum magnitude change in slew
-            rate between consecutive slew commands.
         """
         pass
 
@@ -166,9 +146,6 @@ class LoopFilter(object):
             self,
             bandwidth,
             damping_factor,
-            rate_limit=None,
-            accel_limit=None,
-            step_limit=None,
             max_update_period=0.1
         ):
         """Inits a Loop Filter object.
@@ -186,12 +163,22 @@ class LoopFilter(object):
         self.bandwidth = bandwidth
         self.damping_factor = damping_factor
         self.max_update_period = max_update_period
-        self.rate_limit = rate_limit
-        self.accel_limit = accel_limit
-        self.step_limit = step_limit
         self.int = 0.0
         self.last_iteration_time = None
         self.last_rate = 0.0
+
+    def clamp_integrator(self, rate):
+        """Clamps the integrator magnitude to not exceed a particular rate.
+
+        This function should be called when the slew rate given by the return value of the update()
+        method trips a slew rate or acceleration limit in the mount. Otherwise the integrator can
+        grow in an unbounded fashion and the system will not respond appropriately.
+
+        Args:
+            rate: The actual rate achieved by the mount after the most recent call to update(), in
+                degrees per second.
+        """
+        self.int = clamp(self.int, abs(rate))
 
     def update(self, error):
         """Update the loop filter using new error signal input.
@@ -207,12 +194,6 @@ class LoopFilter(object):
         returned. The error signal will be ignored. This is meant to protect
         against edge cases where long periods between calls to update() could
         cause huge disturbances to the loop behavior.
-
-        The integrator and output of the loop filter will be limited to not
-        exceed the maximum slew rate as defined by the rate_limit constructor
-        argument. The integrator and output will also be limited to prevent
-        the slew acceleration from exceeding the accel_limit constructor
-        argument, if specified.
 
         Args:
             error: The error in phase units (typically degrees).
@@ -246,36 +227,13 @@ class LoopFilter(object):
         prop = prop_gain * -error
 
         # integral term
-        if self.rate_limit is not None:
-            self.int = clamp(self.int + int_gain * -error, self.rate_limit)
-        else:
-            self.int = self.int + int_gain * -error
+        self.int = self.int + int_gain * -error
 
-        # new slew rate is the sum of P and I terms subject to rate limit
-        if self.rate_limit is not None:
-            rate = clamp(prop + self.int, self.rate_limit)
-        else:
-            rate = prop + self.int
-
-        # enforce slew acceleration limit
-        if self.accel_limit is not None:
-            rate_change = rate - self.last_rate
-            if abs(rate_change) / update_period > self.accel_limit:
-                rate_change = clamp(rate_change, self.accel_limit * update_period)
-                rate = self.last_rate + rate_change
-                self.int = clamp(self.int, abs(rate))
-
-        # enforce a max slew rate step size
-        if self.step_limit is not None:
-            rate_change = rate - self.last_rate
-            if abs(rate_change) > self.step_limit:
-                rate_change = clamp(rate_change, self.step_limit)
-                rate = self.last_rate + rate_change
-                self.int = clamp(self.int, abs(rate))
-
-        self.last_rate = rate
-
-        return rate
+        # New candidate slew rate is the sum of P and I terms. Note that the mount may enforce
+        # rate or acceleration limits such that the actual rate achieved is different from this
+        # rate. When this is the case, the control loop should ensure that the loop filter
+        # integrator value is also saturated to prevent it from growing in an unbounded manner.
+        return prop + self.int
 
 
 class Tracker(TelemSource):
@@ -343,9 +301,6 @@ class Tracker(TelemSource):
             self.loop_filter[axis] = LoopFilter(
                 bandwidth=loop_bandwidth,
                 damping_factor=damping_factor,
-                rate_limit=mount.get_max_slew_rates()[axis],
-                accel_limit=mount.get_max_slew_accels()[axis],
-                step_limit=mount.get_max_slew_steps()[axis],
             )
             self.error[axis] = None
             self.slew_rate[axis] = 0.0
@@ -434,7 +389,9 @@ class Tracker(TelemSource):
             # set mount slew rates
             for axis in axes:
                 try:
-                    self.mount.slew(axis, self.slew_rate[axis])
+                    (actual_rate, limit_exceeded) = self.mount.slew(axis, self.slew_rate[axis])
+                    if limit_exceeded:
+                        self.loop_filter[axis].clamp_integrator(actual_rate)
                 except TelescopeMount.AxisLimitException:
                     self.loop_filter[axis].int = 0.0
 

@@ -38,8 +38,6 @@ class NexStarMount(TelescopeMount):
             alt_max_limit=65.0,
             bypass_alt_limits=False,
             max_slew_rate=16319.0/3600.0,
-            max_slew_accel=None,
-            max_slew_step=None,
         ):
         """Inits NexStarMount object.
 
@@ -57,20 +55,12 @@ class NexStarMount(TelescopeMount):
             max_slew_rate: The maximum slew rate supported by the mount. The default value (about
                 4.5 deg/s) is the max rate supported by the NexStar 130SLT hand controller as
                 determined by experimentation.
-            max_slew_accel: The maximum slew acceleration in degrees per second squared. The
-                NexStar 130SLT mount has very slow acceleration and never stalls so there is little
-                risk of leaving this set to None (no limit).
-            max_slew_step: The maximum change in slew rate between slew commands in degrees per
-                second. The NexStar 130SLT mount has very slow acceleration and never stalls so
-                there is little risk associated with leaving this set to None (no limit).
         """
         self.mount = point.NexStar(device_name)
         self.alt_min_limit = alt_min_limit
         self.alt_max_limit = alt_max_limit
         self.bypass_alt_limits = bypass_alt_limits
         self.max_slew_rate = max_slew_rate
-        self.max_slew_accel = max_slew_accel
-        self.max_slew_step = max_slew_step
         self.cached_position = None
         self.cached_position_time = None
 
@@ -138,8 +128,11 @@ class NexStarMount(TelescopeMount):
                 altitude slew rate is not away from the limit.
         """
         assert axis in ['az', 'alt']
+
+        limit_exceeded = False
         if abs(rate) > self.max_slew_rate:
-            raise ValueError('slew rate exceeds limit')
+            limit_exceeded = True
+            rate = clamp(rate, self.max_slew_rate)
 
         # enforce altitude limits
         if axis == 'alt' and not self.bypass_alt_limits:
@@ -152,14 +145,7 @@ class NexStarMount(TelescopeMount):
         # slew_var argument units are arcseconds per second
         self.mount.slew_var(axis, rate * 3600.0)
 
-    def get_max_slew_rates(self):
-        return {'az': self.max_slew_rate, 'alt': self.max_slew_rate}
-
-    def get_max_slew_accels(self):
-        return {'ra': self.max_slew_accel, 'dec': self.max_slew_accel}
-
-    def get_max_slew_steps(self):
-        return {'ra': self.max_slew_step, 'dec': self.max_slew_step}
+        return (rate, limit_exceeded)
 
 
 class LosmandyGeminiMount(TelescopeMount):
@@ -205,19 +191,21 @@ class LosmandyGeminiMount(TelescopeMount):
             ra_east_limit: Limit right ascension axis to less than this many degrees from the
                 meridian to the east.
             bypass_ra_limits: If True RA axis limits will not be enforced.
-            max_slew_rate: The maximum slew rate supported by the mount in degrees per second.
-            max_slew_accel: The maximum slew acceleration supported by the mount in degrees per
-                second squared. Higher limits increase the likelihood of motor stalls.
+            max_slew_rate: The maximum allowed slew rate magnitude in degrees per second.
+            max_slew_accel: The maximum allowed slew acceleration in degrees per second squared.
+                Higher limits increase the likelihood of motor stalls.
             max_slew_step: The maximum change in slew rate per slew command in degrees per second.
                 Higher limits increase the likelihood of motor stalls.
         """
-        self.mount = point.Gemini2(point.gemini_backend.Gemini2BackendUDP(0.25, device_name))
+        self.mount = point.Gemini2(
+            backend=point.gemini_backend.Gemini2BackendUDP(0.25, device_name),
+            rate_limit=max_slew_rate,
+            rate_step_limit=max_slew_step,
+            accel_limit=max_slew_accel,
+        )
         self.ra_west_limit = ra_west_limit
         self.ra_east_limit = ra_east_limit
         self.bypass_ra_limits = bypass_ra_limits
-        self.max_slew_rate = max_slew_rate
-        self.max_slew_accel = max_slew_accel
-        self.max_slew_step = max_slew_step
         self.cached_position = None
         self.cached_position_time = None
 
@@ -265,38 +253,34 @@ class LosmandyGeminiMount(TelescopeMount):
     def slew(self, axis, rate):
         """Command the mount to slew on one axis.
 
-        Commands the mount to slew at a paritcular rate in one axis. Each axis
-        is controlled independently. To slew in both axes, call this function
-        twice: once for each axis.
+        Commands the mount to slew at a particular rate in one axis. Each axis is controlled
+        independently. To slew in both axes, call this function twice: once for each axis.
 
         Args:
             axis: A string indicating the axis: 'ra' or 'dec'.
-            rate: A float giving the slew rate in degrees per second. The sign
-                of the value indicates the direction of the slew.
+            rate: A float giving the slew rate in degrees per second. The sign of the value
+                indicates the direction of the slew.
+
+        Returns:
+            A two-element tuple where the first element is a float giving the actual slew rate
+                achieved by the mount. The actual rate could differ from the requested rate due
+                to quantization or due to enforcement of slew rate or acceleration limits. The
+                second element is a boolean that is set to True if any of the limits enforced by
+                the mount were exceeded by the requested slew rate.
 
         Raises:
             ValueError: If axis name is not 'ra' or 'dec'.
-            AxisLimitException: RA limit has been exceeded and the RA slew rate
-                is not away from the limit.
+            AxisLimitException: RA limit has been exceeded and the RA slew rate is not away from
+                the limit.
         """
-        if axis == 'ra':
-            if not self.bypass_ra_limits:
-                pra = self.get_position()['pra']
-                if ((pra < 180 - self.ra_west_limit and rate < 0.0) or
-                    (pra > 180 + self.ra_east_limit and rate > 0.0)):
-                    self.mount.slew_ra(0.0)
-                    raise self.AxisLimitException(['ra'])
-            self.mount.slew_ra(rate)
-        elif axis == 'dec':
-            self.mount.slew_dec(rate)
-        else:
+        if axis not in ['ra', 'dec']:
             raise ValueError("axis must be 'ra' or 'dec'")
 
-    def get_max_slew_rates(self):
-        return {'ra': self.max_slew_rate, 'dec': self.max_slew_rate}
+        if axis == 'ra' and not self.bypass_ra_limits:
+            pra = self.get_position()['pra']
+            if ((pra < 180 - self.ra_west_limit and rate < 0.0) or
+                (pra > 180 + self.ra_east_limit and rate > 0.0)):
+                self.mount.slew(axis, 0.0)
+                raise self.AxisLimitException(['ra'])
 
-    def get_max_slew_accels(self):
-        return {'ra': self.max_slew_accel, 'dec': self.max_slew_accel}
-
-    def get_max_slew_steps(self):
-        return {'ra': self.max_slew_step, 'dec': self.max_slew_step}
+        return self.mount.slew(axis, rate)
