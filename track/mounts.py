@@ -161,8 +161,6 @@ class LosmandyGeminiMount(TelescopeMount):
         ra_east_limit: Right ascension east of meridian limit in degrees.
         bypass_ra_limits: Boolean, True when RA limits are bypassed.
         max_slew_rate: Maximum slew rate supported by the mount in degrees per second.
-        max_slew_accel: Maximum slew acceleration in degrees per second squared.
-        max_slew_step: Maximum slew rate change per command in degrees per second.
         cached_position: Cached position dict from last time position was read from the mount.
         cached_position_time: Unix timestamp corresponding to the time when cached_position was
             read from the mount.
@@ -206,6 +204,7 @@ class LosmandyGeminiMount(TelescopeMount):
         self.ra_west_limit = ra_west_limit
         self.ra_east_limit = ra_east_limit
         self.bypass_ra_limits = bypass_ra_limits
+        self.max_slew_rate = max_slew_rate
         self.cached_position = None
         self.cached_position_time = None
 
