@@ -51,9 +51,8 @@ parser.add_argument(
     default=3200,
     type=int)
 parser.add_argument(
-    '--dump-frames',
-    help='dump frames from webcam to jpeg files on disk',
-    action='store_true'
+    '--frame-dump-dir',
+    help='directory to save webcam frames as jpeg files on disk',
 )
 parser.add_argument(
     '--mount-type',
@@ -98,7 +97,7 @@ error_source = track.OpticalErrorSource(
     args.camera_exposure,
     x_axis_name='az',
     y_axis_name='alt',
-    dump_frames_to_files=args.dump_frames,
+    frame_dump_dir=args.frame_dump_dir,
 )
 
 tracker = track.Tracker(

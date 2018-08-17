@@ -12,10 +12,10 @@ import sys
 
 class WebCam(object):
 
-    def __init__(self, dev_path, bufs_wanted, ctrl_exposure, dump_frames_to_files=False):
+    def __init__(self, dev_path, bufs_wanted, ctrl_exposure, frame_dump_dir=None):
         self.dev_path    = dev_path
         self.bufs_wanted = bufs_wanted
-        self.dump_frames_to_files = dump_frames_to_files
+        self.dump_frames_to_files = frame_dump_dir is not None
         self.dev_fd      = -1
         self.bufmaps     = []
         self.started     = False
@@ -39,7 +39,7 @@ class WebCam(object):
         self._queue_all_buffers()
 
         if self.dump_frames_to_files:
-            self._dump_init()
+            self._dump_init(frame_dump_dir)
 
         self.start()
 
@@ -248,13 +248,13 @@ class WebCam(object):
     def _v4l2_ioctl(self, req, arg):
         assert (fcntl.ioctl(self.dev_fd, req, arg) == 0)
 
-    def _dump_init(self):
+    def _dump_init(self, frame_dump_dir):
         self.dump_idx = 0
 
         # find and create a not-yet-existent 'webcam_dump_####' directory
         num = 0
         while True:
-            self.dump_dir = 'webcam_dump_{:04d}'.format(num)
+            self.dump_dir = frame_dump_dir + '/webcam_dump_{:04d}'.format(num)
             try:
                 os.makedirs(self.dump_dir)
             except (IOError, OSError) as e:

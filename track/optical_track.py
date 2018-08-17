@@ -42,9 +42,8 @@ def main():
         type=int
     )
     parser.add_argument(
-        '--dump-frames',
-        help='dump frames from webcam to jpeg files on disk',
-        action='store_true'
+        '--frame-dump-dir',
+        help='directory to save webcam frames as jpeg files on disk',
     )
     parser.add_argument(
         '--mount-type',
@@ -138,7 +137,7 @@ def main():
         x_axis_name=x_axis_name,
         y_axis_name=y_axis_name,
         mount=mount,
-        dump_frames_to_files=args.dump_frames,
+        frame_dump_dir=args.frame_dump_dir,
     )
     telem_sources = {'error_optical': error_source}
 
