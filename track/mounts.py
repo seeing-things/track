@@ -202,7 +202,7 @@ class LosmandyGeminiMount(TelescopeMount):
             accel_limit=max_slew_accel,
         )
 
-        # If Gemini startup is not complete the coordinates it reports will not coorespond to its
+        # If Gemini startup is not complete the coordinates it reports will not correspond to its
         # position. This can lead to bad behaviors such as tracking motion that never stops and
         # inability of this code to enforce limits on the RA axis.
         if self.mount.startup_check() != point.gemini_commands.G2StartupStatus.DONE_EQUATORIAL:
