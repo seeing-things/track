@@ -201,6 +201,13 @@ class LosmandyGeminiMount(TelescopeMount):
             rate_step_limit=max_slew_step,
             accel_limit=max_slew_accel,
         )
+
+        # If Gemini startup is not complete the coordinates it reports will not coorespond to its
+        # position. This can lead to bad behaviors such as tracking motion that never stops and
+        # inability of this code to enforce limits on the RA axis.
+        if self.mount.startup_check() != point.gemini_commands.G2StartupStatus.DONE_EQUATORIAL:
+            raise RuntimeError('Gemini has not completed startup!')
+
         self.ra_west_limit = ra_west_limit
         self.ra_east_limit = ra_east_limit
         self.bypass_ra_limits = bypass_ra_limits
