@@ -324,6 +324,9 @@ def main():
 
         print('Alignment completed successfully!')
 
+    except RuntimeError as e:
+        print('Ran out of stars meeting the selection criteria.')
+        print('Alignment was not completed.')
     except KeyboardInterrupt:
         print('Goodbye')
 
