@@ -325,10 +325,12 @@ def main():
         print('Alignment completed successfully!')
 
     except RuntimeError as e:
-        print('Ran out of stars meeting the selection criteria.')
+        print(str(e))
         print('Alignment was not completed.')
     except KeyboardInterrupt:
         print('Goodbye')
+    except Exception as e:
+        print('Unhandled exception: ' + str(e))
 
     if args.telem_enable:
         telem_logger.stop()
