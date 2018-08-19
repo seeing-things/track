@@ -8,6 +8,7 @@ feedback control loop.
 from __future__ import print_function
 import time
 import abc
+import threading
 from track.telem import TelemSource
 from track.mathutils import clamp
 
@@ -310,6 +311,8 @@ class Tracker(TelemSource):
         self.converge_max_error_mag = 50.0 / 3600.0
         self.converge_min_iterations = 50
         self.converge_error_state = None
+        self.telem_mutex = threading.Lock()
+        self.set_telem_channels()
 
     def register_callback(self, callback):
         """Register a callback function.
@@ -396,14 +399,22 @@ class Tracker(TelemSource):
         """Final tasks to perform at the end of each control cycle."""
         if self.callback is not None:
             self.callback(self)
+        self.set_telem_channels()
         self.num_iterations += 1
 
-    def get_telem_channels(self):
-        chans = {}
-        chans['num_iterations'] = self.num_iterations
+    def set_telem_channels(self):
+        self.telem_mutex.acquire()
+        self.telem_chans = {}
+        self.telem_chans['num_iterations'] = self.num_iterations
         for axis in self.mount.get_axis_names():
-            chans['rate_' + axis] = self.slew_rate[axis]
-            chans['error_' + axis] = self.error[axis]
-            chans['loop_filt_int_' + axis] = self.loop_filter[axis].int
-            chans['loop_filt_out_' + axis] = self.loop_filter_output[axis]
+            self.telem_chans['rate_' + axis] = self.slew_rate[axis]
+            self.telem_chans['error_' + axis] = self.error[axis]
+            self.telem_chans['loop_filt_int_' + axis] = self.loop_filter[axis].int
+            self.telem_chans['loop_filt_out_' + axis] = self.loop_filter_output[axis]
+        self.telem_mutex.release()
+
+    def get_telem_channels(self):
+        self.telem_mutex.acquire()
+        chans = self.telem_chans.copy()
+        self.telem_mutex.release()
         return chans
