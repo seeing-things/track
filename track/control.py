@@ -59,11 +59,6 @@ class TelescopeMount(object):
     """
     __metaclass__ = abc.ABCMeta
 
-    class AxisLimitException(Exception):
-        """Raised when an axis reaches or exceeds limits."""
-        def __init__(self, axes):
-            self.axes = axes
-
     @abc.abstractmethod
     def get_axis_names(self):
         """Get axis names
@@ -113,12 +108,9 @@ class TelescopeMount(object):
         Returns:
             A two-element tuple where the first element is a float giving the actual slew rate
                 achieved by the mount. The actual rate could differ from the requested rate due
-                to quantization or due to enforcement of slew rate or acceleration limits. The
-                second element is a boolean that is set to True if any of the limits enforced by
-                the mount were exceeded by the requested slew rate.
-
-        Raises:
-            AltitudeLimitException: Implementation dependent.
+                to quantization or due to enforcement of slew rate, acceleration, or axis position
+                limits. The second element is a boolean that is set to True if any of the limits
+                enforced by the mount were exceeded by the requested slew rate.
         """
         pass
 
@@ -391,12 +383,12 @@ class Tracker(TelemSource):
 
             # set mount slew rates
             for axis in axes:
-                try:
-                    (self.slew_rate[axis], limit_exceeded) = self.mount.slew(axis, self.loop_filter_output[axis])
-                    if limit_exceeded:
-                        self.loop_filter[axis].clamp_integrator(self.slew_rate[axis])
-                except TelescopeMount.AxisLimitException:
-                    self.loop_filter[axis].int = 0.0
+                (
+                    self.slew_rate[axis],
+                    limit_exceeded
+                ) = self.mount.slew(axis, self.loop_filter_output[axis])
+                if limit_exceeded:
+                    self.loop_filter[axis].clamp_integrator(self.slew_rate[axis])
 
             self.finish_control_cycle()
 

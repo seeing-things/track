@@ -106,12 +106,9 @@ def main():
 
         # don't try to fight the control loop
         if not any(tracker.error.values()):
-            try:
-                gamepad_x, gamepad_y = game_pad.get_proportional()
-                mount.slew(x_axis_name, mount.max_slew_rate * gamepad_x)
-                mount.slew(y_axis_name, mount.max_slew_rate * gamepad_y)
-            except mount.AxisLimitException:
-                pass
+            gamepad_x, gamepad_y = game_pad.get_proportional()
+            mount.slew(x_axis_name, mount.max_slew_rate * gamepad_x)
+            mount.slew(y_axis_name, mount.max_slew_rate * gamepad_y)
 
     # Create object with base type TelescopeMount
     if args.mount_type == 'nexstar':

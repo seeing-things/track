@@ -123,15 +123,18 @@ class NexStarMount(TelescopeMount):
             rate: A float giving the slew rate in degrees per second. The sign
                 of the value indicates the direction of the slew.
 
-        Raises:
-            AxisLimitException: Altitude limit has been exceeded and the
-                altitude slew rate is not away from the limit.
+        Returns:
+            A two-element tuple where the first element is a float giving the actual slew rate
+                achieved by the mount. The actual rate could differ from the requested rate due
+                to slew rate or axis position limits. The second element is a boolean that is set
+                to True if any of the limits enforced by the mount were exceeded by the requested
+                slew rate.
         """
         assert axis in ['az', 'alt']
 
         limit_exceeded = False
         if abs(rate) > self.max_slew_rate:
-            limit_exceeded = True
+            limits_exceeded = True
             rate = clamp(rate, self.max_slew_rate)
 
         # enforce altitude limits
@@ -139,13 +142,13 @@ class NexStarMount(TelescopeMount):
             position = self.get_position(0.25)
             if ((position['alt'] >= self.alt_max_limit and rate > 0.0) or
                 (position['alt'] <= self.alt_min_limit and rate < 0.0)):
-                self.mount.slew_var('alt', 0.0)
-                raise self.AxisLimitException(['alt'])
+                limits_exceeded = True
+                rate = 0.0
 
         # slew_var argument units are arcseconds per second
         self.mount.slew_var(axis, rate * 3600.0)
 
-        return (rate, limit_exceeded)
+        return (rate, limits_exceeded)
 
 
 class LosmandyGeminiMount(TelescopeMount):
@@ -270,23 +273,27 @@ class LosmandyGeminiMount(TelescopeMount):
         Returns:
             A two-element tuple where the first element is a float giving the actual slew rate
                 achieved by the mount. The actual rate could differ from the requested rate due
-                to quantization or due to enforcement of slew rate or acceleration limits. The
-                second element is a boolean that is set to True if any of the limits enforced by
-                the mount were exceeded by the requested slew rate.
+                to quantization or due to enforcement of slew rate, acceleration, or axis position
+                limits. The second element is a boolean that is set to True if any of the limits
+                enforced by the mount were exceeded by the requested slew rate.
 
         Raises:
             ValueError: If axis name is not 'ra' or 'dec'.
-            AxisLimitException: RA limit has been exceeded and the RA slew rate is not away from
-                the limit.
         """
         if axis not in ['ra', 'dec']:
             raise ValueError("axis must be 'ra' or 'dec'")
 
+        axis_limit_exceeded = False
         if axis == 'ra' and not self.bypass_ra_limits:
             pra = self.get_position()['pra']
             if ((pra < 180 - self.ra_west_limit and rate < 0.0) or
                 (pra > 180 + self.ra_east_limit and rate > 0.0)):
-                self.mount.slew(axis, 0.0)
-                raise self.AxisLimitException(['ra'])
+                axis_limit_exceeded = True
+                rate = 0.0
 
-        return self.mount.slew(axis, rate)
+        (actual_rate, limits_exceeded) = self.mount.slew(axis, rate)
+
+        if axis_limit_exceeded:
+            limits_exceeded = True
+
+        return (actual_rate, limits_exceeded)

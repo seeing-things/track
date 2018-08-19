@@ -78,14 +78,8 @@ def main():
     try:
         while True:
             x, y = game_pad.get_value()
-            try:
-                mount.slew('ra', mount.max_slew_rate * x)
-            except mount.AxisLimitException:
-                pass
-            try:
-                mount.slew('dec', mount.max_slew_rate * y)
-            except mount.AxisLimitException:
-                pass
+            mount.slew('ra', mount.max_slew_rate * x)
+            mount.slew('dec', mount.max_slew_rate * y)
     except KeyboardInterrupt:
         print('Goodbye!')
     except Exception as e:
