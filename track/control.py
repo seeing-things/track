@@ -296,6 +296,7 @@ class Tracker(TelemSource):
         if set(mount.get_axis_names()) != set(error_source.get_axis_names()):
             raise ValueError('error_source and mount must use same set of axes')
         self.loop_filter = {}
+        self.loop_filter_output = {}
         self.error = {}
         self.slew_rate = {}
         for axis in mount.get_axis_names():
@@ -303,6 +304,7 @@ class Tracker(TelemSource):
                 bandwidth=loop_bandwidth,
                 damping_factor=damping_factor,
             )
+            self.loop_filter_output[axis] = 0.0
             self.error[axis] = None
             self.slew_rate[axis] = 0.0
         self.mount = mount
@@ -385,14 +387,14 @@ class Tracker(TelemSource):
 
             # update loop filters
             for axis in axes:
-                self.slew_rate[axis] = self.loop_filter[axis].update(self.error[axis])
+                self.loop_filter_output[axis] = self.loop_filter[axis].update(self.error[axis])
 
             # set mount slew rates
             for axis in axes:
                 try:
-                    (actual_rate, limit_exceeded) = self.mount.slew(axis, self.slew_rate[axis])
+                    (self.slew_rate[axis], limit_exceeded) = self.mount.slew(axis, self.loop_filter_output[axis])
                     if limit_exceeded:
-                        self.loop_filter[axis].clamp_integrator(actual_rate)
+                        self.loop_filter[axis].clamp_integrator(self.slew_rate[axis])
                 except TelescopeMount.AxisLimitException:
                     self.loop_filter[axis].int = 0.0
 
@@ -411,4 +413,5 @@ class Tracker(TelemSource):
             chans['rate_' + axis] = self.slew_rate[axis]
             chans['error_' + axis] = self.error[axis]
             chans['loop_filt_int_' + axis] = self.loop_filter[axis].int
+            chans['loop_filt_out_' + axis] = self.loop_filter_output[axis]
         return chans
