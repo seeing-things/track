@@ -365,8 +365,7 @@ class Tracker(TelemSource):
             try:
                 self.error = self.error_source.compute_error()
             except ErrorSource.NoSignalException:
-                for axis in self.mount.get_axis_names():
-                    self.error[axis] = None
+                self.error = self.error.fromkeys(self.error, None)
                 self.finish_control_cycle()
                 continue
 
