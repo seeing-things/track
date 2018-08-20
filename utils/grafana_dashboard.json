@@ -1,8 +1,8 @@
 {
   "__inputs": [
     {
-      "name": "DS_TRACK_TELEMETRY DATABASE",
-      "label": "Track Telemetry Database",
+      "name": "DS_TRACK_TELEMETRY",
+      "label": "Track Telemetry",
       "description": "",
       "type": "datasource",
       "pluginId": "influxdb",
@@ -14,7 +14,7 @@
       "type": "grafana",
       "id": "grafana",
       "name": "Grafana",
-      "version": "5.0.4"
+      "version": "5.1.3"
     },
     {
       "type": "panel",
@@ -55,21 +55,150 @@
   "links": [],
   "panels": [
     {
-      "aliasColors": {},
+      "cacheTimeout": null,
+      "colorBackground": false,
+      "colorValue": false,
+      "colors": [
+        "#ef843c",
+        "#629e51",
+        "rgb(94, 94, 94)"
+      ],
+      "datasource": "${DS_TRACK_TELEMETRY}",
+      "format": "none",
+      "gauge": {
+        "maxValue": 100,
+        "minValue": 0,
+        "show": false,
+        "thresholdLabels": false,
+        "thresholdMarkers": true
+      },
+      "gridPos": {
+        "h": 2,
+        "w": 4,
+        "x": 10,
+        "y": 0
+      },
+      "id": 8,
+      "interval": "0.1s",
+      "links": [],
+      "mappingType": 1,
+      "mappingTypes": [
+        {
+          "name": "value to text",
+          "value": 1
+        },
+        {
+          "name": "range to text",
+          "value": 2
+        }
+      ],
+      "maxDataPoints": 100,
+      "nullPointMode": "connected",
+      "nullText": null,
+      "postfix": "",
+      "postfixFontSize": "50%",
+      "prefix": "",
+      "prefixFontSize": "50%",
+      "rangeMaps": [
+        {
+          "from": "null",
+          "text": "N/A",
+          "to": "null"
+        }
+      ],
+      "sparkline": {
+        "fillColor": "rgba(31, 118, 189, 0.18)",
+        "full": false,
+        "lineColor": "rgb(31, 120, 193)",
+        "show": false
+      },
+      "tableColumn": "",
+      "targets": [
+        {
+          "alias": "$col",
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "null"
+              ],
+              "type": "fill"
+            }
+          ],
+          "measurement": "error_hybrid",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT last(\"state\") FROM \"error_hybrid\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
+          "rawQuery": false,
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "state"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              }
+            ]
+          ],
+          "tags": []
+        }
+      ],
+      "thresholds": "",
+      "title": "Current Tracking State",
+      "type": "singlestat",
+      "valueFontSize": "100%",
+      "valueMaps": [
+        {
+          "op": "=",
+          "text": "BLIND",
+          "value": "0"
+        },
+        {
+          "op": "=",
+          "text": "OPTICAL",
+          "value": "1"
+        },
+        {
+          "op": "=",
+          "text": "N/A",
+          "value": "null"
+        }
+      ],
+      "valueName": "current"
+    },
+    {
+      "aliasColors": {
+        "blind DEC": "#1f78c1",
+        "blind RA": "#c15c17",
+        "optical DEC": "#82b5d8",
+        "optical RA": "#f9934e",
+        "optical mag": "#f9d9f9"
+      },
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_TRACK_TELEMETRY DATABASE}",
+      "datasource": "${DS_TRACK_TELEMETRY}",
       "decimals": 5,
       "fill": 0,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 0
+        "y": 2
       },
       "id": 5,
-      "interval": "1s",
+      "interval": ".01s",
       "legend": {
         "alignAsTable": false,
         "avg": false,
@@ -91,6 +220,9 @@
       "seriesOverrides": [
         {
           "alias": "hybrid state",
+          "color": "#7eb26d",
+          "fill": 2,
+          "linewidth": 0,
           "yaxis": 2
         }
       ],
@@ -103,7 +235,7 @@
           "groupBy": [
             {
               "params": [
-                "$__interval"
+                "100ms"
               ],
               "type": "time"
             },
@@ -167,7 +299,7 @@
           "groupBy": [
             {
               "params": [
-                "$__interval"
+                "100ms"
               ],
               "type": "time"
             },
@@ -222,6 +354,24 @@
                 ],
                 "type": "alias"
               }
+            ],
+            [
+              {
+                "params": [
+                  "error_mag"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              },
+              {
+                "params": [
+                  "optical mag"
+                ],
+                "type": "alias"
+              }
             ]
           ],
           "tags": []
@@ -231,7 +381,7 @@
           "groupBy": [
             {
               "params": [
-                "$__interval"
+                "100ms"
               ],
               "type": "time"
             },
@@ -294,7 +444,215 @@
         {
           "decimals": null,
           "format": "short",
-          "label": "",
+          "label": "Degrees",
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": "1",
+          "min": "0",
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {
+        "mount DEC": "#82b5d8",
+        "mount RA": "#f9934e",
+        "target DEC": "#1f78c1",
+        "target RA": "#c15c17"
+      },
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "${DS_TRACK_TELEMETRY}",
+      "decimals": 5,
+      "fill": 0,
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 2
+      },
+      "id": 9,
+      "interval": ".01s",
+      "legend": {
+        "alignAsTable": false,
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "rightSide": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [
+        {
+          "alias": "hybrid state",
+          "color": "#7eb26d",
+          "fill": 2,
+          "linewidth": 0,
+          "yaxis": 2
+        },
+        {
+          "alias": "target RA",
+          "yaxis": 1
+        },
+        {
+          "alias": "mount DEC",
+          "yaxis": 1
+        },
+        {
+          "alias": "target DEC",
+          "yaxis": 1
+        }
+      ],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "alias": "$col",
+          "groupBy": [
+            {
+              "params": [
+                "100ms"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "null"
+              ],
+              "type": "fill"
+            }
+          ],
+          "hide": false,
+          "measurement": "error_blind",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT mean(\"mount_ra\") AS \"mount RA\", mean(\"mount_dec\") AS \"mount DEC\", mean(\"mount_ha\") AS \"mount HA\", mean(\"target_ra\") AS \"target RA\", mean(\"target_dec\") AS \"target DEC\" FROM \"error_blind\" WHERE $timeFilter GROUP BY time(100ms) fill(null)",
+          "rawQuery": false,
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "mount_ra"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              },
+              {
+                "params": [
+                  "mount RA"
+                ],
+                "type": "alias"
+              }
+            ],
+            [
+              {
+                "params": [
+                  "mount_dec"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              },
+              {
+                "params": [
+                  "mount DEC"
+                ],
+                "type": "alias"
+              }
+            ],
+            [
+              {
+                "params": [
+                  "target_ra"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              },
+              {
+                "params": [
+                  "target RA"
+                ],
+                "type": "alias"
+              }
+            ],
+            [
+              {
+                "params": [
+                  "target_dec"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              },
+              {
+                "params": [
+                  "target DEC"
+                ],
+                "type": "alias"
+              }
+            ]
+          ],
+          "tags": []
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Mount and Target Positions",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "transparent": false,
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "decimals": null,
+          "format": "short",
+          "label": "Degrees",
           "logBase": 1,
           "max": null,
           "min": null,
@@ -308,21 +666,231 @@
           "min": null,
           "show": true
         }
-      ]
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
     },
     {
       "aliasColors": {},
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "${DS_TRACK_TELEMETRY DATABASE}",
+      "datasource": "${DS_TRACK_TELEMETRY}",
+      "fill": 1,
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 11
+      },
+      "id": 4,
+      "interval": "0.1s",
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "alias": "$col",
+          "groupBy": [
+            {
+              "params": [
+                "100ms"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "null"
+              ],
+              "type": "fill"
+            }
+          ],
+          "hide": false,
+          "measurement": "gamepad",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT mean(\"left_x\") AS \"left x\", mean(\"left_y\") AS \"left y\" FROM \"gamepad\" WHERE $timeFilter GROUP BY time($__interval) fill(none)",
+          "rawQuery": false,
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "left_x"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              },
+              {
+                "params": [
+                  "left x"
+                ],
+                "type": "alias"
+              }
+            ],
+            [
+              {
+                "params": [
+                  "left_y"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              },
+              {
+                "params": [
+                  "left y"
+                ],
+                "type": "alias"
+              }
+            ]
+          ],
+          "tags": []
+        },
+        {
+          "alias": "$col",
+          "groupBy": [
+            {
+              "params": [
+                "100ms"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "null"
+              ],
+              "type": "fill"
+            }
+          ],
+          "hide": false,
+          "measurement": "gamepad",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT mean(\"right_x\") AS \"right x\", mean(\"right_y\") AS \"right y\" FROM \"gamepad\" WHERE $timeFilter GROUP BY time($__interval) fill(none)",
+          "rawQuery": false,
+          "refId": "B",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "right_x"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              },
+              {
+                "params": [
+                  "right x"
+                ],
+                "type": "alias"
+              }
+            ],
+            [
+              {
+                "params": [
+                  "right_y"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              },
+              {
+                "params": [
+                  "right y"
+                ],
+                "type": "alias"
+              }
+            ]
+          ],
+          "tags": []
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Gamepad",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "none",
+          "label": "Degrees per Second",
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "${DS_TRACK_TELEMETRY}",
       "decimals": 5,
       "fill": 0,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 0
+        "y": 11
       },
       "id": 6,
       "interval": "1s",
@@ -359,7 +927,7 @@
           "groupBy": [
             {
               "params": [
-                "$__interval"
+                "100ms"
               ],
               "type": "time"
             },
@@ -423,7 +991,7 @@
           "groupBy": [
             {
               "params": [
-                "$__interval"
+                "100ms"
               ],
               "type": "time"
             },
@@ -504,10 +1072,10 @@
         {
           "decimals": null,
           "format": "short",
-          "label": "",
+          "label": "Degrees per Second",
           "logBase": 1,
-          "max": null,
-          "min": null,
+          "max": "4",
+          "min": "-4",
           "show": true
         },
         {
@@ -518,331 +1086,11 @@
           "min": null,
           "show": true
         }
-      ]
-    },
-    {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "datasource": "${DS_TRACK_TELEMETRY DATABASE}",
-      "fill": 1,
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 9
-      },
-      "id": 4,
-      "interval": "0.1s",
-      "legend": {
-        "avg": false,
-        "current": false,
-        "max": false,
-        "min": false,
-        "show": true,
-        "total": false,
-        "values": false
-      },
-      "lines": true,
-      "linewidth": 1,
-      "links": [],
-      "nullPointMode": "null",
-      "percentage": false,
-      "pointradius": 5,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
-        {
-          "alias": "$col",
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "none"
-              ],
-              "type": "fill"
-            }
-          ],
-          "hide": false,
-          "measurement": "gamepad",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "query": "SELECT mean(\"left_x\") AS \"left x\", mean(\"left_y\") AS \"left y\" FROM \"gamepad\" WHERE $timeFilter GROUP BY time($__interval) fill(none)",
-          "rawQuery": false,
-          "refId": "A",
-          "resultFormat": "time_series",
-          "select": [
-            [
-              {
-                "params": [
-                  "left_x"
-                ],
-                "type": "field"
-              },
-              {
-                "params": [],
-                "type": "mean"
-              },
-              {
-                "params": [
-                  "left x"
-                ],
-                "type": "alias"
-              }
-            ],
-            [
-              {
-                "params": [
-                  "left_y"
-                ],
-                "type": "field"
-              },
-              {
-                "params": [],
-                "type": "mean"
-              },
-              {
-                "params": [
-                  "left y"
-                ],
-                "type": "alias"
-              }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "$col",
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "none"
-              ],
-              "type": "fill"
-            }
-          ],
-          "hide": false,
-          "measurement": "gamepad",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "query": "SELECT mean(\"right_x\") AS \"right x\", mean(\"right_y\") AS \"right y\" FROM \"gamepad\" WHERE $timeFilter GROUP BY time($__interval) fill(none)",
-          "rawQuery": false,
-          "refId": "B",
-          "resultFormat": "time_series",
-          "select": [
-            [
-              {
-                "params": [
-                  "right_x"
-                ],
-                "type": "field"
-              },
-              {
-                "params": [],
-                "type": "mean"
-              },
-              {
-                "params": [
-                  "right x"
-                ],
-                "type": "alias"
-              }
-            ],
-            [
-              {
-                "params": [
-                  "right_y"
-                ],
-                "type": "field"
-              },
-              {
-                "params": [],
-                "type": "mean"
-              },
-              {
-                "params": [
-                  "right y"
-                ],
-                "type": "alias"
-              }
-            ]
-          ],
-          "tags": []
-        }
       ],
-      "thresholds": [],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "Gamepad",
-      "tooltip": {
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "buckets": null,
-        "mode": "time",
-        "name": null,
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "none",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        },
-        {
-          "format": "short",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        }
-      ]
-    },
-    {
-      "cacheTimeout": null,
-      "colorBackground": false,
-      "colorValue": false,
-      "colors": [
-        "#ef843c",
-        "#629e51",
-        "rgb(94, 94, 94)"
-      ],
-      "datasource": "${DS_TRACK_TELEMETRY DATABASE}",
-      "format": "none",
-      "gauge": {
-        "maxValue": 100,
-        "minValue": 0,
-        "show": false,
-        "thresholdLabels": false,
-        "thresholdMarkers": true
-      },
-      "gridPos": {
-        "h": 3,
-        "w": 7,
-        "x": 12,
-        "y": 9
-      },
-      "id": 8,
-      "interval": null,
-      "links": [],
-      "mappingType": 1,
-      "mappingTypes": [
-        {
-          "name": "value to text",
-          "value": 1
-        },
-        {
-          "name": "range to text",
-          "value": 2
-        }
-      ],
-      "maxDataPoints": 100,
-      "nullPointMode": "connected",
-      "nullText": null,
-      "postfix": "",
-      "postfixFontSize": "50%",
-      "prefix": "",
-      "prefixFontSize": "50%",
-      "rangeMaps": [
-        {
-          "from": "null",
-          "text": "N/A",
-          "to": "null"
-        }
-      ],
-      "sparkline": {
-        "fillColor": "rgba(31, 118, 189, 0.18)",
-        "full": false,
-        "lineColor": "rgb(31, 120, 193)",
-        "show": false
-      },
-      "tableColumn": "",
-      "targets": [
-        {
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "measurement": "error_hybrid",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "query": "SELECT last(\"state\") FROM \"error_hybrid\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
-          "rawQuery": false,
-          "refId": "A",
-          "resultFormat": "time_series",
-          "select": [
-            [
-              {
-                "params": [
-                  "state"
-                ],
-                "type": "field"
-              },
-              {
-                "params": [],
-                "type": "last"
-              }
-            ]
-          ],
-          "tags": []
-        }
-      ],
-      "thresholds": "",
-      "title": "Current Tracking State",
-      "type": "singlestat",
-      "valueFontSize": "120%",
-      "valueMaps": [
-        {
-          "op": "=",
-          "text": "BLIND",
-          "value": "0"
-        },
-        {
-          "op": "=",
-          "text": "OPTICAL",
-          "value": "1"
-        },
-        {
-          "op": "=",
-          "text": "N/A",
-          "value": "null"
-        }
-      ],
-      "valueName": "current"
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
     }
   ],
   "refresh": false,
@@ -853,8 +1101,8 @@
     "list": []
   },
   "time": {
-    "from": "2018-05-09T04:47:07.620Z",
-    "to": "2018-05-09T04:47:28.964Z"
+    "from": "2018-08-08T04:24:15.116Z",
+    "to": "2018-08-08T04:25:55.472Z"
   },
   "timepicker": {
     "refresh_intervals": [
@@ -886,5 +1134,5 @@
   "timezone": "",
   "title": "Track Dashboard",
   "uid": "iChlammiz",
-  "version": 10
+  "version": 6
 }
