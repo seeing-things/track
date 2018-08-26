@@ -7,6 +7,7 @@ program the integrated x- and y- values are printed to the console.
 from __future__ import print_function
 import threading
 import time
+import selectors
 import inputs
 import numpy as np
 from track.telem import TelemSource
@@ -33,9 +34,13 @@ class Gamepad(TelemSource):
         right_gain: The gain applied to the right analog stick integrator input.
         int_loop_period: The period of the integrator thread loop in seconds.
         int_limit: The integrators will be limited to this absolute value.
-        gamepad: An instance of a gamepad object from the inputs package
-        input_thread: A thread reading input from the gamepad
-        integrator_thread: A thread for integrating the analog stick values
+        callbacks: A dict where keys are event codes and values are callback function handles.
+        gamepad: An instance of a gamepad object from the inputs package.
+        input_thread: A thread reading input from the gamepad.
+        integrator_thread: A thread for integrating the analog stick values.
+        integrator_mode: A boolean set to True when integrator mode is active.
+        running: Threads will stop executing when this is set to False.
+        sel: An object of type selectors.BaseSelector used to check if gamepad has data to read.
     """
 
     MAX_ANALOG_VAL = 2**15
@@ -75,12 +80,25 @@ class Gamepad(TelemSource):
             raise RuntimeError('No gamepads found')
         self.gamepad = inputs.devices.gamepads[0]
         self.input_thread = threading.Thread(target=self.__get_input)
-        self.input_thread.daemon = True
         self.integrator_thread = threading.Thread(target=self.__integrator)
-        self.integrator_thread.daemon = True
         self.integrator_mode = False
+        self.running = True
+
+        # Use a selector on the character device that the inputs package reads from so that we
+        # can avoid blocking on calls to gamepad.read() in the input_thread loop. Calls that block
+        # indefinitely make it impossible to stop the thread which then makes clean program
+        # shutdown difficult or impossible. Daemon threads were used previously but daemon threads
+        # are not shut down cleanly.
+        self.sel = selectors.DefaultSelector()
+        self.sel.register(self.gamepad._character_device, selectors.EVENT_READ)
+
         self.input_thread.start()
         self.integrator_thread.start()
+
+
+    def stop(self):
+        """Stops the threads from running."""
+        self.running = False
 
     def get_proportional(self):
         """Returns a tuple containing the instantaneous x/y values."""
@@ -120,33 +138,37 @@ class Gamepad(TelemSource):
         in its own thread so it doesn't block other processing.
         """
         while True:
-            events = self.gamepad.read()
-            for event in events:
-                if event.code == 'ABS_X':
-                    left_x = float(event.state) / self.MAX_ANALOG_VAL
-                    self.left_x = left_x if abs(left_x) >= self.MIN_LEVEL else 0.0
-                elif event.code == 'ABS_Y':
-                    left_y = -float(event.state) / self.MAX_ANALOG_VAL
-                    self.left_y = left_y if abs(left_y) >= self.MIN_LEVEL else 0.0
-                elif event.code == 'ABS_RX':
-                    right_x = float(event.state) / self.MAX_ANALOG_VAL
-                    self.right_x = right_x if abs(right_x) >= self.MIN_LEVEL else 0.0
-                elif event.code == 'ABS_RY':
-                    right_y = -float(event.state) / self.MAX_ANALOG_VAL
-                    self.right_y = right_y if abs(right_y) >= self.MIN_LEVEL else 0.0
-                elif event.code == 'BTN_NORTH' and event.state == 1:
-                    self.int_x = 0.0
-                elif event.code == 'BTN_WEST' and event.state == 1:
-                    self.int_y = 0.0
-                elif event.code == 'BTN_TL' and event.state == 1:
-                    self.integrator_mode = False
-                elif event.code == 'BTN_TR' and event.state == 1:
-                    self.integrator_mode = True
+            if not self.running:
+                return
 
-                # call any callbacks registered for this event.code
-                callback = self.callbacks.get(event.code, None)
-                if callback is not None:
-                    callback(event.state)
+            if self.sel.select(timeout=0.01):
+                events = self.gamepad.read()
+                for event in events:
+                    if event.code == 'ABS_X':
+                        left_x = float(event.state) / self.MAX_ANALOG_VAL
+                        self.left_x = left_x if abs(left_x) >= self.MIN_LEVEL else 0.0
+                    elif event.code == 'ABS_Y':
+                        left_y = -float(event.state) / self.MAX_ANALOG_VAL
+                        self.left_y = left_y if abs(left_y) >= self.MIN_LEVEL else 0.0
+                    elif event.code == 'ABS_RX':
+                        right_x = float(event.state) / self.MAX_ANALOG_VAL
+                        self.right_x = right_x if abs(right_x) >= self.MIN_LEVEL else 0.0
+                    elif event.code == 'ABS_RY':
+                        right_y = -float(event.state) / self.MAX_ANALOG_VAL
+                        self.right_y = right_y if abs(right_y) >= self.MIN_LEVEL else 0.0
+                    elif event.code == 'BTN_NORTH' and event.state == 1:
+                        self.int_x = 0.0
+                    elif event.code == 'BTN_WEST' and event.state == 1:
+                        self.int_y = 0.0
+                    elif event.code == 'BTN_TL' and event.state == 1:
+                        self.integrator_mode = False
+                    elif event.code == 'BTN_TR' and event.state == 1:
+                        self.integrator_mode = True
+
+                    # call any callbacks registered for this event.code
+                    callback = self.callbacks.get(event.code, None)
+                    if callback is not None:
+                        callback(event.state)
 
     def __integrator(self):
         """Thread function for integrating analog stick values.
@@ -157,6 +179,9 @@ class Gamepad(TelemSource):
         waiting for new events from the controller.
         """
         while True:
+            if not self.running:
+                return
+
             if self.integrator_mode:
                 self.int_x += self.left_gain * self.int_loop_period * self.left_x
                 self.int_y += self.left_gain * self.int_loop_period * self.left_y

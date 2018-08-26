@@ -99,6 +99,7 @@ def main():
 
     if args.telem_enable:
         telem_logger.stop()
+        game_pad.stop()
 
 if __name__ == "__main__":
     main()

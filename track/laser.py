@@ -63,7 +63,12 @@ class LaserPointer(object):
         self.ftdi.set_bitmode(self.laser_pin, Ftdi.BITMODE_BITBANG)
         assert self.ftdi.bitbang_enabled
 
+        # make sure laser is disabled by default
+        self.set(False)
+
     def __del__(self):
+        # make sure laser is disabled on shutdown
+        self.set(False)
         self.ftdi.close()
 
     def set(self, enable):

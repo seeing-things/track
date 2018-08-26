@@ -219,5 +219,10 @@ def main():
     if args.telem_enable:
         telem_logger.stop()
 
+    try:
+        game_pad.stop()
+    except:
+        pass
+
 if __name__ == "__main__":
     main()
