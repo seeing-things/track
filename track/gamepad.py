@@ -70,6 +70,7 @@ class Gamepad(TelemSource):
         self.right_gain = right_gain
         self.int_loop_period = int_loop_period
         self.int_limit = int_limit
+        self.callbacks = {}
         if len(inputs.devices.gamepads) < 1:
             raise RuntimeError('No gamepads found')
         self.gamepad = inputs.devices.gamepads[0]
@@ -97,6 +98,18 @@ class Gamepad(TelemSource):
             return self.get_integrator()
         else:
             return self.get_proportional()
+
+    def register_callback(self, event_code=None, callback=None):
+        """Register a callback function to be called when a particular gamepad event occurs.
+
+        Args:
+            event_code: The event code as a string. For example, if set to 'ABS_X', the callback
+                function will be called anytime an event with that code id detected.
+            callback: Function to be called. The function should take a single argument which will
+                be set to event.state for the matching event code. Set to None to remove the
+                callback for this code. Only one callback can be registered per event code.
+        """
+        self.callbacks[event_code] = callback
 
     def __get_input(self):
         """Thread function for reading input from gamepad
@@ -129,6 +142,11 @@ class Gamepad(TelemSource):
                     self.integrator_mode = False
                 elif event.code == 'BTN_TR' and event.state == 1:
                     self.integrator_mode = True
+
+                # call any callbacks registered for this event.code
+                callback = self.callbacks.get(event.code, None)
+                if callback is not None:
+                    callback(event.state)
 
     def __integrator(self):
         """Thread function for integrating analog stick values.

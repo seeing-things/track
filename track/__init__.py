@@ -5,6 +5,7 @@ from .control import *
 from .errorsources import *
 from .mathutils import *
 from .telem import *
+from .laser import *
 try:
     from .webcam import *
 except ImportError as e:

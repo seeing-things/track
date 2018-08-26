@@ -56,6 +56,9 @@ setup(
         'telemetry': [
             'influxdb>=5.0.0',
         ],
+        'laser': [
+            'pyftdi>=0.29',
+        ],
     },
 
     dependency_links=[

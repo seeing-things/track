@@ -90,6 +90,10 @@ def main():
         default=1.0,
         type=float
     )
+    parser.add_argument(
+        '--laser-ftdi-serial',
+        help='serial number of laser pointer FTDI device',
+    )
 
     subparsers = parser.add_subparsers(title='modes', dest='mode')
 
@@ -167,6 +171,12 @@ def main():
     telem_sources = {'error_blind': error_source}
 
     try:
+        laser = track.LaserPointer(serial_num=args.laser_ftdi_serial)
+    except OSError:
+        print('Could not connect to laser pointer FTDI device.')
+        laser = None
+
+    try:
         # Create gamepad object and register callback
         game_pad = track.Gamepad(
             left_gain=2.0,  # left stick degrees per second
@@ -174,6 +184,8 @@ def main():
             int_limit=5.0,  # max correction in degrees for either axis
         )
         game_pad.integrator_mode = True
+        if laser is not None:
+            game_pad.register_callback('BTN_SOUTH', laser.set)
         error_source.register_offset_callback(game_pad.get_integrator)
         telem_sources['gamepad'] = game_pad
         print('Gamepad found and registered.')

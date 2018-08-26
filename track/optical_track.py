@@ -94,6 +94,10 @@ def main():
         default=1.0,
         type=float
     )
+    parser.add_argument(
+        '--laser-ftdi-serial',
+        help='serial number of laser pointer FTDI device',
+    )
     args = parser.parse_args()
 
     def gamepad_callback(tracker):
@@ -147,7 +151,15 @@ def main():
     telem_sources['tracker'] = tracker
 
     try:
+        laser = track.LaserPointer(serial_num=args.laser_ftdi_serial)
+    except OSError:
+        print('Could not connect to laser pointer FTDI device.')
+        laser = None
+
+    try:
         game_pad = track.Gamepad()
+        if laser is not None:
+            game_pad.register_callback('BTN_SOUTH', laser.set)
         tracker.register_callback(gamepad_callback)
         telem_sources['gamepad'] = game_pad
         print('Gamepad found and registered.')

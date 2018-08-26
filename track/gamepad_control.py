@@ -50,6 +50,10 @@ def main():
         default=1.0,
         type=float
     )
+    parser.add_argument(
+        '--laser-ftdi-serial',
+        help='serial number of laser pointer FTDI device',
+    )
     args = parser.parse_args()
 
     if args.mount_type == 'nexstar':
@@ -59,10 +63,17 @@ def main():
     elif args.mount_type == 'gemini':
         mount = track.LosmandyGeminiMount(args.mount_path)
     else:
+        mount = None
         print('mount-type not supported: ' + args.mount_type)
-        sys.exit(1)
 
     game_pad = track.Gamepad()
+
+    try:
+        laser = track.LaserPointer(serial_num=args.laser_ftdi_serial)
+        game_pad.register_callback('BTN_SOUTH', laser.set)
+    except OSError:
+        print('Could not connect to laser pointer control device.')
+        laser = None
 
     if args.telem_enable:
         telem_logger = track.TelemLogger(
@@ -77,9 +88,10 @@ def main():
 
     try:
         while True:
-            x, y = game_pad.get_value()
-            mount.slew('ra', mount.max_slew_rate * x)
-            mount.slew('dec', mount.max_slew_rate * y)
+            if mount is not None:
+                x, y = game_pad.get_value()
+                mount.slew('ra', mount.max_slew_rate * x)
+                mount.slew('dec', mount.max_slew_rate * y)
     except KeyboardInterrupt:
         print('Goodbye!')
     except Exception as e:
