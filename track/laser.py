@@ -68,8 +68,11 @@ class LaserPointer(object):
 
     def __del__(self):
         # make sure laser is disabled on shutdown
-        self.set(False)
-        self.ftdi.close()
+        try:
+            self.set(False)
+            self.ftdi.close()
+        except:
+            pass
 
     def set(self, enable):
         """Sets the state of the laser pointer.
