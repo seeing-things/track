@@ -331,12 +331,12 @@ class Tracker(TelemSource):
         """Register a callback function.
 
         Registers a callback function to be called once per control loop iteration, just after
-        the error is calculated but prior to any subsequent processing. The callback function is 
-        passed a single argument which is a reference to this object (self). It must return a 
+        the error is calculated but prior to any subsequent processing. The callback function is
+        passed a single argument which is a reference to this object (self). It must return a
         boolean where if False the remainder of that control loop cycle will execute as normal, or
-        when True the rest of the control loop cycle is skipped (other than setting telemetry 
-        channels and incrementing the iteration counter). Thus the callback is effectively able to 
-        hyjack the behavior of the control loop.
+        when True the rest of the control loop cycle is skipped (other than setting telemetry
+        channels and incrementing the iteration counter). Thus the callback is effectively able to
+        hijack the behavior of the control loop.
 
         Args:
             callback: The function to call. None to un-register.
