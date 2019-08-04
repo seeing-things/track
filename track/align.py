@@ -343,6 +343,9 @@ def main():
         print('Goodbye')
     except Exception as e:
         print('Unhandled exception: ' + str(e))
+    finally:
+        # don't rely on destructors to safe mount!
+        mount.safe()
 
     if args.telem_enable:
         telem_logger.stop()

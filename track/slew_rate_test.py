@@ -80,7 +80,9 @@ def main():
 
     except KeyboardInterrupt:
         print('Goodbye!')
-        pass
+    finally:
+        # don't rely on destructors to safe mount!
+        mount.safe()
 
 if __name__ == "__main__":
     main()

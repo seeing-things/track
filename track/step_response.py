@@ -82,6 +82,9 @@ def main():
             plt.show()
 
     except KeyboardInterrupt:
-        pass
+        print('Goodbye!')
+    finally:
+        # don't rely on destructors to safe mount!
+        mount.safe()
 
 if __name__ == "__main__":
