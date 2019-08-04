@@ -65,7 +65,7 @@ class TelemLogger(object):
                 Values should be objects of type TelemSource.
         """
         self.db = influxdb.InfluxDBClient(host=host, port=port, database=dbname)
-        self.thread = threading.Thread(target=self._worker_thread)
+        self.thread = threading.Thread(target=self._worker_thread, name='TelemLogger: worker thread')
         self.period = period
         self.sources = sources
         self.running = False

@@ -79,8 +79,8 @@ class Gamepad(TelemSource):
         if len(inputs.devices.gamepads) < 1:
             raise RuntimeError('No gamepads found')
         self.gamepad = inputs.devices.gamepads[0]
-        self.input_thread = threading.Thread(target=self.__get_input)
-        self.integrator_thread = threading.Thread(target=self.__integrator)
+        self.input_thread = threading.Thread(target=self.__get_input, name='Gamepad: input thread')
+        self.integrator_thread = threading.Thread(target=self.__integrator, name='Gamepad: integrator thread')
         self.integrator_mode = False
         self.running = True
 
