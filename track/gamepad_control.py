@@ -93,12 +93,16 @@ def main():
                 mount.slew('ra', mount.max_slew_rate * x)
                 mount.slew('dec', mount.max_slew_rate * y)
     except KeyboardInterrupt:
-        print('Goodbye!')
+        print('Got CTRL-C, shutting down...')
     except Exception as e:
         print('Unhandled exception: ' + str(e))
     finally:
         # don't rely on destructors to safe mount!
-        mount.safe()
+        print('Safing mount...')
+        if mount.safe():
+            print('Mount safed successfully!')
+        else:
+            print('Warning: Mount may be in an unsafe state!')
 
     if args.telem_enable:
         telem_logger.stop()
