@@ -103,16 +103,23 @@ def main():
     def gamepad_callback(tracker):
         """Callback for gamepad control.
 
-        Allows manual control of the slew rate via a gamepad when the control loop is not tracking
-        any optical targets. Gamepad control is inhibited when a target is in view. This callback
-        is registered with the Tracker object which calls it on every control cycle.
-        """
+        Allows manual control of the slew rate via a gamepad when the 'B' button is held down, 
+        overriding opitcal tracking behavior. This callback is registered with the Tracker object
+        which calls it near the start of each control cycle.
 
-        # don't try to fight the control loop
-        if not any(tracker.error.values()):
+        Args:
+            tracker: A reference to an object of type Tracker. Not used internally.
+
+        Returns:
+            True when the 'B' button is depressed. False otherwise.
+        """
+        if game_pad.state.get('BTN_EAST', 0) == 1:
             gamepad_x, gamepad_y = game_pad.get_proportional()
             mount.slew(x_axis_name, mount.max_slew_rate * gamepad_x)
             mount.slew(y_axis_name, mount.max_slew_rate * gamepad_y)
+            return True
+        else:
+            return False
 
     # Create object with base type TelescopeMount
     if args.mount_type == 'nexstar':
