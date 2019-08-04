@@ -150,6 +150,22 @@ class NexStarMount(TelescopeMount):
 
         return (rate, limits_exceeded)
 
+    def safe(self):
+        """Bring mount into a safe state.
+
+        For this mount the only action necessary is to command the slew rate to zero on both axes.
+
+        Returns:
+            True if the mount was safed successfully. False otherwise.
+        """
+        success = True
+        for axis in self.get_axis_names():
+            rate, limits_exceeded = self.slew(axis, 0.0)
+            if rate != 0.0:
+                success = False
+
+        return success
+
 
 class LosmandyGeminiMount(TelescopeMount):
     """Interface class for Losmandy equatorial mounts with Gemini 2.
@@ -297,3 +313,12 @@ class LosmandyGeminiMount(TelescopeMount):
             limits_exceeded = True
 
         return (actual_rate, limits_exceeded)
+
+    def safe(self):
+        """Bring mount into a safe state by stopping motion.
+
+        Returns:
+            True if the mount was safed successfully. Will not return otherwise.
+        """
+        # This method blocks until motion on both axes has ceased.
+        self.mount.stop_motion()

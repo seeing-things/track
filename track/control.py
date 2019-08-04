@@ -115,6 +115,19 @@ class TelescopeMount(object):
         """
         pass
 
+    @abc.abstractmethod
+    def safe(self):
+        """Bring mount into a safe state.
+
+        This method will do whatever is necessary to bring the mount into a safe state, such that
+        there is no risk to hardware if the program terminates immediately afterward and
+        communication with the mount stops. At minimum this method will stop all motion.
+
+        Returns:
+            True if the mount was safed successfully. False otherwise.
+        """
+        pass
+
 
 class LoopFilter(object):
     """Proportional plus integral (PI) loop filter.
