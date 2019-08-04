@@ -193,7 +193,7 @@ class LosmandyGeminiMount(TelescopeMount):
             bypass_ra_limits=False,
             max_slew_rate=4.0,
             max_slew_accel=10.0,
-            max_slew_step=0.4,
+            max_slew_step=1.0,
         ):
         """Inits LosmandyGeminiMount object.
 
