@@ -79,8 +79,14 @@ def main():
 
 
     except KeyboardInterrupt:
-        print('Goodbye!')
-        pass
+        print('Got CTRL-C, shutting down...')
+    finally:
+        # don't rely on destructors to safe mount!
+        print('Safing mount...')
+        if mount.safe():
+            print('Mount safed successfully!')
+        else:
+            print('Warning: Mount may be in an unsafe state!')
 
 if __name__ == "__main__":
     main()
