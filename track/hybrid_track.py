@@ -256,6 +256,13 @@ def main():
         )
         telem_logger.start()
 
+    # this is DEFINITELY where this import statement belongs, lol
+    import threading
+    print('{} threads:'.format(threading.active_count()))
+    for thread in threading.enumerate():
+        print('- {} "{}" [Daemonic: {}] [Main Thread: {}]'.format(
+            thread.ident, thread.name, thread.daemon, (thread is threading.main_thread())))
+
     try:
         tracker.run()
     except KeyboardInterrupt:
