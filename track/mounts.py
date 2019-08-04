@@ -317,8 +317,11 @@ class LosmandyGeminiMount(TelescopeMount):
     def safe(self):
         """Bring mount into a safe state by stopping motion.
 
+        This method blocks until motion has ceased.
+
         Returns:
-            True if the mount was safed successfully. Will not return otherwise.
+            True when motion is stopped. Will not return otherwise.
         """
         # This method blocks until motion on both axes has ceased.
         self.mount.stop_motion()
+        return True
