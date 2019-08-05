@@ -35,6 +35,7 @@ class Gamepad(TelemSource):
         int_loop_period: The period of the integrator thread loop in seconds.
         int_limit: The integrators will be limited to this absolute value.
         callbacks: A dict where keys are event codes and values are callback function handles.
+        state: A dict storing the last received event.state for each event.code. Starts empty.
         gamepad: An instance of a gamepad object from the inputs package.
         input_thread: A thread reading input from the gamepad.
         integrator_thread: A thread for integrating the analog stick values.
@@ -76,6 +77,7 @@ class Gamepad(TelemSource):
         self.int_loop_period = int_loop_period
         self.int_limit = int_limit
         self.callbacks = {}
+        self.state = {}
         if len(inputs.devices.gamepads) < 1:
             raise RuntimeError('No gamepads found')
         self.gamepad = inputs.devices.gamepads[0]
@@ -169,6 +171,9 @@ class Gamepad(TelemSource):
                     callback = self.callbacks.get(event.code, None)
                     if callback is not None:
                         callback(event.state)
+
+                    # cache the raw state of this event so it can be inspected at any time
+                    self.state[event.code] = event.state
 
     def __integrator(self):
         """Thread function for integrating analog stick values.

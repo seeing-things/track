@@ -330,8 +330,13 @@ class Tracker(TelemSource):
     def register_callback(self, callback):
         """Register a callback function.
 
-        Registers a callback function to be called near the end of each loop
-        iteration. The callback function is called with no arguments.
+        Registers a callback function to be called once per control loop iteration, just after
+        the error is calculated but prior to any subsequent processing. The callback function is
+        passed a single argument which is a reference to this object (self). It must return a
+        boolean where if False the remainder of that control loop cycle will execute as normal, or
+        when True the rest of the control loop cycle is skipped (other than setting telemetry
+        channels and incrementing the iteration counter). Thus the callback is effectively able to
+        hijack the behavior of the control loop.
 
         Args:
             callback: The function to call. None to un-register.
@@ -379,6 +384,13 @@ class Tracker(TelemSource):
                 self.error = self.error_source.compute_error()
             except ErrorSource.NoSignalException:
                 self.error = self.error.fromkeys(self.error, None)
+
+            if self.callback is not None:
+                if self.callback(self):
+                    self.finish_control_cycle()
+                    continue
+
+            if not any(self.error.values()):
                 self.finish_control_cycle()
                 continue
 
@@ -409,8 +421,6 @@ class Tracker(TelemSource):
 
     def finish_control_cycle(self):
         """Final tasks to perform at the end of each control cycle."""
-        if self.callback is not None:
-            self.callback(self)
         self.set_telem_channels()
         self.num_iterations += 1
 
