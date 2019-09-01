@@ -20,7 +20,7 @@ setup(
     description='A mess of code for tracking moving objects with a telescope',
     long_description=long_description,
 
-    url='https://github.com/bgottula/track',
+    url='https://github.com/seeing-things/track',
 
     author='Brett Gottula',
     author_email='bgottula@gmail.com',
@@ -42,12 +42,12 @@ setup(
 
     install_requires=[
         'bs4>=0.0.1',
-        'point>=0.3',
+        'point @ https://github.com/bgottula/point/tarball/master#egg=point-0.3',
         'ConfigArgParse==0.12.0',
         'ephem>=3.7',
         'inputs>=0.1',
         'numpy',
-        'v4l2==0.2.2',
+        'v4l2 @ https://github.com/bgottula/python-v4l2/tarball/master#egg=v4l2-0.2.2',
         'requests',
         'MonthDelta>=1.0b',
     ],
@@ -60,11 +60,6 @@ setup(
             'pyftdi>=0.29',
         ],
     },
-
-    dependency_links=[
-        'https://github.com/bgottula/python-v4l2/tarball/master#egg=v4l2-0.2.2',
-        'https://github.com/bgottula/point/tarball/master#egg=point-0.1',
-    ],
 
     entry_points={
         'console_scripts':[
