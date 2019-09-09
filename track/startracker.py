@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
+import os
+import subprocess
 import time
+import tempfile
 import numpy as np
 from astropy.io import fits
+from astropy import wcs
 import cv2
 import asi
 import track
@@ -81,27 +85,49 @@ def main():
         frame = asi_check(asi.ASIGetDataAfterExp(info.CameraID, frame_size))
         frame = np.reshape(frame, (height, width))
 
-        color_frame = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2BGR)
-        cv2.imshow('camera', color_frame)
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2GRAY)
+        # color_frame = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2BGR)
+        cv2.imshow('camera', gray_frame)
         cv2.waitKey(1)
         frame_count += 1
 
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2GRAY)
-        hdu = fits.PrimaryHDU(gray_frame)
-        hdu.writeto('/tmp/test.fits', overwrite=True)
+        with tempfile.TemporaryDirectory() as tempdir:
 
-        subprocess.Run(
-            [
-                './bin/solve_field',
-                '--overwrite',
-                '--scale-low=2.2',
-                '--scale-high=2.3',
-                '/tmp/test.fits',
-            ],
-            cwd='/home/rgottula/dev/astrometry.net'
-        )
+            filename_prefix = 'guidescope_frame'
+            frame_filename = os.path.join(tempdir, filename_prefix + '.fits')
 
+            hdu = fits.PrimaryHDU(gray_frame)
+            hdu.writeto(frame_filename, overwrite=True)
 
+            start_time = time.time()
+            subprocess.run(
+                [
+                    './bin/solve-field',
+                    '--overwrite',
+                    '--scale-low=2.2',
+                    '--scale-high=2.3',
+                    frame_filename,
+                ],
+                cwd='/home/rgottula/dev/astrometry.net',
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            elapsed = time.time() - start_time
+
+            try:
+                wcs_file = fits.open(os.path.join(tempdir, filename_prefix + '.wcs'))
+            except FileNotFoundError as e:
+                print('no solution found :(')
+                continue
+
+            print('Solution found in {} seconds'.format(elapsed))
+
+            wcs_header = wcs.WCS(header=wcs_file[0].header)
+
+            # get "world coordinates" for center of frame
+            ra, dec = wcs_header.wcs_pix2world((width - 1) / 2.0, (height - 1) / 2.0, 0)
+
+            print('Found solution at ({}, {})'.format(ra, dec))
 
 
 if __name__ == "__main__":
