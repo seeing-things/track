@@ -36,7 +36,7 @@ def main():
     parser.add_argument(
         '--gain',
         help='camera gain',
-        default=150,
+        default=400,
         type=int
     )
     parser.add_argument(
@@ -57,7 +57,7 @@ def main():
     info = asi_check(asi.ASIGetCameraProperty(0))
     width = info.MaxWidth // args.binning
     height = info.MaxHeight // args.binning
-    frame_size = width * height
+    frame_size = width * height * 2
     asi_check(asi.ASIOpenCamera(info.CameraID))
     asi_check(asi.ASIInitCamera(info.CameraID))
     asi_check(asi.ASISetROIFormat(
@@ -65,7 +65,7 @@ def main():
         width,
         height,
         args.binning,
-        asi.ASI_IMG_RAW8
+        asi.ASI_IMG_RAW16
     ))
     asi_check(asi.ASISetControlValue(
         info.CameraID,
@@ -94,7 +94,7 @@ def main():
             else:
                 time.sleep(0.01)
         frame = asi_check(asi.ASIGetDataAfterExp(info.CameraID, frame_size))
-
+        frame = frame.view(dtype=np.uint16)
         frame = np.reshape(frame, (height, width))
 
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2GRAY)
