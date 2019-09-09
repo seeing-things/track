@@ -30,24 +30,33 @@ def main():
     parser.add_argument(
         '--exposure-time',
         help='camera exposure time in seconds',
-        default=0.02,
+        default=0.5,
         type=float
     )
     parser.add_argument(
         '--gain',
         help='camera gain',
-        default=1,
+        default=150,
         type=int
     )
+    parser.add_argument(
+        '--binning',
+        help='camera binning',
+        default=4,
+        type=int
+    )
+    parser.add_argument(
+        '--skip-solve',
+        help='skip plate solving',
+        action='store_true'
+    )
     args = parser.parse_args()
-
-    binning = 4
 
     if asi.ASIGetNumOfConnectedCameras() == 0:
         raise RuntimeError('No cameras connected')
     info = asi_check(asi.ASIGetCameraProperty(0))
-    width = info.MaxWidth // binning
-    height = info.MaxHeight // binning
+    width = info.MaxWidth // args.binning
+    height = info.MaxHeight // args.binning
     frame_size = width * height
     asi_check(asi.ASIOpenCamera(info.CameraID))
     asi_check(asi.ASIInitCamera(info.CameraID))
@@ -55,7 +64,7 @@ def main():
         info.CameraID,
         width,
         height,
-        binning,
+        args.binning,
         asi.ASI_IMG_RAW8
     ))
     asi_check(asi.ASISetControlValue(
@@ -65,6 +74,7 @@ def main():
         asi.ASI_FALSE
     ))
     asi_check(asi.ASISetControlValue(info.CameraID, asi.ASI_GAIN, args.gain, asi.ASI_FALSE))
+    asi_check(asi.ASISetControlValue(info.CameraID, asi.ASI_MONO_BIN, 1, asi.ASI_FALSE))
 
     cv2.namedWindow('camera', cv2.WINDOW_NORMAL);
     cv2.resizeWindow('camera', 640, 480);
@@ -72,6 +82,8 @@ def main():
     frame_count = 0
     while True:
         print('frame {:06d}'.format(frame_count))
+        frame_count += 1
+
         asi_check(asi.ASIStartExposure(info.CameraID, asi.ASI_FALSE))
         while True:
             status = asi_check(asi.ASIGetExpStatus(info.CameraID))
@@ -81,15 +93,16 @@ def main():
                 raise RuntimeError('Exposure failed')
             else:
                 time.sleep(0.01)
-
         frame = asi_check(asi.ASIGetDataAfterExp(info.CameraID, frame_size))
+
         frame = np.reshape(frame, (height, width))
 
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2GRAY)
-        # color_frame = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2BGR)
         cv2.imshow('camera', gray_frame)
-        cv2.waitKey(1)
-        frame_count += 1
+        cv2.waitKey(10)
+
+        if args.skip_solve:
+            continue
 
         with tempfile.TemporaryDirectory() as tempdir:
 
@@ -104,8 +117,13 @@ def main():
                 [
                     './bin/solve-field',
                     '--overwrite',
+                    '--objs=100',
                     '--scale-low=2.2',
                     '--scale-high=2.3',
+                    '--depth=20',
+                    '--no-plots',
+                    # '--resort',
+                    # '--downsample=2',
                     frame_filename,
                 ],
                 cwd='/home/rgottula/dev/astrometry.net',
@@ -120,14 +138,11 @@ def main():
                 print('no solution found :(')
                 continue
 
-            print('Solution found in {} seconds'.format(elapsed))
-
-            wcs_header = wcs.WCS(header=wcs_file[0].header)
-
             # get "world coordinates" for center of frame
+            wcs_header = wcs.WCS(header=wcs_file[0].header)
             ra, dec = wcs_header.wcs_pix2world((width - 1) / 2.0, (height - 1) / 2.0, 0)
 
-            print('Found solution at ({}, {})'.format(ra, dec))
+            print('Found solution at ({}, {}) in {} seconds'.format(ra, dec, elapsed))
 
 
 if __name__ == "__main__":
