@@ -103,75 +103,82 @@ class BlindErrorSource(ErrorSource, TelemSource):
 
     def compute_error(self):
 
-        # Get coordinates of the target from a past time for use in determining direction of
-        # motion. This needs to be far enough in the past that this position and the current
-        # position are separated enough to compute an accurate motion vector.
-        a_while_ago = datetime.datetime.utcnow() - datetime.timedelta(seconds=10)
-        self.observer.date = ephem.Date(a_while_ago)
-        self.target.compute(self.observer)
-        target_position_prev = {}
-        for axis in self.axes:
-            target_position_prev[axis] = eval('self.target.' + axis) * 180.0 / math.pi
+        # # Get coordinates of the target from a past time for use in determining direction of
+        # # motion. This needs to be far enough in the past that this position and the current
+        # # position are separated enough to compute an accurate motion vector.
+        # a_while_ago = datetime.datetime.utcnow() - datetime.timedelta(seconds=10)
+        # self.observer.date = ephem.Date(a_while_ago)
+        # self.target.compute(self.observer)
+        # target_position_prev = {}
+        # for axis in self.axes:
+        #     target_position_prev[axis] = eval('self.target.' + axis) * 180.0 / math.pi
 
-        # get coordinates of target for current time
-        self.observer.date = ephem.Date(datetime.datetime.utcnow())
-        self.target.compute(self.observer)
-        target_position = {}
-        for axis in self.axes:
-            target_position[axis] = eval('self.target.' + axis) * 180.0 / math.pi
-        self.target_position_cached = target_position
+        # # get coordinates of target for current time
+        # self.observer.date = ephem.Date(datetime.datetime.utcnow())
+        # self.target.compute(self.observer)
+        # target_position = {}
+        # for axis in self.axes:
+        #     target_position[axis] = eval('self.target.' + axis) * 180.0 / math.pi
+        # self.target_position_cached = target_position
 
         # get current position of telescope (degrees)
         mount_position = self.mount.get_position()
         self.mount_position_cached = mount_position
 
-        # make any corrections to predicted position
-        if self.offset_callback is not None:
-            adjusted_position = adjust_position(
-                target_position_prev,
-                target_position,
-                self.offset_callback()
-            )
-            self.adjusted_position_cached = adjusted_position
-        else:
-            adjusted_position = target_position
+        # # make any corrections to predicted position
+        # if self.offset_callback is not None:
+        #     adjusted_position = adjust_position(
+        #         target_position_prev,
+        #         target_position,
+        #         self.offset_callback()
+        #     )
+        #     self.adjusted_position_cached = adjusted_position
+        # else:
+        #     adjusted_position = target_position
+
+
+        target_position = self.target
+
+        # import IPython; IPython.embed()
 
         # compute pointing errors in degrees
         error = {}
         for axis in self.axes:
             if axis == 'dec':
-                # error depends on which side of meridian is selected and which
-                # side of meridian the mount is on currently
-                if self.meridian_side == 'east':
-                    if mount_position['pdec'] < 180.0:
-                        error[axis] = mount_position[axis] - adjusted_position[axis]
-                    else:
-                        error[axis] = 180.0 - mount_position[axis] - adjusted_position[axis]
-                else:
-                    if mount_position['pdec'] < 180.0:
-                        error[axis] = adjusted_position[axis] + mount_position[axis] - 180.0
-                    else:
-                        error[axis] = adjusted_position[axis] - mount_position[axis]
-            elif axis == 'ra':
-                # error depends on which side of meridian is selected
-                mount_side = 'east' if mount_position['pdec'] < 180.0 else 'west'
-                if self.meridian_side == mount_side:
-                    error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis])
-                else:
-                    error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis] + 180.0)
 
-                # avoid crossing through axis limit region (path to target
-                # should not require counter weight to ever point up)
-                if mount_position['pra'] - error[axis] > 360.0:
-                    error[axis] = error[axis] + 360.0
-                elif mount_position['pra'] - error[axis] < 0.0:
-                    error[axis] = error[axis] - 360.0
+                if abs(target_position['dec']) > 90.0:
+                    print('Warning: target declination ({:.4f} degrees) not in [-90,+90]'.format(
+                        target_position['dec']))
+
+                if self.meridian_side == 'east':
+                    target_position['pdec'] = target_position['dec'] + 90.0
+                else:
+                    target_position['pdec'] = 270.0 - target_position['dec']
+
+                error['dec'] = mount_position['pdec'] - target_position['pdec']
+
+            elif axis == 'ra':
+
+                if target_position['ha'] < 0.0 or target_position['ha'] >= 360.0:
+                    print('Warning: target hour angle ({:.4f} degrees) not in [0,360)'.format(
+                        target_position['ha']))
+
+                if self.meridian_side == 'east':
+                    target_position['pra'] = (90.0 - target_position['ha']) % 360.0
+                else:
+                    target_position['pra'] = (270.0 - target_position['ha']) % 360.0
+
+                error['ra'] = mount_position['pra'] - target_position['pra']
 
             else:
                 error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis])
 
         # compute angular separation between target and mount positions
-        error['mag'] = angle_between(mount_position, adjusted_position)
+        # error['mag'] = angle_between(mount_position, adjusted_position)
+        error['mag'] = abs(error['ra']) + abs(error['dec'])
+
+        # print('pra: {:.4f} pdec: {:.4f} target pra: {:.4f} target pdec: {:.4f} error pra: {:.4f} error pdec: {:.4f}'.format(
+        #     mount_position['pra'], mount_position['pdec'], target_position['pra'], target_position['pdec'], error['ra'], error['dec']))
 
         self.error_cached = error
         return error
