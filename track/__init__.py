@@ -6,6 +6,7 @@ from .errorsources import *
 from .mathutils import *
 from .telem import *
 from .laser import *
+from .plate_solve import *
 try:
     from .webcam import *
 except ImportError as e:

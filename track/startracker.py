@@ -1,32 +1,23 @@
 #!/usr/bin/env python3
 
-import os
-import subprocess
+"""program for testing plate solving with guidescope camera"""
+
 import time
-import tempfile
 import numpy as np
-from astropy.io import fits
-from astropy import wcs
-import cv2
 import asi
+import cv2
 import track
 
-def asi_check(return_values):
-    if isinstance(return_values, (tuple, list)):
-        status_code = return_values[0]
-        return_values = return_values[1:] if len(return_values) > 2 else return_values[1]
-    else:
-        status_code = return_values
-        return_values = None
-
-    if status_code != asi.ASI_SUCCESS:
-        raise RuntimeError('return code: {}'.format(status_code))
-
-    return return_values
-
 def main():
+    """Repeatedly prints coordinates of camera frame center found by plate solving."""
 
     parser = track.ArgParser()
+    parser.add_argument(
+        '--camera-res',
+        help='guidescope camera resolution in arcseconds per pixel',
+        required=True,
+        type=float
+    )
     parser.add_argument(
         '--exposure-time',
         help='camera exposure time in seconds',
@@ -54,46 +45,55 @@ def main():
 
     if asi.ASIGetNumOfConnectedCameras() == 0:
         raise RuntimeError('No cameras connected')
-    info = asi_check(asi.ASIGetCameraProperty(0))
-    width = info.MaxWidth // args.binning
-    height = info.MaxHeight // args.binning
+    camera_info = asi.ASICheck(asi.ASIGetCameraProperty(0))
+    width = camera_info.MaxWidth // args.binning
+    height = camera_info.MaxHeight // args.binning
     frame_size = width * height * 2
-    asi_check(asi.ASIOpenCamera(info.CameraID))
-    asi_check(asi.ASIInitCamera(info.CameraID))
-    asi_check(asi.ASISetROIFormat(
-        info.CameraID,
+    asi.ASICheck(asi.ASIOpenCamera(camera_info.CameraID))
+    asi.ASICheck(asi.ASIInitCamera(camera_info.CameraID))
+    asi.ASICheck(asi.ASISetROIFormat(
+        camera_info.CameraID,
         width,
         height,
         args.binning,
         asi.ASI_IMG_RAW16
     ))
-    asi_check(asi.ASISetControlValue(
-        info.CameraID,
+    asi.ASICheck(asi.ASISetControlValue(
+        camera_info.CameraID,
         asi.ASI_EXPOSURE,
         int(args.exposure_time * 1e6),
         asi.ASI_FALSE
     ))
-    asi_check(asi.ASISetControlValue(info.CameraID, asi.ASI_GAIN, args.gain, asi.ASI_FALSE))
-    asi_check(asi.ASISetControlValue(info.CameraID, asi.ASI_MONO_BIN, 1, asi.ASI_FALSE))
+    asi.ASICheck(asi.ASISetControlValue(
+        camera_info.CameraID,
+        asi.ASI_GAIN,
+        args.gain,
+        asi.ASI_FALSE
+    ))
+    asi.ASICheck(asi.ASISetControlValue(
+        camera_info.CameraID,
+        asi.ASI_MONO_BIN,
+        1,
+        asi.ASI_FALSE
+    ))
 
-    cv2.namedWindow('camera', cv2.WINDOW_NORMAL);
-    cv2.resizeWindow('camera', 640, 480);
+    cv2.namedWindow('camera', cv2.WINDOW_NORMAL)
+    cv2.resizeWindow('camera', 640, 480)
 
     frame_count = 0
     while True:
         print('frame {:06d}'.format(frame_count))
         frame_count += 1
 
-        asi_check(asi.ASIStartExposure(info.CameraID, asi.ASI_FALSE))
+        asi.ASICheck(asi.ASIStartExposure(camera_info.CameraID, asi.ASI_FALSE))
         while True:
-            status = asi_check(asi.ASIGetExpStatus(info.CameraID))
+            status = asi.ASICheck(asi.ASIGetExpStatus(camera_info.CameraID))
             if status == asi.ASI_EXP_SUCCESS:
                 break
-            elif status == asi.ASI_EXP_FAILED:
+            if status == asi.ASI_EXP_FAILED:
                 raise RuntimeError('Exposure failed')
-            else:
-                time.sleep(0.01)
-        frame = asi_check(asi.ASIGetDataAfterExp(info.CameraID, frame_size))
+            time.sleep(0.01)
+        frame = asi.ASICheck(asi.ASIGetDataAfterExp(camera_info.CameraID, frame_size))
         frame = frame.view(dtype=np.uint16)
         frame = np.reshape(frame, (height, width))
 
@@ -104,45 +104,18 @@ def main():
         if args.skip_solve:
             continue
 
-        with tempfile.TemporaryDirectory() as tempdir:
-
-            filename_prefix = 'guidescope_frame'
-            frame_filename = os.path.join(tempdir, filename_prefix + '.fits')
-
-            hdu = fits.PrimaryHDU(gray_frame)
-            hdu.writeto(frame_filename, overwrite=True)
-
+        try:
             start_time = time.time()
-            subprocess.run(
-                [
-                    './bin/solve-field',
-                    '--overwrite',
-                    '--objs=100',
-                    '--scale-low=2.2',
-                    '--scale-high=2.3',
-                    '--depth=20',
-                    '--no-plots',
-                    # '--resort',
-                    # '--downsample=2',
-                    frame_filename,
-                ],
-                cwd='/home/rgottula/dev/astrometry.net',
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+            sc = track.plate_solve(
+                gray_frame,
+                camera_width=(camera_info.MaxWidth * args.camera_res / 3600.0)
             )
             elapsed = time.time() - start_time
+        except track.NoSolutionException:
+            print('No solution found')
+            continue
 
-            try:
-                wcs_file = fits.open(os.path.join(tempdir, filename_prefix + '.wcs'))
-            except FileNotFoundError as e:
-                print('no solution found :(')
-                continue
-
-            # get "world coordinates" for center of frame
-            wcs_header = wcs.WCS(header=wcs_file[0].header)
-            ra, dec = wcs_header.wcs_pix2world((width - 1) / 2.0, (height - 1) / 2.0, 0)
-
-            print('Found solution at ({}, {}) in {} seconds'.format(ra, dec, elapsed))
+        print('Found solution at ({}) in {} seconds'.format(sc.to_string('decimal'), elapsed))
 
 
 if __name__ == "__main__":
