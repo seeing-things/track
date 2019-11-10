@@ -1,6 +1,6 @@
 # Python Version Support
 
-This project is Python 3 compatible. Most of the code can probably run under Python 2.7 but the maintainers do not perform any testing with Python 2 and make no promises. The point package, on which this project depends, is Python 3 only.
+This project is Python 3 compatible (3.6 or newer). Most of the code can probably run under Python 2.7 but the maintainers do not perform any testing with Python 2 and make no promises. The point package, on which this project depends, is Python 3 only.
 
 # Installation
 
