@@ -6,3 +6,4 @@ from .errorsources import *
 from .telem import *
 from .laser import *
 from .plate_solve import *
+from .gpsd import *
