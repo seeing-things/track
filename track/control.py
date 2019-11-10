@@ -65,11 +65,8 @@ class TelescopeMount(object):
         """Get axis names
 
         Returns:
-            A list of strings giving abbreviated names of each axis. These must
-            be the keys of the dicts used by the get_position,
-            get_aligned_slew_dir, remove_backlash, and get_max_slew_rates
-            methods and the names accepted for the axis argument of the slew
-            method.
+            A list of strings giving abbreviated names of each axis. These must be the keys of the
+            dicts used by the get_position() and slew() methods.
         """
 
     @abc.abstractmethod
@@ -169,6 +166,10 @@ class LoopFilter(object):
         self.bandwidth = bandwidth
         self.damping_factor = damping_factor
         self.max_update_period = max_update_period
+        self.reset()
+
+    def reset(self):
+        """Reset to initial state."""
         self.int = 0.0
         self.last_iteration_time = None
         self.last_rate = 0.0
@@ -367,6 +368,9 @@ class Tracker(TelemSource):
 
         if len(axes) == 0:
             return 'no axes selected'
+
+        for axis in axes:
+            self.loop_filter[axis].reset()
 
         while True:
 
