@@ -42,12 +42,12 @@ setup(
 
     install_requires=[
         'bs4>=0.0.1',
-        'point @ https://github.com/bgottula/point/tarball/master#egg=point-0.3',
+        'point @ https://github.com/seeing-things/point/tarball/master#egg=point-0.3',
         'ConfigArgParse==0.12.0',
         'ephem>=3.7',
         'inputs>=0.1',
         'numpy',
-        'v4l2 @ https://github.com/bgottula/python-v4l2/tarball/master#egg=v4l2-0.2.2',
+        'v4l2 @ https://github.com/seeing-things/python-v4l2/tarball/master#egg=v4l2-0.2.2',
         'requests',
         'MonthDelta>=1.0b',
     ],
