@@ -4,7 +4,7 @@
 
 This program automates the somewhat tedious process of aligning the mount. For the selected
 meridian side it will select a bright star, slew the mount to the vicinity of that star, use the
-guidscope camera to center on that star, and send commands to Gemini 2 to add the star to the
+guidescope camera to center on that star, and send commands to Gemini 2 to add the star to the
 alignment model (or to synchronize in the case of the first star). This process is repeated until
 the desired number of stars have been added to the model or the program runs out of usable stars.
 """
@@ -12,6 +12,7 @@ the desired number of stars have been added to the model or the program runs out
 import math
 import time
 import numpy as np
+import pandas as pd
 from astropy_healpix import HEALPix
 from astropy import units as u
 from astropy.time import Time
@@ -61,8 +62,8 @@ def generate_positions(min_positions, mount_pole_altitude, min_altitude=0.0, mer
     context of mount alignment we not so much concerned with the equal area property, but we do
     want positions that are roughly evenly distributed over the sphere, and HEALPix does a
     reasonable job of this as well. The full set of HEALPix pixels is filtered to exclude pixels
-    that are below a minimum altitude threshold and those that are on the opposite side of the
-    meridian. HEALPix is oriented with the top co-located with the pole of the mount.
+    that are below a minimum altitude threshold and (optionally) those that are on the opposite
+    side of the meridian. HEALPix is oriented with the top co-located with the pole of the mount.
 
     Args:
         min_positions: Minimum number of positions. The actual number of positions returned may be
@@ -109,7 +110,7 @@ def generate_positions(min_positions, mount_pole_altitude, min_altitude=0.0, mer
         if len(positions) >= min_positions:
             break
 
-        # try again with a higher level HEALPix
+        # not enough positions -- try again with a higher level HEALPix
         level += 1
 
     return positions
@@ -330,8 +331,7 @@ def main():
         print('mount-type not supported: ' + args.mount_type)
         sys.exit(1)
 
-    # Create object with base type ErrorSource
-    # No target for now; that will be populated later
+    # Create object with base type ErrorSource. No target for now; that will be populated later.
     error_source = track.BlindErrorSource(
         mount=mount,
         observer=None,
@@ -396,39 +396,51 @@ def main():
     )
 
     try:
+        data = pd.DataFrame(columns=['time', 'encoder_ra', 'encoder_dec', 'sky_ra', 'sky_dec'])
         num_solutions = 0
-        for position in positions:
+        for idx, position in enumerate(positions):
 
-            print('Next position: ' + str(position))
+            print('Moving to position {} of {}: {}'.format(idx, len(positions), str(position)))
 
             error_source.target = position
             stop_reason = tracker.run()
             mount.safe()
-            if stop_reason == 'converged':
-                print('Converged on the target position')
-            else:
+            if stop_reason != 'converged':
                 raise RuntimeError('Unexpected tracker stop reason: "{}"'.format(stop_reason))
 
-            time_before = time.time()
-            frame = camera_take_exposure(camera_info, frame_width, frame_height, frame_size)
-            time_after = time.time()
+            print('Converged on the target position. Attempting plate solving.')
 
-            try:
-                sc = track.plate_solve(
-                    frame,
-                    camera_width=(camera_info.MaxWidth * args.camera_res / 3600.0)
-                )
-            except track.NoSolutionException:
-                print('No solution found')
-                continue
+            # plate solver doesn't always work on the first try
+            for i in range(args.max_tries):
 
-            num_solutions += 1
-            print('Solution found! ' + str(sc))
-            print('mount position: ' + str(mount.get_position()))
-            print('timestamp before exposure: ' + str(time_before))
-            print('timestamp after exposure: ' + str(time_after))
+                print('\tPlate solver attempt {} of {}...'.format(i + 1, args.max_tries), end='')
 
-        print('Alignment completed successfully!')
+                timestamp = time.time()
+                frame = camera_take_exposure(camera_info, frame_width, frame_height, frame_size)
+
+                try:
+                    sc = track.plate_solve(
+                        frame,
+                        camera_width=(camera_info.MaxWidth * args.camera_res / 3600.0)
+                    )
+                    print('Solution found!')
+                    mount_position = mount.get_position()
+                    data.append({
+                        'unix_time': timestamp,
+                        'encoder_ra': mount_position['pra'],
+                        'encoder_dec': mount_position['pdec'],
+                        'sky_ra': sc.ra.deg,
+                        'sky_dec': sc.dec.deg,
+                    })
+                    num_solutions += 1
+                    break
+                except track.NoSolutionException:
+                    print('No solution.')
+
+        print('Plate solver found solutions at {} of {} positions.'.format(
+            num_solutions,
+            len(positions)
+        ))
 
     except RuntimeError as e:
         print(str(e))
@@ -439,7 +451,6 @@ def main():
         print('Unhandled exception: ' + str(e))
         import IPython; IPython.embed()
     finally:
-        pass
         # don't rely on destructors to safe mount!
         print('Safing mount...')
         if mount.safe():
