@@ -211,7 +211,10 @@ def world_to_mount(
 
 
 def mount_to_losmandy(mount_coord, meridian_side='east'):
-    """Convert from mount-relative hour and declination angles to Lonsmandy encoder positions
+    """Convert from mount-relative hour and declination angles to Losmandy encoder positions
+
+    TODO: Move this to a Gemini-specific class or module such that all code in this module is
+    agnostic to the type of mount in use.
 
     Args:
         mount_coord (UnitSphericalRepresentation): Coordinate in the mount frame.
@@ -233,6 +236,9 @@ def mount_to_losmandy(mount_coord, meridian_side='east'):
 
 def losmandy_to_mount(pra, pdec):
     """Convert from Losmandy mount encoder positions to mount-relative hour and declination angles
+
+    TODO: Move this to a Gemini-specific class or module such that all code in this module is
+    agnostic to the type of mount in use.
 
     Args:
         pra (Longitude): Losmandy physical right ascension encoder position.
