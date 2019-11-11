@@ -1,22 +1,27 @@
 #!/usr/bin/env python3
 
-"""Perform automated alignment with Gemini 2 mounts.
+"""Perform automated alignment of a telescope mount.
 
-This program automates the somewhat tedious process of aligning the mount. For the selected
-meridian side it will select a bright star, slew the mount to the vicinity of that star, use the
-guidescope camera to center on that star, and send commands to Gemini 2 to add the star to the
-alignment model (or to synchronize in the case of the first star). This process is repeated until
-the desired number of stars have been added to the model or the program runs out of usable stars.
+This program automates the somewhat tedious process of aligning the mount. It will do the following
+things:
+1) Generate a list of positions on the sky to point at
+2) For each position:
+   a) Point the mount at the position
+   b) Capture an image with a camera
+   c) Use the astrometry.net plate solver to determine the sky coordinates of the image
+   d) Store a timestamp and the mount's encoder positions
+3) Use the set of observations to solve for mount model parameters
+4) Store the mount model parameters on disk for future use during the same observing session
 """
 
-import math
+import sys
 import time
 import numpy as np
 import pandas as pd
 from astropy_healpix import HEALPix
 from astropy import units as u
 from astropy.time import Time
-from astropy.coordinates import SkyCoord, EarthLocation, AltAz
+from astropy.coordinates import SkyCoord, EarthLocation
 from astroplan import Observer
 import cv2
 import asi
@@ -97,7 +102,8 @@ def generate_positions(min_positions, mount_pole_altitude, min_altitude=0.0, mer
             # skip points on wrong side of meridian
             if ha.deg <= 180.0 and meridian_side == 'east':
                 continue
-            elif ha.deg > 180.0 and meridian_side == 'west':
+
+            if ha.deg > 180.0 and meridian_side == 'west':
                 continue
 
             # skip points below min altitude threshold
@@ -115,57 +121,55 @@ def generate_positions(min_positions, mount_pole_altitude, min_altitude=0.0, mer
 
     return positions
 
-def asi_check(return_values):
-    """Check return values from ASICamera2 API calls for errors.
-
-    Args:
-        return_values: The return value or values from a ASICamera2 API call.
-
-    Returns:
-        The return_values but with the status code removed. If the status code was the only return
-        value from the API call, this function returns None.
-
-    Raises:
-        RuntimeError if the status code was something other than ASI_SUCCESS.
-    """
-    if isinstance(return_values, (tuple, list)):
-        status_code = return_values[0]
-        return_values = return_values[1:] if len(return_values) > 2 else return_values[1]
-    else:
-        status_code = return_values
-        return_values = None
-
-    if status_code != asi.ASI_SUCCESS:
-        raise RuntimeError('return code: {}'.format(status_code))
-
-    return return_values
 
 def camera_setup(gain, exposure_time, binning):
+    """Initialize and configure ZWO ASI camera.
+
+    TODO: Abstract this ZWO-specific code behind some generic interface.
+
+    Args:
+        gain (int): Camera gain setting.
+        exposure_time (float): Exposure time in seconds. Will be rounded down to the nearest
+            microsecond.
+        binning (int): Camera binning.
+
+    Returns:
+        A tuple containing the following:
+            info: An ASI_CAMERA_INFO object.
+            width: Width of the frame in pixels.
+            height: Height of the frame in pixels.
+            frame_size: Frame size in bytes. The camera is configured for 16-bit mode, so there
+                are two bytes per pixel.
+
+    Raises:
+        RuntimeError for any camera related problems.
+    """
     if asi.ASIGetNumOfConnectedCameras() == 0:
         raise RuntimeError('No cameras connected')
-    info = asi_check(asi.ASIGetCameraProperty(0))
+    info = asi.ASICheck(asi.ASIGetCameraProperty(0))
     width = info.MaxWidth // binning
     height = info.MaxHeight // binning
     frame_size = width * height * 2
-    asi_check(asi.ASIOpenCamera(info.CameraID))
-    asi_check(asi.ASIInitCamera(info.CameraID))
-    asi_check(asi.ASISetROIFormat(
+    asi.ASICheck(asi.ASIOpenCamera(info.CameraID))
+    asi.ASICheck(asi.ASIInitCamera(info.CameraID))
+    asi.ASICheck(asi.ASISetROIFormat(
         info.CameraID,
         width,
         height,
         binning,
         asi.ASI_IMG_RAW16
     ))
-    asi_check(asi.ASISetControlValue(
+    asi.ASICheck(asi.ASISetControlValue(
         info.CameraID,
         asi.ASI_EXPOSURE,
         int(exposure_time * 1e6),
         asi.ASI_FALSE
     ))
-    asi_check(asi.ASISetControlValue(info.CameraID, asi.ASI_GAIN, gain, asi.ASI_FALSE))
-    asi_check(asi.ASISetControlValue(info.CameraID, asi.ASI_MONO_BIN, 1, asi.ASI_FALSE))
+    asi.ASICheck(asi.ASISetControlValue(info.CameraID, asi.ASI_GAIN, gain, asi.ASI_FALSE))
+    asi.ASICheck(asi.ASISetControlValue(info.CameraID, asi.ASI_MONO_BIN, 1, asi.ASI_FALSE))
 
     return info, width, height, frame_size
+
 
 def camera_take_exposure(info, width, height, frame_size):
     """Take an exposure with the camera.
@@ -182,21 +186,22 @@ def camera_take_exposure(info, width, height, frame_size):
     Raises:
         RuntimeError if the exposure failed.
     """
-    asi_check(asi.ASIStartExposure(info.CameraID, asi.ASI_FALSE))
+    asi.ASICheck(asi.ASIStartExposure(info.CameraID, asi.ASI_FALSE))
     while True:
-        status = asi_check(asi.ASIGetExpStatus(info.CameraID))
+        time.sleep(0.01)
+        status = asi.ASICheck(asi.ASIGetExpStatus(info.CameraID))
         if status == asi.ASI_EXP_SUCCESS:
             break
-        elif status == asi.ASI_EXP_FAILED:
+        if status == asi.ASI_EXP_FAILED:
             raise RuntimeError('Exposure failed')
-        else:
-            time.sleep(0.01)
-    frame = asi_check(asi.ASIGetDataAfterExp(info.CameraID, frame_size))
+    frame = asi.ASICheck(asi.ASIGetDataAfterExp(info.CameraID, frame_size))
     frame = frame.view(dtype=np.uint16)
     frame = np.reshape(frame, (height, width))
     return cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2GRAY)
 
+
 def main():
+    """Run the alignment procedure! See module docstring for a description."""
 
     parser = track.ArgParser()
     parser.add_argument(
@@ -295,8 +300,8 @@ def main():
         type=float
     )
     parser.add_argument(
-        '--num-positions',
-        help='number of positions to add to mount alignment model',
+        '--min-positions',
+        help='minimum number of positions to add to mount alignment model',
         default=10,
         type=int
     )
@@ -314,7 +319,7 @@ def main():
     )
     parser.add_argument(
         '--min-alt',
-        help='minimum altitude of alignment stars in degrees',
+        help='minimum altitude of alignment positions in degrees',
         default=20.0,
         type=float
     )
@@ -325,6 +330,7 @@ def main():
     args = parser.parse_args()
 
     # This program only supports Gemini mounts
+    # TODO: Abstract Gemini-specific code
     if args.mount_type == 'gemini':
         mount = track.LosmandyGeminiMount(args.mount_path)
     else:
@@ -389,12 +395,13 @@ def main():
         telem_logger.start()
 
     positions = generate_positions(
-        min_positions=args.num_positions,
+        min_positions=args.min_positions,
         mount_pole_altitude=args.mount_pole_alt,
         min_altitude=args.min_alt,
         meridian_side=args.meridian_side
     )
 
+    # pylint: disable=broad-except
     try:
         data = pd.DataFrame(columns=['time', 'encoder_ra', 'encoder_dec', 'sky_ra', 'sky_dec'])
         num_solutions = 0
@@ -449,7 +456,6 @@ def main():
         print('Got CTRL-C, shutting down...')
     except Exception as e:
         print('Unhandled exception: ' + str(e))
-        import IPython; IPython.embed()
     finally:
         # don't rely on destructors to safe mount!
         print('Safing mount...')
@@ -463,6 +469,7 @@ def main():
 
     try:
         game_pad.stop()
+    # pylint: disable=bare-except
     except:
         pass
 
