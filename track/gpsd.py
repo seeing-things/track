@@ -7,7 +7,7 @@ on the system.
 
 # http://manpages.ubuntu.com/manpages/bionic/man5/gpsd_json.5.html
 
-from collections import namedtuple, OrderedDict
+from collections import namedtuple
 from enum        import Enum, Flag, auto
 from math        import inf, nan, isnan
 from time        import perf_counter
@@ -132,21 +132,21 @@ class GPS:
                 if report.mode != 0: self.fix_type = GPSFixType(report.mode)
                 else:                self.fix_type = GPSFixType.NO_FIX
 
-            new_location = OrderedDict()
-            new_location['lat'] = report.lat if 'lat' in report else self.INIT_LOC['lat']
-            new_location['lon'] = report.lon if 'lon' in report else self.INIT_LOC['lon']
-            new_location['alt'] = report.alt if 'alt' in report else self.INIT_LOC['alt']
-            self.location = GPSLocation(**new_location) # TODO: make sure this works properly
+            self.location = GPSLocation(
+                lat = report.lat if 'lat' in report else self.INIT_LOC['lat'],
+                lon = report.lon if 'lon' in report else self.INIT_LOC['lon'],
+                alt = report.alt if 'alt' in report else self.INIT_LOC['alt'],
+            )
 
-            new_errors = OrderedDict()
-            new_errors['lat']   = report.epy if 'epy' in report else self.INIT_ERR['lat']
-            new_errors['lon']   = report.epx if 'epx' in report else self.INIT_ERR['lon']
-            new_errors['alt']   = report.epv if 'epv' in report else self.INIT_ERR['alt']
-            new_errors['track'] = report.epd if 'epd' in report else self.INIT_ERR['track']
-            new_errors['speed'] = report.eps if 'eps' in report else self.INIT_ERR['speed']
-            new_errors['climb'] = report.epc if 'epc' in report else self.INIT_ERR['climb']
-            new_errors['time']  = report.ept if 'ept' in report else self.INIT_ERR['time']
-            self.errors = GPSErrors(**new_errors) # TODO: make sure this works properly
+            self.errors = GPSErrors(
+                lat   = report.epy if 'epy' in report else self.INIT_ERR['lat'],
+                lon   = report.epx if 'epx' in report else self.INIT_ERR['lon'],
+                alt   = report.epv if 'epv' in report else self.INIT_ERR['alt'],
+                track = report.epd if 'epd' in report else self.INIT_ERR['track'],
+                speed = report.eps if 'eps' in report else self.INIT_ERR['speed'],
+                climb = report.epc if 'epc' in report else self.INIT_ERR['climb'],
+                time  = report.ept if 'ept' in report else self.INIT_ERR['time'],
+            )
 
             if self._satisfies_criteria(err_max, fix_ok):
                 return self.location
