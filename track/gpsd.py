@@ -7,13 +7,38 @@ on the system.
 
 # http://manpages.ubuntu.com/manpages/bionic/man5/gpsd_json.5.html
 
-from collections import namedtuple
-from enum import Flag, auto
-import math
-import time
+from collections import namedtuple, OrderedDict
+from enum        import Enum, Flag, auto
+from math        import inf, nan, isnan
+from time        import perf_counter
 #from types import SimpleNamespace
 
 import gps
+
+# improved enum-ized version of the 'MODE_' constants from the gps module
+class GPSFixType(Enum):
+    ZERO   = 0
+    NO_FIX = 1
+    FIX_2D = 2
+    FIX_3D = 3
+
+GPSLocation = namedtuple('GPSLocation', ['lat', 'lon', 'alt'])
+GPSErrors   = namedtuple('GPSErrors',   ['lat', 'lon', 'alt', 'track', 'speed', 'climb', 'time'])
+
+# TODO: document the units on all the relevant fields here, and use types for them when appropriate
+#       (ask Brett for the best degree types and unit stuff to use here... astropy has good ones?)
+# - lat: decimal degrees, [-90.0, +90.0]; north positive
+# - lon: decimal degrees, [-180.0, +180.0] or similar (I think); east positive
+# - alt: meters above sea level, [-inf, +inf]
+# - track: decimal degrees, [0.0, 360.0); standard compass heading: clockwise from north
+# - speed: meters per second in XY plane, [0.0, +inf]
+# - climb: meters per second in Z  plane, [-inf, +inf]; upward positive
+# - time: absolute UTC time; up to millisecond precision
+# - errors: same units as the corresponding value; 95% confidence; always nonnegative;
+#           time error is in seconds
+
+# TODO: put this somewhere else where it would belong, or find an existing module that provides this
+def const(val): return property(fget=lambda _: val)
 
 class GPS:
     """Class encapsulating code for interfacing with gpsd.
@@ -21,34 +46,38 @@ class GPS:
     TODO: add more docstring crap everywhere to satisfy the Brett
     """
 
+    INIT_FIX = const(GPSFixType.NO_FIX)
+    INIT_LOC = const(GPSLocation(lat=nan, lon=nan, alt=0.0))
+    INIT_ERR = const(GPSErrors(lat=inf, lon=inf, alt=inf, track=inf, speed=inf, climb=inf, time=inf))
+
     class FailureReason(Flag):
         NONE      = 0
         BAD_FIX   = auto() # insufficient fix type
         NO_LAT    = auto() # no latitude
         NO_LON    = auto() # no longitude
-        ERR_TIME  = auto() # excessive error in this parameter
-        ERR_LAT   = auto() # excessive error in this parameter
-        ERR_LON   = auto() # excessive error in this parameter
-        ERR_ALT   = auto() # excessive error in this parameter
-        ERR_TRACK = auto() # excessive error in this parameter
-        ERR_SPEED = auto() # excessive error in this parameter
-        ERR_CLIMB = auto() # excessive error in this parameter
+        NO_ALT    = auto() # no altitude (currently not actually enforced)
+        ERR_LAT   = auto() # excessive error in parameter: lat
+        ERR_LON   = auto() # excessive error in parameter: lon
+        ERR_ALT   = auto() # excessive error in parameter: alt
+        ERR_TRACK = auto() # excessive error in parameter: track
+        ERR_SPEED = auto() # excessive error in parameter: speed
+        ERR_CLIMB = auto() # excessive error in parameter: climb
+        ERR_TIME  = auto() # excessive error in parameter: time
 
+    # when you get this exception:
+    # - look at the flags set in the exception's reason field to see which things did not pass
+    # - look at the GPS object's fix_type, location, and errors fields to get exact information
     class GetLocationFailure(Exception):
         def __init__(self, reason):
-            super().__init__('failure reason bits: {}'.format(reason))
+            super().__init__(str(reason))
             self.reason = reason
-
-    Errors = namedtuple('Errors', ['time', 'lat', 'lon', 'alt', 'track', 'speed', 'climb'])
-
-    Location = namedtuple('Location', ['lat', 'lon', 'alt'])
 
     def __init__(self, host='::1', port=gps.GPSD_PORT):
         self.client = gps.gps(host, port, verbose=0, mode=gps.WATCH_ENABLE, reconnect=True)
 
-        self.fix_type = gps.MODE_NO_FIX
-        self.location = self.Location(math.nan, math.nan, 0.0)
-        self.errors   = self.Errors(math.inf, math.inf, math.inf, math.inf, math.inf, math.inf, math.inf)
+        self.fix_type = self.INIT_FIX
+        self.location = self.INIT_LOC
+        self.errors   = self.INIT_ERR
 
     def __enter__(self):
         """Support usage of this class in 'with' statements."""
@@ -67,7 +96,7 @@ class GPS:
     # - get a 3D fix
     # - all relevant errors need to be within the specified bounds
     # - we don't care about DGPS
-    # on success: returns a Location tuple
+    # on success: returns a GPSLocation tuple
     # on failure: raises GetLocationFailure with flags showing which requirements were not met
     # parameters:
     # - timeout: how much time to spend attempting to get a good fix before giving up
@@ -75,50 +104,63 @@ class GPS:
     # - need_3d: whether a 3D fix should be considered necessary
     # - err_max: an Errors tuple containing the thresholds that each 95% error value must be below
     #            for the fix to be considered satisfactory
-    #            (individual members of the tuple may be set to math.inf to ignore those ones)
+    #            (individual members of the tuple may be set to inf to ignore those ones)
     # TODO: we *may* (not sure!) need to ensure that we get N consecutive reports that all meet our
     #       requirements, before we declare ourselves successful and victorious
+    # TODO: determine whether we should enforce alt, and in which circumstances
+    #       (e.g. should we only enforce it if need_3d is True?)
+    #       enforcement would mean:
+    #       - change INIT_ALT from 0.0 to nan
+    #       - if isnan(self.location.alt) in _satisfies_criteria: return False
+    #       - if isnan(self.location.alt) in _raise_failure: add flag NO_ALT
+    #       also: if we are doing strictly a 2D fix, should we force self.location.alt to 0.0?
+    #       and do we even need to do that, or will the gps hw/sw do that for us...?
     def get_location(self, timeout, need_3d, err_max):
         if timeout is not None:
             assert timeout > 0.0
-            t_start = time.perf_counter()
+            t_start = perf_counter()
+
+        if need_3d:
+            fix_ok = lambda fix: fix == GPSFixType.FIX_3D
+        else:
+            fix_ok = lambda fix: fix == GPSFixType.FIX_3D or fix == GPSFixType.FIX_2D
 
         for report in self.client:
             if report['class'] != 'TPV': continue
 
-            if 'mode' in report and report.mode != 0:
-                self.fix_type = report.mode
+            if 'mode' in report:
+                if report.mode != 0: self.fix_type = GPSFixType(report.mode)
+                else:                self.fix_type = GPSFixType.NO_FIX
 
-            new_location = self.location._asdict() # TODO: make sure this works properly
-            if 'lat' in report: new_location['lat'] = report.lat
-            if 'lon' in report: new_location['lon'] = report.lon
-            if 'alt' in report: new_location['alt'] = report.alt
-            self.location = self.Location(**new_location) # TODO: make sure this works properly
+            new_location = OrderedDict()
+            new_location['lat'] = report.lat if 'lat' in report else self.INIT_LOC['lat']
+            new_location['lon'] = report.lon if 'lon' in report else self.INIT_LOC['lon']
+            new_location['alt'] = report.alt if 'alt' in report else self.INIT_LOC['alt']
+            self.location = GPSLocation(**new_location) # TODO: make sure this works properly
 
-            new_errors = self.errors._asdict() # TODO: make sure this works properly
-            if 'ept' in report: new_errors['time']  = report.ept
-            if 'epy' in report: new_errors['lat']   = report.epy
-            if 'epx' in report: new_errors['lon']   = report.epx
-            if 'epv' in report: new_errors['alt']   = report.epv
-            if 'epd' in report: new_errors['track'] = report.epd
-            if 'eps' in report: new_errors['speed'] = report.eps
-            if 'epc' in report: new_errors['climb'] = report.epc
-            self.errors = self.Errors(**new_errors) # TODO: make sure this works properly
+            new_errors = OrderedDict()
+            new_errors['lat']   = report.epy if 'epy' in report else self.INIT_ERR['lat']
+            new_errors['lon']   = report.epx if 'epx' in report else self.INIT_ERR['lon']
+            new_errors['alt']   = report.epv if 'epv' in report else self.INIT_ERR['alt']
+            new_errors['track'] = report.epd if 'epd' in report else self.INIT_ERR['track']
+            new_errors['speed'] = report.eps if 'eps' in report else self.INIT_ERR['speed']
+            new_errors['climb'] = report.epc if 'epc' in report else self.INIT_ERR['climb']
+            new_errors['time']  = report.ept if 'ept' in report else self.INIT_ERR['time']
+            self.errors = GPSErrors(**new_errors) # TODO: make sure this works properly
 
-            if self._satisfies_criteria(need_3d, err_max):
+            if self._satisfies_criteria(err_max, fix_ok):
                 return self.location
 
             if timeout is not None:
-                t_now = time.perf_counter()
+                t_now = perf_counter()
                 if t_now - t_start >= timeout:
-                    self._raise_failure(need_3d, err_max)
+                    self._raise_failure(err_max, fix_ok)
 
-    def _satisfies_criteria(self, need_3d, err_max):
-        if             self.fix_type < gps.MODE_2D: return False
-        if need_3d and self.fix_type < gps.MODE_3D: return False
+    def _satisfies_criteria(self, err_max, fix_ok):
+        if not fix_ok(self.fix_type): return False
 
-        if math.isnan(self.location.lat): return False
-        if math.isnan(self.location.lon): return False
+        if isnan(self.location.lat): return False
+        if isnan(self.location.lon): return False
 
         # TODO: make sure this works properly
         for field in self.errors._fields:
@@ -126,14 +168,13 @@ class GPS:
 
         return True
 
-    def _raise_failure(self, need_3d, err_max):
+    def _raise_failure(self, err_max, fix_ok):
         reason = self.FailureReason.NONE
 
-        if             self.fix_type < gps.MODE_2D: reason |= self.FailureReason.BAD_FIX
-        if need_3d and self.fix_type < gps.MODE_3D: reason |= self.FailureReason.BAD_FIX
+        if not fix_ok(self.fix_type): reason |= self.FailureReason.BAD_FIX
 
-        if math.isnan(self.location.lat): reason |= self.FailureReason.NO_LAT
-        if math.isnan(self.location.lon): reason |= self.FailureReason.NO_LON
+        if isnan(self.location.lat): reason |= self.FailureReason.NO_LAT
+        if isnan(self.location.lon): reason |= self.FailureReason.NO_LON
 
         # TODO: make sure this works properly
         for field in self.errors._fields:

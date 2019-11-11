@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
+import math
+
 #import track
 from gpsd import *
 
 TIMEOUT = 10.0
 NEED_3D = True
-ERR_MAX = GPS.Errors(time=0.001, lat=1.0, lon=1.0, alt=1.0, track=1.0, speed=1.0, climb=1.0)
+ERR_MAX = GPSErrors(lat=1.0, lon=1.0, alt=1.0, track=1.0, speed=1.0, climb=1.0, time=0.001)
 
 def main():
     with GPS() as g:
