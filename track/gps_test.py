@@ -3,7 +3,7 @@
 import math
 
 #import track
-from gpsd import *
+from gps_client import *
 
 TIMEOUT = 10.0
 NEED_3D = True
