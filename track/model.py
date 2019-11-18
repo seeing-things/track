@@ -13,6 +13,7 @@ from astropy.coordinates import SkyCoord, Longitude, Angle, EarthLocation
 from astropy.coordinates.matrix_utilities import rotation_matrix
 from astropy.coordinates.representation import UnitSphericalRepresentation, CartesianRepresentation
 from track.config import CONFIG_PATH
+from track.mounts import MeridianSide, MountEncoderPositions
 
 
 DEFAULT_MODEL_FILENAME = os.path.join(CONFIG_PATH, 'model_params.pickle')
@@ -25,62 +26,6 @@ DEFAULT_MODEL_FILENAME = os.path.join(CONFIG_PATH, 'model_params.pickle')
 # See https://docs.astropy.org/en/stable/utils/iers.html for additional details.
 iers.IERS_Auto().open()  # Will try to download if cache is stale
 iers.conf.auto_max_age = None  # Disable strict stale cache check
-
-
-class MeridianSide(enum.Enum):
-    """Indicates side of mount meridian. This is significant for equatorial mounts."""
-    EAST = enum.auto()
-    WEST = enum.auto()
-
-
-class MountEncoderPositions:
-    """Set of mount physical encoder positions.
-
-    This contains positions for telescope mounts having two motorized axes, which should cover the
-    vast majority of amateur mounts. This code is intended for use with equatorial mounts,
-    altitude-azimuth mounts, and equatorial mounts where the polar axis is intentionally not
-    aligned with the celesital pole. Therefore the members of this tuple do not use the
-    conventional axis names such as "ra" for "right-ascension" or "dec" for "declination" since
-    these names are not appropriate in all scenarios.
-
-    Both attirubutes are instances of the Astropy Longitude class since the range of values allowed
-    by this class is [0, 360) degrees which corresponds nicely with the range of raw encoder values
-    of most mounts after converting to degrees. The Longitude class also automatically handles
-    wrapping on operations such as addition of two angles.
-
-    Attributes:
-        encoder_0: The axis closer to the base of the mount. For an equatorial mount this is
-            usually the right ascension axis. For az-alt mounts this is usually the azimuth axis.
-        encoder_1: The axis further from the base of the mount but closer to the optical tube. For
-            an equatorial mount this is usually the declination axis. For az-alt mounts this is
-            usually the altitude axis.
-    """
-    def __init__(self, encoder_0: Longitude, encoder_1: Longitude):
-        """Can refactor this to a dataclass when minimum supported Python version is 3.7"""
-        if not (isinstance(encoder_0, Longitude) and isinstance(encoder_1, Longitude)):
-            raise TypeError('encoder positions must be instances of Longitude')
-        self.encoder_0 = encoder_0
-        self.encoder_1 = encoder_1
-
-    def __getitem__(self, key):
-        if not isinstance(key, int):
-            raise TypeError('key must be an int')
-        if key == 0:
-            return self.encoder_0
-        if key == 1:
-            return self.encoder_1
-        raise IndexError('key out of range')
-
-    def __setitem__(self, key, value):
-        if not isinstance(key, int):
-            raise TypeError('key must be an int')
-        if not isinstance(value, Longitude):
-            raise TypeError('encoder positions must be instances of Longitude')
-        if key == 0:
-            self.encoder_0 = value
-        if key == 1:
-            self.encoder_1 = value
-        raise IndexError('key out of range')
 
 
 class ModelParameters(NamedTuple):
@@ -272,11 +217,13 @@ class MountModel:
             self.model_params.pole_rot_angle
         )
 
-        encoder_positions = spherical_to_encoder(us_mnt_offset, meridian_side)
+        encoders_uncorrected = spherical_to_encoder(us_mnt_offset, meridian_side)
 
         # apply encoder offsets
-        encoder_positions[0] = Longitude(encoder_positions[0] + self.model_params.axis_0_offset)
-        encoder_positions[1] = Longitude(encoder_positions[1] + self.model_params.axis_1_offset)
+        encoder_positions = MountEncoderPositions(
+            Longitude(encoders_uncorrected[0] + self.model_params.axis_0_offset),
+            Longitude(encoders_uncorrected[1] + self.model_params.axis_1_offset),
+        )
 
         return encoder_positions
 

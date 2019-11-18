@@ -1,36 +1,156 @@
 """mounts for use in telescope tracking control loop.
 
-A set of classes that inherit from the abstract base class TelescopeMount (defined in control.py).
-Each class is a wrapper for a lower level interface to the mount, creating a common interface that
-can be incorporated into the Tracker class. The abstraction is not perfect and some mounts require
-special interfaces that go beyond what is required by TelescopeMount.
+A set of classes that inherit from the abstract base class TelescopeMount, providing a common
+API for interacting with telescope mounts. The abstraction is not perfect and some mounts may
+require special interfaces that go beyond what is defined by TelescopeMount.
+
+This abstraction was chosen over existing options such as INDI or ASCOM because the developers
+found that these frameworks did not provide access to some of the low-level features of the
+hardware that are required for satellite tracking applications. In particular, these frameworks
+do not provide the ability to directly set the slew rates of the servos. The effort required to
+modify them to suit the needs of this project was deemed to be higher than the effort required to
+just roll our own solution that provides exactly what we need in a lightweight and tailored manner.
 """
 
+from abc import ABC, abstractmethod
+import enum
+from typing import NamedTuple
 import time
+import numpy as np
+from astropy import units as u
+from astropy.coordinates import Longitude
 import point
-from .control import TelescopeMount
+
+
+class TelescopeMount(ABC):
+    """Abstract base class for telescope mounts.
+
+    This class provides some abstract methods to provide a common interface for telescope mounts.
+    """
+
+
+    @abstractmethod
+    def get_position(self, max_cache_age=0.0):
+        """Gets the current position of the mount.
+
+        Args:
+            max_cache_age: If the position has been read from the mount less than this many seconds
+                ago the function may return a cached position value in lieu of reading the position
+                from the mount. In cases where reading from the mount is relatively slow this may
+                allow the function to return much more quickly. The default value is set to 0
+                seconds, in which case the function will never return a cached value.
+
+        Returns:
+            An instance of MountEncoderPositions where the attributes are set to the current values
+            of the encoders. The mapping of encoder values to attribute indices in this object
+            should match the mapping used in the slew() method.
+        """
+
+
+    @abstractmethod
+    def slew(self, axis, rate):
+        """Command the mount to slew on one axis.
+
+        Commands the mount to slew at a paritcular rate in one axis. A mount may enforce limits
+        on the slew rate such as a maximum rate limit, acceleration limit, or max change in
+        rate since the last command. Enforcement of such limits may result in the mount moving at
+        a rate that is different than requested. The return values indicate whether a limit was
+        exceeded and what slew rate was actually achieved.
+
+        Args:
+            axis (int): The index of the axis to which this operation applies. For typical mounts
+                having two axes the allowed values would be 0 and 1. The axes should be numbered
+                such that the axis closes to the pedestal or tripod is axis 0, the next-closest
+                axis is 1, and so on. This mapping should match what is used in get_position.
+            rate (float): The requested slew rate in degrees per second. The sign of the value
+                indicates the direction of the slew.
+
+        Returns:
+            A two-element tuple where the first element is a float giving the actual slew rate
+                achieved by the mount. The actual rate could differ from the requested rate due
+                to quantization or due to enforcement of slew rate, acceleration, or axis position
+                limits. The second element is a boolean that is set to True if any of the limits
+                enforced by the mount were exceeded by the requested slew rate.
+
+        Raises:
+            ValueError if the axis is out of range for the specific mount.
+        """
+
+
+    @abstractmethod
+    def safe(self):
+        """Bring mount into a safe state.
+
+        This method will do whatever is necessary to bring the mount into a safe state, such that
+        there is no risk to hardware if the program terminates immediately afterward and
+        communication with the mount stops. At minimum this method will stop all motion.
+
+        Returns:
+            True if the mount was safed successfully. False otherwise.
+        """
+
+
+class MeridianSide(enum.Enum):
+    """Indicates side of mount meridian. This is significant for equatorial mounts."""
+    EAST = enum.auto()
+    WEST = enum.auto()
+
+
+class MountEncoderPositions(NamedTuple):
+    """Set of mount physical encoder positions.
+
+    This contains positions for telescope mounts having two motorized axes, which should cover the
+    vast majority of amateur mounts. This code is intended for use with equatorial mounts,
+    altitude-azimuth mounts, and equatorial mounts where the polar axis is intentionally not
+    aligned with the celesital pole. Therefore the members of this tuple do not use the
+    conventional axis names such as "ra" for "right-ascension" or "dec" for "declination" since
+    these names are not appropriate in all scenarios.
+
+    Both attirubutes are instances of the Astropy Longitude class since the range of values allowed
+    by this class is [0, 360) degrees which corresponds nicely with the range of raw encoder values
+    of most mounts after converting to degrees.
+
+    Attributes:
+        encoder_0: The axis closer to the base of the mount. For an equatorial mount this is
+            usually the right ascension axis. For az-alt mounts this is usually the azimuth axis.
+        encoder_1: The axis further from the base of the mount but closer to the optical tube. For
+            an equatorial mount this is usually the declination axis. For az-alt mounts this is
+            usually the altitude axis.
+    """
+    encoder_0: Longitude
+    encoder_1: Longitude
+
 
 class NexStarMount(TelescopeMount):
     """Interface class to facilitate tracking with NexStar telescopes.
 
-    This class implements the abstract methods in the TelescopeMount base
-    class. The interface to the NexStar hand controller is provided by
-    the point package.
+    This class implements the abstract methods in the TelescopeMount base class. The interface to
+    the NexStar hand controller is provided by the point package.
 
     Attributes:
-        mount: A point.NexStar object which abstracts the low-level serial
-            command interface to the NexStar hand controller.
-        alt_min_limit: Lower limit on the mount's altitude, which can be used
-            to prevent the optical tube from colliding with the mount. Limit
-            is enforced during calls to slew().
-        alt_max_limit: Upper limit on the mount's altitude, which can be used
-            to prevent the optical tube from colliding with the mount. Limit
-            is enforced during calls to slew().
-        max_slew_rate: Maximum slew rate supported by the mount in degrees per
-            second.
-        max_slew_accel: Maximum slew acceleration in degrees per second squared.
+        mount: A point.NexStar object which abstracts the low-level serial command interface to the
+            NexStar hand controller.
+        alt_min_limit: Lower limit on the mount's altitude, which can be used to prevent the
+            optical tube from colliding with the mount. Limit is enforced during calls to slew().
+        alt_max_limit: Upper limit on the mount's altitude, which can be used to prevent the
+            optical tube from colliding with the mount. Limit is enforced during calls to slew().
+        bypass_alt_limits (bool): If True altitude limits will not be enforced.
+        max_slew_rate: Maximum slew rate supported by the mount in degrees per second.
+        cached_position (MountEncoderPositions): The most recently queried encoder positions or
+            None if get_position() has not been called since this object was constructed.
+        cached_position_time (float): A Unix timestamp corresponding to the time at which the value
+            in cached_position was last updated. A value of None means cached_position has never
+            been populated.
     """
 
+
+    class AxisNames(enum.Enum):
+        """Mapping from axis index to/from names"""
+        AZIMUTH = 0
+        ALTITUDE = 1
+
+
+    # pylint: disable=too-many-arguments
     def __init__(
             self,
             device_name,
@@ -64,13 +184,13 @@ class NexStarMount(TelescopeMount):
         self.cached_position = None
         self.cached_position_time = None
 
+
     def get_position(self, max_cache_age=0.0):
         """Gets the current position of the mount.
 
-        Gets the current position coordinates of the mount in azimuth-altitude
-        format. The positions returned are as reported by the mount with no
-        corrections applied. The position is also cached inside this object for
-        efficient altitude limit enforcement.
+        Gets the current position coordinates of the mount. The positions returned are as reported
+        by the mount with no corrections applied. The position is also cached inside this object
+        for efficient altitude limit enforcement.
 
         Args:
             max_cache_age: If the position has been read from the mount less than this many seconds
@@ -80,9 +200,8 @@ class NexStarMount(TelescopeMount):
                 to 0 seconds, in which case the function will never return a cached value.
 
         Returns:
-            A dict with keys 'az' and 'alt' where the values are the azimuth
-            and altitude positions in degrees. The azimuth range is [0,360) and
-            the altitude range is [-90,+90].
+            An instance of MountEncoderPositions where encoder_0 is the azimuth axis and encoder_1
+            is the altitude axis.
         """
         if self.cached_position is not None:
             time_since_cached = time.time() - self.cached_position_time
@@ -90,38 +209,36 @@ class NexStarMount(TelescopeMount):
                 return self.cached_position
 
         (az, alt) = self.mount.get_azalt()
-        self.cached_position = {'az': az, 'alt': alt}
+        self.cached_position = MountEncoderPositions(
+            Longitude(az*u.deg),
+            Longitude(alt*u.deg),
+        )
         self.cached_position_time = time.time()
         return self.cached_position
 
-    def get_axis_names(self):
-        return ['az', 'alt']
 
     def slew(self, axis, rate):
         """Command the mount to slew on one axis.
 
-        Commands the mount to slew at a paritcular rate in one axis. Each axis
-        is controlled independently. To slew in both axes, call this function
-        twice: once for each axis. If the slew is in the altitude axis and
-        altitude limits have been set, the function will check the mount's
-        current position against the limits. If the limit has been violated
-        and the slew direction is not away from the limit, the slew rate in
-        the altitude axis will be set to 0 and an AltitudeLimitException will
-        be raised. Note that the altitude limit protection is not guaranteed
-        to prevent a collision of the optical tube against the mount for a
-        number of reasons:
+        Commands the mount to slew at a paritcular rate in one axis. Each axis is controlled
+        independently. To slew in both axes, call this function twice: once for each axis. If the
+        slew is in the altitude axis and altitude limits have been set, the function will check the
+        mount's current position against the limits. If the limit has been violated and the slew
+        direction is not away from the limit, the slew rate in the altitude axis will be commanded
+        to 0. Note that the altitude limit protection is not guaranteed to prevent a collision of
+        the optical tube against the mount for a number of reasons:
             1) The limit is only checked each time this function is called
             2) The motors do not respond instantly when commanded to stop
             3) Altitude knowledge is dependent on good alignment
             4) The limits could be set improperly
-        To prevent unnecessary reads of the mount position, the altitude limit
-        check will attempt to use a cached position value. However if the
-        cached value is too old it will read the mount's position directly.
+        To prevent unnecessary reads of the mount position, the altitude limit check will attempt
+        to use a cached position value. However if the cached value is too old it will read the
+        mount's position directly.
 
         Args:
-            axis: A string indicating the axis: 'az' or 'alt'.
-            rate: A float giving the slew rate in degrees per second. The sign
-                of the value indicates the direction of the slew.
+            axis (AxisNames): The axis to affect.
+            rate (float): The slew rate in degrees per second. The sign of the value indicates the
+                direction of the slew.
 
         Returns:
             A two-element tuple where the first element is a float giving the actual slew rate
@@ -130,18 +247,19 @@ class NexStarMount(TelescopeMount):
                 to True if any of the limits enforced by the mount were exceeded by the requested
                 slew rate.
         """
-        assert axis in ['az', 'alt']
+        axis = self.AxisNames(axis)
 
-        limit_exceeded = False
+        limits_exceeded = False
         if abs(rate) > self.max_slew_rate:
             limits_exceeded = True
-            rate = clamp(rate, self.max_slew_rate)
+            rate = np.clip(rate, -self.max_slew_rate, self.max_slew_rate)
 
         # enforce altitude limits
-        if axis == 'alt' and not self.bypass_alt_limits:
+        if axis == self.AxisNames.ALTITUDE and not self.bypass_alt_limits:
             position = self.get_position(0.25)
-            if ((position['alt'] >= self.alt_max_limit and rate > 0.0) or
-                (position['alt'] <= self.alt_min_limit and rate < 0.0)):
+            # pylint: disable=bad-continuation
+            if ((position[self.AxisNames.ALTITUDE].deg >= self.alt_max_limit and rate > 0.0) or
+                (position[self.AxisNames.ALTITUDE].deg <= self.alt_min_limit and rate < 0.0)):
                 limits_exceeded = True
                 rate = 0.0
 
@@ -149,6 +267,7 @@ class NexStarMount(TelescopeMount):
         self.mount.slew_var(axis, rate * 3600.0)
 
         return (rate, limits_exceeded)
+
 
     def safe(self):
         """Bring mount into a safe state.
@@ -159,8 +278,8 @@ class NexStarMount(TelescopeMount):
             True if the mount was safed successfully. False otherwise.
         """
         success = True
-        for axis in self.get_axis_names():
-            rate, limits_exceeded = self.slew(axis, 0.0)
+        for axis in self.AxisNames:
+            rate, _ = self.slew(axis, 0.0)
             if rate != 0.0:
                 success = False
 
@@ -180,11 +299,20 @@ class LosmandyGeminiMount(TelescopeMount):
         ra_east_limit: Right ascension east of meridian limit in degrees.
         bypass_ra_limits: Boolean, True when RA limits are bypassed.
         max_slew_rate: Maximum slew rate supported by the mount in degrees per second.
-        cached_position: Cached position dict from last time position was read from the mount.
-        cached_position_time: Unix timestamp corresponding to the time when cached_position was
-            read from the mount.
+        cached_position (MountEncoderPositions): Cached from last time position was read from the
+            mount or None if get_position() has not been called since this object was constructed.
+        cached_position_time (float): Unix timestamp corresponding to the time when cached_position
+            was updated or None if it has never been set.
     """
 
+
+    class AxisNames(enum.Enum):
+        """Mapping from axis index to/from names"""
+        RIGHT_ASCENSION = 0
+        DECLINATION = 1
+
+
+    # pylint: disable=too-many-arguments
     def __init__(
             self,
             device_name,
@@ -234,15 +362,12 @@ class LosmandyGeminiMount(TelescopeMount):
         self.cached_position = None
         self.cached_position_time = None
 
-    def get_axis_names(self):
-        return ['ra', 'dec']
 
     def get_position(self, max_cache_age=0.0):
         """Gets the current position of the mount.
 
-        Gets the current position coordinates of the mount in azimuth-altitude
-        format. The positions returned are as reported by the mount with no
-        corrections applied.
+        Gets the current position coordinates of the mount. The positions returned are as reported
+        by the mount with no corrections applied.
 
         Args:
             max_cache_age: If the position has been read from the mount less than this many seconds
@@ -252,12 +377,7 @@ class LosmandyGeminiMount(TelescopeMount):
                 to 0 seconds, in which case the function will never return a cached value.
 
         Returns:
-            A dict with the following keys:
-                'ra': right ascension [0, 360)
-                'dec': declination [-90, +90]
-                'ha': hour angle [-180, 180)
-                'pra': physical right ascension position [0, 360)
-                'pdec': physical declination position [0, 360)
+            An instance of MountEncoderPositions.
         """
         if self.cached_position is not None:
             time_since_cached = time.time() - self.cached_position_time
@@ -265,15 +385,13 @@ class LosmandyGeminiMount(TelescopeMount):
                 return self.cached_position
 
         enq = self.mount.enq_macro()
-        self.cached_position = {
-            'ra': enq['ra'] * 360.0 / 24.0, # hours to degrees
-            'dec': enq['dec'],
-            'ha': enq['ha'] * 360.0 / 24.0, # hours to degrees
-            'pra': enq['pra'] * 180.0 / 1152000, # motor ticks to degrees
-            'pdec': enq['pdec'] * 180.0 / 1152000, # motor ticks to degrees
-        }
+        self.cached_position = MountEncoderPositions(
+            Longitude(enq['pra'] * 180.0 / 1152000 * u.deg),  # motor ticks to degrees
+            Longitude(enq['pdec'] * 180.0 / 1152000 * u.deg),  # motor ticks to degrees
+        )
         self.cached_position_time = time.time()
         return self.cached_position
+
 
     def slew(self, axis, rate):
         """Command the mount to slew on one axis.
@@ -282,9 +400,9 @@ class LosmandyGeminiMount(TelescopeMount):
         independently. To slew in both axes, call this function twice: once for each axis.
 
         Args:
-            axis: A string indicating the axis: 'ra' or 'dec'.
-            rate: A float giving the slew rate in degrees per second. The sign of the value
-                indicates the direction of the slew.
+            axis (AxisNames): The axis to affect.
+            rate (float): The slew rate in degrees per second. The sign of the value indicates the
+                direction of the slew.
 
         Returns:
             A two-element tuple where the first element is a float giving the actual slew rate
@@ -294,16 +412,17 @@ class LosmandyGeminiMount(TelescopeMount):
                 enforced by the mount were exceeded by the requested slew rate.
 
         Raises:
-            ValueError: If axis name is not 'ra' or 'dec'.
+            ValueError: If an invalid axis is requested.
         """
-        if axis not in ['ra', 'dec']:
-            raise ValueError("axis must be 'ra' or 'dec'")
+        if axis not in self.AxisNames:
+            raise ValueError('invalid axis value')
 
         axis_limit_exceeded = False
-        if axis == 'ra' and not self.bypass_ra_limits:
-            pra = self.get_position()['pra']
-            if ((pra < 180 - self.ra_west_limit and rate < 0.0) or
-                (pra > 180 + self.ra_east_limit and rate > 0.0)):
+        if axis == self.AxisNames.RIGHT_ASCENSION and not self.bypass_ra_limits:
+            pra = self.get_position(0.25)[self.AxisNames.RIGHT_ASCENSION]
+            # pylint: disable=bad-continuation
+            if ((pra.deg < 180 - self.ra_west_limit and rate < 0.0) or
+                (pra.deg > 180 + self.ra_east_limit and rate > 0.0)):
                 axis_limit_exceeded = True
                 rate = 0.0
 
@@ -313,6 +432,7 @@ class LosmandyGeminiMount(TelescopeMount):
             limits_exceeded = True
 
         return (actual_rate, limits_exceeded)
+
 
     def safe(self):
         """Bring mount into a safe state by stopping motion.
