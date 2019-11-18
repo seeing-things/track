@@ -407,8 +407,8 @@ def main():
     try:
         observations = pd.DataFrame(columns=[
             'unix_timestamp',
-            'encoder_ra',
-            'encoder_dec',
+            'encoder_0',
+            'encoder_1',
             'sky_ra',
             'sky_dec'
         ])
@@ -442,8 +442,8 @@ def main():
                     mount_position = mount.get_position()
                     observations.append({
                         'unix_timestamp': timestamp,
-                        'encoder_ra': mount_position['pra'],
-                        'encoder_dec': mount_position['pdec'],
+                        'encoder_0': mount_position['pra'],
+                        'encoder_1': mount_position['pdec'],
                         'sky_ra': sc.ra.deg,
                         'sky_dec': sc.dec.deg,
                     })

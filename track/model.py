@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from astropy.utils import iers
 from astropy import units as u
 from astropy.time import Time
-from astropy.coordinates import SkyCoord, Latitude, Longitude, Angle, EarthLocation
+from astropy.coordinates import SkyCoord, Longitude, Angle, EarthLocation
 from astropy.coordinates.matrix_utilities import rotation_matrix
 from astropy.coordinates.representation import UnitSphericalRepresentation, CartesianRepresentation
 from track.config import CONFIG_PATH
@@ -27,6 +27,62 @@ iers.IERS_Auto().open()  # Will try to download if cache is stale
 iers.conf.auto_max_age = None  # Disable strict stale cache check
 
 
+class MeridianSide(enum.Enum):
+    """Indicates side of mount meridian. This is significant for equatorial mounts."""
+    EAST = enum.auto()
+    WEST = enum.auto()
+
+
+class MountEncoderPositions:
+    """Set of mount physical encoder positions.
+
+    This contains positions for telescope mounts having two motorized axes, which should cover the
+    vast majority of amateur mounts. This code is intended for use with equatorial mounts,
+    altitude-azimuth mounts, and equatorial mounts where the polar axis is intentionally not
+    aligned with the celesital pole. Therefore the members of this tuple do not use the
+    conventional axis names such as "ra" for "right-ascension" or "dec" for "declination" since
+    these names are not appropriate in all scenarios.
+
+    Both attirubutes are instances of the Astropy Longitude class since the range of values allowed
+    by this class is [0, 360) degrees which corresponds nicely with the range of raw encoder values
+    of most mounts after converting to degrees. The Longitude class also automatically handles
+    wrapping on operations such as addition of two angles.
+
+    Attributes:
+        encoder_0: The axis closer to the base of the mount. For an equatorial mount this is
+            usually the right ascension axis. For az-alt mounts this is usually the azimuth axis.
+        encoder_1: The axis further from the base of the mount but closer to the optical tube. For
+            an equatorial mount this is usually the declination axis. For az-alt mounts this is
+            usually the altitude axis.
+    """
+    def __init__(self, encoder_0: Longitude, encoder_1: Longitude):
+        """Can refactor this to a dataclass when minimum supported Python version is 3.7"""
+        if not (isinstance(encoder_0, Longitude) and isinstance(encoder_1, Longitude)):
+            raise TypeError('encoder positions must be instances of Longitude')
+        self.encoder_0 = encoder_0
+        self.encoder_1 = encoder_1
+
+    def __getitem__(self, key):
+        if not isinstance(key, int):
+            raise TypeError('key must be an int')
+        if key == 0:
+            return self.encoder_0
+        if key == 1:
+            return self.encoder_1
+        raise IndexError('key out of range')
+
+    def __setitem__(self, key, value):
+        if not isinstance(key, int):
+            raise TypeError('key must be an int')
+        if not isinstance(value, Longitude):
+            raise TypeError('encoder positions must be instances of Longitude')
+        if key == 0:
+            self.encoder_0 = value
+        if key == 1:
+            self.encoder_1 = value
+        raise IndexError('key out of range')
+
+
 class ModelParameters(NamedTuple):
     """Set of parameters for the mount model.
 
@@ -37,18 +93,18 @@ class ModelParameters(NamedTuple):
     celestial sphere (right ascension and declination).
 
     Attributes:
-        lon_axis_offset: Encoder zero-point offset for the longitude mount axis. For equatorial
+        axis_0_offset: Encoder zero-point offset for the longitude mount axis. For equatorial
             mounts this is the right ascension axis. For altazimuth mounts this is the azimuth
             axis.
-        lat_axis_offset: Encoder zero-point offset for the latitude mount axis. For equatorial
+        axis_1_offset: Encoder zero-point offset for the latitude mount axis. For equatorial
             mounts this is the declination axis. For altazimuth mounts this is the altitude axis.
         pole_rot_axis_lon: The longitude angle of the axis of rotation used to transform from a
             spherical coordinate system using the mount physical pole to a coordinate system using
             the celestial pole.
         pole_rot_angle: The angular separation between the instrument pole and the celestial pole.
     """
-    lon_axis_offset: Angle
-    lat_axis_offset: Angle
+    axis_0_offset: Angle
+    axis_1_offset: Angle
     pole_rot_axis_lon: Angle
     pole_rot_angle: Angle
 
@@ -61,8 +117,8 @@ class ModelParameters(NamedTuple):
                 interfacing with the scipy least_squares method.
         """
         return ModelParameters(
-            lon_axis_offset=Angle(param_array[0]*u.deg),
-            lat_axis_offset=Angle(param_array[1]*u.deg),
+            axis_0_offset=Angle(param_array[0]*u.deg),
+            axis_1_offset=Angle(param_array[1]*u.deg),
             pole_rot_axis_lon=Angle(param_array[2]*u.deg),
             pole_rot_angle=Angle(param_array[3]*u.deg),
         )
@@ -76,8 +132,8 @@ class ModelParameters(NamedTuple):
             An ndarray object containing the parameter values.
         """
         return np.array([
-            self.lon_axis_offset.deg,
-            self.lat_axis_offset.deg,
+            self.axis_0_offset.deg,
+            self.axis_1_offset.deg,
             self.pole_rot_axis_lon.deg,
             self.pole_rot_angle.deg,
         ])
@@ -102,40 +158,6 @@ class ModelParamSet(NamedTuple):
     model_params: ModelParameters
     location: EarthLocation
     timestamp: float
-
-
-def offset_lonlat(coord, lon_offset, lat_offset):
-    """Applies offsets to a pair of spherical coordinates.
-
-    This function is mainly required to handle cases where the offsets applied cause the latitude
-    angle to go outside the range [-90, +90]. When this occurs, the direction vector crosses "over
-    the pole" (say, from +89 to +91 degrees), which requires it to be wrapped to +89 degrees and
-    the longitude angle must offset by 180 degrees.
-
-    Args:
-        coord (astropy UnitSphericalRepresentation): Coordinate to be adjusted.
-        lon_offset (astropy.coordinates.Angle): Offset to be applied to the longitude angle.
-        lat_offset (astropy.coordinates.Angle): Offset to be applied to the latitude angle.
-
-    Returns:
-        astropy UnitSphericalRepresentation with offsets applied.
-    """
-
-    lon = coord.lon + lon_offset
-    lat = coord.lat + lat_offset
-
-    # Handle latitude angles outside of [-90, +90]. This is not as simple as a typical modulo
-    # wrapping operation because angles that go just beyond one end of the range to not jump to
-    # the other extreme; rather they continue back down from the same end of the range but in the
-    # opposite direction.
-    lat = (lat + 90*u.deg) % (360*u.deg)
-    if lat > 180*u.deg:
-        lat = 360*u.deg - lat
-        # since latitude crossed the pole an odd number of times need to flip longitude by 180
-        lon += 180.0*u.deg
-    lat -= 90*u.deg
-
-    return UnitSphericalRepresentation(lon, lat)
 
 
 def tip_axis(coord, axis_lon, rot_angle):
@@ -165,122 +187,159 @@ def tip_axis(coord, axis_lon, rot_angle):
     return coord_rot_cart.represent_as(UnitSphericalRepresentation)
 
 
-def mount_to_world(
-        mount_coord,
-        t,
-        model_params,
-    ):
-    """Convert coordinate in mount frame to coordinate in celestial equatorial frame.
+class MountModel:
+    """A math model of a telescope mount.
 
-    Args:
-        mount_coord (UnitSphericalRepresentation): Coordinate in mount frame.
-        t (Time): An Astropy Time object. This must be initialized with a location as well as time.
-        model_params (ModelParameters): The parameter set to use in this transformation.
+    This class provides transformations between mount encoder position readings and coordinates in
+    the celestial equatorial reference frame.
 
-    Returns:
-        A SkyCoord object with the right ascension and declination coordinates in the celestial
-            coordinate system.
+    Attributes:
+        model_params (ModelParameters): The set of parameters to be used in the transformations.
     """
 
-    # apply encoder offsets
-    us_mnt_offset = offset_lonlat(
-        mount_coord,
-        lon_offset=-model_params.lon_axis_offset,
-        lat_offset=-model_params.lat_axis_offset,
-    )
 
-    # transform from mount pole to celestial pole
-    us_local = tip_axis(
-        us_mnt_offset,
-        model_params.pole_rot_axis_lon,
-        -model_params.pole_rot_angle
-    )
-
-    # Calculate the right ascension at this time and place corresponding to the local hour angle.
-    ra = t.sidereal_time('mean') - us_local.lon
-
-    return SkyCoord(ra, us_local.lat, frame='icrs')
+    def __init__(self, model_params):
+        """Construct an instance of MountModel"""
+        self.model_params = model_params
 
 
-def world_to_mount(
-        sky_coord,
-        t,
-        model_params,
-    ):
-    """Convert coordinate in celestial equatorial frame to coordinate in mount frame.
+    def mount_to_world(
+            self,
+            encoder_positions,
+            t,
+        ):
+        """Convert coordinate in mount frame to coordinate in celestial equatorial frame.
 
-    Args:
-        sky_coord: SkyCoord object to be converted to equivalent mount encoder positions.
-        t (Time): An Astropy Time object. This must be initialized with a location as well as time.
-        model_params (ModelParameters): The parameter set to use in this transformation.
+        Args:
+            encoder_positions (MountEncoderPositions): Set of mount encoder positions.
+            t (Time): An Astropy Time object. This must be initialized with a location as well as
+                time.
 
-    Returns:
-        UnitSphericalRepresentation object with lon corresponding to the right ascension or
-        azimuth axis encoder position and lat corresponding to the declination or altitude axis
-        encoder position.
-    """
+        Returns:
+            A SkyCoord object with the right ascension and declination coordinates in the celestial
+                coordinate system.
+        """
 
-    # Calculate hour angle corresponding to SkyCoord right ascension at this time and place
-    ha = t.sidereal_time('mean') - sky_coord.ra
-    sc_local = SkyCoord(ha, sky_coord.dec)
+        # apply encoder offsets
+        encoders_corrected = MountEncoderPositions(
+            Longitude(encoder_positions[0] - self.model_params.axis_0_offset),
+            Longitude(encoder_positions[1] - self.model_params.axis_1_offset),
+        )
 
-    # transform from celestial pole to mount pole
-    us_mnt_offset = tip_axis(sc_local, model_params.pole_rot_axis_lon, model_params.pole_rot_angle)
+        us_mnt_offset = encoder_to_spherical(encoders_corrected)
 
-    # apply encoder offsets
-    mount_coord = offset_lonlat(
-        us_mnt_offset,
-        model_params.lon_axis_offset,
-        model_params.lat_axis_offset
-    )
+        # transform from mount pole to celestial pole
+        us_local = tip_axis(
+            us_mnt_offset,
+            self.model_params.pole_rot_axis_lon,
+            -self.model_params.pole_rot_angle
+        )
 
-    return mount_coord
+        # Calculate the right ascension at this time and place corresponding to the hour angle.
+        ra = t.sidereal_time('mean') - us_local.lon
+
+        return SkyCoord(ra, us_local.lat, frame='icrs')
 
 
-def mount_to_losmandy(mount_coord, meridian_side='east'):
-    """Convert from mount-relative hour and declination angles to Losmandy encoder positions
+    def world_to_mount(
+            self,
+            sky_coord,
+            meridian_side,
+            t,
+        ):
+        """Convert coordinate in celestial equatorial frame to coordinate in mount frame.
 
-    TODO: Move this to a Gemini-specific class or module such that all code in this module is
-    agnostic to the type of mount in use.
+        Args:
+            sky_coord (SkyCoord): Celestial coordinate to be converted.
+            meridian_side (MeridianSide): Gives the desired side of the meridian to use (for
+                equatorial mounts).
+            t (Time): An Astropy Time object. This must be initialized with a location as well as
+                time.
+
+        Returns:
+            MountEncoderPositions object with the encoder positions corresponding to this sky
+                coordinate and on the desired side of the meridian.
+        """
+
+        # Calculate hour angle corresponding to SkyCoord right ascension at this time and place
+        ha = t.sidereal_time('mean') - sky_coord.ra
+        sc_local = SkyCoord(ha, sky_coord.dec)
+
+        # transform from celestial pole to mount pole
+        us_mnt_offset = tip_axis(
+            sc_local,
+            self.model_params.pole_rot_axis_lon,
+            self.model_params.pole_rot_angle
+        )
+
+        encoder_positions = spherical_to_encoder(us_mnt_offset, meridian_side)
+
+        # apply encoder offsets
+        encoder_positions[0] = Longitude(encoder_positions[0] + self.model_params.axis_0_offset)
+        encoder_positions[1] = Longitude(encoder_positions[1] + self.model_params.axis_1_offset)
+
+        return encoder_positions
+
+
+def spherical_to_encoder(mount_coord, meridian_side=MeridianSide.EAST):
+    """Convert from mount-relative spherical coordinates to mount encoder positions
+
+    The details of the transformation applied here follow the conventions used by the Losmandy G11
+    mount's "physical" encoder position "pra" and "pdec". In particular, the default starting
+    values of the encoders in the "counterweight down" startup position are used. This should still
+    work with other mounts as long as the "handedness" of the encoders is the same. The encoder
+    zero point offsets in the mount model should take care of any difference in the startup
+    positions.
 
     Args:
         mount_coord (UnitSphericalRepresentation): Coordinate in the mount frame.
-        meridian_side (string): Desired side of mount-relative meridian, 'east' or 'west'. If the
-            pole of the mount is not in the direction of the celestial pole this may not
-            correspond to true east and west directions.
+        meridian_side (MeridianSide): Desired side of mount-relative meridian. If the pole of the
+            mount is not in the direction of the celestial pole this may not correspond to true
+            east and west directions.
 
     Returns:
-        A tuple of Longitude objects containing the Losmandy physical encoder positions.
+        An instance of MountEncoderPositions.
     """
-    if meridian_side == 'east':
-        pra = Longitude(90*u.deg - mount_coord.lon)
-        pdec = Longitude(90*u.deg + mount_coord.lat)
+
+    # TODO: This transformation is only correct if the mount axes are exactly orthogonal. This
+    # should be replaced with a more general transformation that can handle non-orthogonal axes.
+    if meridian_side == MeridianSide.EAST:
+        encoder_0 = Longitude(90*u.deg - mount_coord.lon)
+        encoder_1 = Longitude(90*u.deg + mount_coord.lat)
     else:
-        pra = Longitude(270*u.deg - mount_coord.lon)
-        pdec = Longitude(270*u.deg - mount_coord.lat)
-    return pra, pdec
+        encoder_0 = Longitude(270*u.deg - mount_coord.lon)
+        encoder_1 = Longitude(270*u.deg - mount_coord.lat)
+    return MountEncoderPositions(encoder_0, encoder_1)
 
 
-def losmandy_to_mount(pra, pdec):
-    """Convert from Losmandy mount encoder positions to mount-relative hour and declination angles
+def encoder_to_spherical(encoder_positions):
+    """Convert from mount encoder positions to mount-relative spherical coordinates.
 
-    TODO: Move this to a Gemini-specific class or module such that all code in this module is
-    agnostic to the type of mount in use.
+    The details of the transformation applied here follow the conventions used by the Losmandy G11
+    mount's "physical" encoder position "pra" and "pdec". In particular, the default starting
+    values of the encoders in the "counterweight down" startup position are used. This should still
+    work with other mounts as long as the "handedness" of the encoders is the same. The encoder
+    zero point offsets in the mount model should take care of any difference in the startup
+    positions.
 
     Args:
-        pra (Longitude): Losmandy physical right ascension encoder position.
-        pdec (Longitude): Losmandy physical declination encoder position.
+        encoder_positions (MountEncoderPositions): Set of mount encoder positions to be converted.
 
     Returns:
-        UnitSphericalRepresentation where longitude angle is the hour angle and the latitude angle
-            is the declination in the mount reference frame.
+        UnitSphericalRepresentation where longitude angle is like hour angle and the latitude
+            angle is like declination but in the mount reference frame. These may not correspond
+            to true hour angle and declination depending on how the polar axis of the mount is
+            oriented.
     """
-    if pdec < 180*u.deg:  # east of mount meridian
-        mount_lon = (90*u.deg - pra) % (360*u.deg)
-        mount_lat = Latitude(pdec - 90*u.deg)
+
+    # TODO: This transformation is only correct if the mount axes are exactly orthogonal. This
+    # should be replaced with a more general transformation that can handle non-orthogonal axes.
+    if encoder_positions[1] < 180*u.deg:  # east of mount meridian
+        mount_lon = 90*u.deg - encoder_positions[0]
+        mount_lat = encoder_positions[1] - 90*u.deg
     else:  # west of mount meridian
-        mount_lon = (270*u.deg - pra) % (360*u.deg)
-        mount_lat = Latitude(270*u.deg - pdec)
+        mount_lon = 270*u.deg - encoder_positions[0]
+        mount_lat = 270*u.deg - encoder_positions[1]
 
     return UnitSphericalRepresentation(mount_lon, mount_lat)
 
@@ -296,12 +355,14 @@ def residual(observation, model_params, location):
     Returns:
         A Pandas Series containing a separation angle and position angle.
     """
-    pra = Longitude(observation.encoder_ra*u.deg)
-    pdec = Longitude(observation.encoder_dec*u.deg)
-    sc_mount = mount_to_world(
-        losmandy_to_mount(pra, pdec),
+    encoder_positions = MountEncoderPositions(
+        Longitude(observation.encoder_0*u.deg),
+        Longitude(observation.encoder_1*u.deg),
+    )
+    mount_model = MountModel(model_params)
+    sc_mount = mount_model.mount_to_world(
+        encoder_positions,
         Time(observation.unix_timestamp, format='unix', location=location),
-        model_params
     )
     sc_cam = SkyCoord(observation.solution_ra*u.deg, observation.solution_dec*u.deg, frame='icrs')
 
@@ -378,24 +439,24 @@ def solve_model(observations, location):
 
     # best starting guess for parameters
     init_values = ModelParameters(
-        lon_axis_offset=Angle(0*u.deg),
-        lat_axis_offset=Angle(0*u.deg),
+        axis_0_offset=Angle(0*u.deg),
+        axis_1_offset=Angle(0*u.deg),
         pole_rot_axis_lon=Angle(0*u.deg),
         pole_rot_angle=Angle(0*u.deg),
     )
 
     # lower bound on allowable values for each model parameter
     min_values = ModelParameters(
-        lon_axis_offset=Angle(-180*u.deg),
-        lat_axis_offset=Angle(-180*u.deg),
+        axis_0_offset=Angle(-180*u.deg),
+        axis_1_offset=Angle(-180*u.deg),
         pole_rot_axis_lon=Angle(-180*u.deg),
         pole_rot_angle=Angle(-180*u.deg),
     )
 
     # upper bound on allowable values for each model parameter
     max_values = ModelParameters(
-        lon_axis_offset=Angle(180*u.deg),
-        lat_axis_offset=Angle(180*u.deg),
+        axis_0_offset=Angle(180*u.deg),
+        axis_1_offset=Angle(180*u.deg),
         pole_rot_axis_lon=Angle(180*u.deg),
         pole_rot_angle=Angle(180*u.deg),
     )
