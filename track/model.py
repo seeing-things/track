@@ -1,5 +1,6 @@
 """Mount modeling and transformations between sky and mount reference frames"""
 
+import os
 from typing import NamedTuple
 import numpy as np
 import pandas as pd
@@ -8,9 +9,13 @@ import matplotlib.pyplot as plt
 from astropy.utils import iers
 from astropy import units as u
 from astropy.time import Time
-from astropy.coordinates import SkyCoord, Latitude, Longitude, Angle
+from astropy.coordinates import SkyCoord, Latitude, Longitude, Angle, EarthLocation
 from astropy.coordinates.matrix_utilities import rotation_matrix
 from astropy.coordinates.representation import UnitSphericalRepresentation, CartesianRepresentation
+from track.config import CONFIG_PATH
+
+
+DEFAULT_MODEL_FILENAME = os.path.join(CONFIG_PATH, 'model_params.pickle')
 
 
 # Try to download IERS data if online but disable strict checking in subsequent calls to methods
@@ -27,8 +32,9 @@ class ModelParameters(NamedTuple):
 
     When paired with the equations in the world_to_mount and mount_to_world functions these
     parameters define a unique transformation between mount encoder positions and coordinates in
-    a local equatorial coordinate system. When further augmented with a location and time, these
-    local coordinates can be further transformed to positions on the celestial sphere.
+    a local equatorial coordinate system (hour angle and declination). When further augmented with
+    a location and time, these local coordinates can be further transformed to positions on the
+    celestial sphere (right ascension and declination).
 
     Attributes:
         lon_axis_offset: Encoder zero-point offset for the longitude mount axis. For equatorial
@@ -75,6 +81,27 @@ class ModelParameters(NamedTuple):
             self.pole_rot_axis_lon.deg,
             self.pole_rot_angle.deg,
         ])
+
+
+class ModelParamSet(NamedTuple):
+    """Collection of mount model parameters and the location and time where they were generated.
+
+    The purpose of this class is to pair an instance of ModelParameters with the location where
+    they were generated and an approximate time of generation. An instance of this object can be
+    pickled and stored on disk for later usage. The location is important because the model
+    parameters are only valid for that location. The timestamp is included to allow for checks on
+    the freshness of the parameters--for example, if they are more than a few hours old they may
+    no longer be trustworthy unless the mount is a permanent installation.
+
+    Attributes:
+        model_params: Instance of ModelParameters as defined in this module.
+        location: Location of the mount corresponding to model_params.
+        timestamp: Unix timestamp giving the approximate time that this set of model parameters
+            was generated.
+    """
+    model_params: ModelParameters
+    location: EarthLocation
+    timestamp: float
 
 
 def offset_lonlat(coord, lon_offset, lat_offset):
@@ -269,8 +296,8 @@ def residual(observation, model_params, location):
     Returns:
         A Pandas Series containing a separation angle and position angle.
     """
-    pra = Longitude(observation.mount_pra*u.deg)
-    pdec = Longitude(observation.mount_pdec*u.deg)
+    pra = Longitude(observation.encoder_ra*u.deg)
+    pdec = Longitude(observation.encoder_dec*u.deg)
     sc_mount = mount_to_world(
         losmandy_to_mount(pra, pdec),
         Time(observation.unix_timestamp, format='unix', location=location),

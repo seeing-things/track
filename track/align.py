@@ -16,6 +16,7 @@ things:
 
 import sys
 import time
+import pickle
 import numpy as np
 import pandas as pd
 from astropy_healpix import HEALPix
@@ -26,6 +27,7 @@ from astroplan import Observer
 import cv2
 import asi
 import track
+from track.model import ModelParamSet
 
 
 def alt_from_ha_dec(ha, dec, mount_pole_altitude):
@@ -403,7 +405,13 @@ def main():
 
     # pylint: disable=broad-except
     try:
-        data = pd.DataFrame(columns=['time', 'encoder_ra', 'encoder_dec', 'sky_ra', 'sky_dec'])
+        observations = pd.DataFrame(columns=[
+            'unix_timestamp',
+            'encoder_ra',
+            'encoder_dec',
+            'sky_ra',
+            'sky_dec'
+        ])
         num_solutions = 0
         for idx, position in enumerate(positions):
 
@@ -432,8 +440,8 @@ def main():
                     )
                     print('Solution found!')
                     mount_position = mount.get_position()
-                    data.append({
-                        'unix_time': timestamp,
+                    observations.append({
+                        'unix_timestamp': timestamp,
                         'encoder_ra': mount_position['pra'],
                         'encoder_dec': mount_position['pdec'],
                         'sky_ra': sc.ra.deg,
@@ -448,6 +456,23 @@ def main():
             num_solutions,
             len(positions)
         ))
+
+        location = EarthLocation(lat=args.lat*u.deg, lon=args.lon*u.deg, height=args.elevation*u.m)
+        try:
+            print('Solving for mount model parameters...', end='')
+            model_params = track.model.solve_model(observations, location)
+            model_param_set = ModelParamSet(
+                model_params=model_params,
+                location=location,
+                timestamp=time.time(),
+            )
+            print('success!')
+            filename = track.model.DEFAULT_MODEL_FILENAME
+            print('Saving model parameters to {}'.format(filename))
+            with open(filename, 'wb') as f:
+                pickle.dump((model_param_set, location), f)
+        except track.model.NoSolutionException as e:
+            print('failed: {}'.format(str(e)))
 
     except RuntimeError as e:
         print(str(e))
