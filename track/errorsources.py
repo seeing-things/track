@@ -8,22 +8,74 @@ classes can also be designed to compute an error vector by combining data from m
 or by intelligently switching between sources.
 """
 
-from __future__ import print_function
-import datetime
-import math
-import ephem
+from abc import ABC, abstractmethod
+from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 import numpy as np
+import ephem
+from astropy import units as u
+from astropy.coordinates import SkyCoord, Angle, Longitude
+from astropy.time import Time
 try:
     import cv2
-    from . import webcam
+    from track import webcam
 except ImportError as e:
-    if 'cv2' in e.message:
+    if 'cv2' in str(e):
         print('Failed to import cv2. Optical tracking requires OpenCV.')
     raise
-from .control import ErrorSource
-from .mathutils import wrap_error, adjust_position, angle_between, camera_eq_error
+from track.mathutils import angle_between, camera_eq_error
 from track.telem import TelemSource
+from track.mounts import MeridianSide
 
+
+# pylint: disable=too-few-public-methods
+class ErrorSource(ABC):
+    """Abstract base class for error sources.
+
+    This class provides some abstract methods to provide a common interface for error sources to be
+    used in the tracking loop. All error sources must inheret from this class and implement the
+    methods defined.
+    """
+
+    class NoSignalException(Exception):
+        """Raised when no signal is available for error calculation."""
+
+
+    @abstractmethod
+    def compute_error(self):
+        """Computes the error signal.
+
+        Returns:
+            PointingError: This contains error terms for each mount axis.
+
+        Raises:
+            NoSignalException: If the error cannot be computed.
+        """
+
+
+# pylint: disable=too-few-public-methods
+class PointingError(NamedTuple):
+    """Set of pointing error terms.
+
+    This contains error terms for telescope mounts having two motorized axes, which should cover
+    the vast majority of amateur mounts. This code is intended for use with equatorial mounts,
+    altitude-azimuth mounts, and equatorial mounts where the polar axis is intentionally not
+    aligned with the celesital pole. Therefore the members of this tuple do not use the
+    conventional axis names such as "ra" for "right-ascension" or "dec" for "declination" since
+    these names are not appropriate in all scenarios.
+
+    Both attirubutes are instances of the Astropy Angle class. The range of values should be
+    restricted to [-360, +360] degrees.
+
+    Attributes:
+        encoder_0: The axis closer to the base of the mount. For an equatorial mount this is
+            usually the right ascension axis. For az-alt mounts this is usually the azimuth axis.
+        encoder_1: The axis further from the base of the mount but closer to the optical tube. For
+            an equatorial mount this is usually the declination axis. For az-alt mounts this is
+            usually the altitude axis.
+    """
+    encoder_0: Angle
+    encoder_1: Angle
 
 
 class BlindErrorSource(ErrorSource, TelemSource):
@@ -31,163 +83,208 @@ class BlindErrorSource(ErrorSource, TelemSource):
 
     This class implements an error source based on computed ephemeris information. It is dubbed
     a "blind" error source in the sense that no physical sensing of the target position is
-    involved (such as by use of a camera). The error vector is computed by taking the difference
-    of the mount's current position and the position of the target as predicted by the PyEphem
-    package.
+    involved (such as by use of a camera). The error terms for each mount axis are found by the
+    following procedure:
+
+    1) Calculate the position of the target in local equatorial coordinates (hour angle and
+       declination) for the observer's location and for the current time.
+    2) Use the mount model to transform the target coordinates to mount encoder positions.
+    3) Subtract the current encoder positions from the target encoder positions.
 
     Attributes:
-        observer: PyEphem Observer object.
-        target: PyEphem Target object.
-        mount: TelescopeMount object.
-        meridian_side: Selected side of meridian (equatorial only): 'east' or 'west'.
-        offset_callback: A function that can make adjustments to the target position.
-        mount_position_cached: Cached position of the mount from last call to compute_error().
-        target_position_cached: Cached position of the target from last call to compute_error().
+        location (EarthLocation): Location of the observer.
+        meridian_side (MeridianSide): Allows selection of a meridian side for equatorial mounts.
+        mount (TelescopeMount): Provides a generic interface to a telescope mount.
+        mount_model (MountModel): Transforms from sky coordinates to mount encoder positions.
+        observer (PyEphem Observer): PyEphem object representing the same coordinates as the
+            location attribute.
+        target (PyEphem Target): Represents the target object of interest.
+        target_position_offset (PositionOffset): Offset to be applied to the target's position each
+            time it is calculated from the ephemeris. Set to None by default, in which case the
+            position is not adjusted.
+        _telem_channels (dict): A collection of telemetry channel values cached such that they can
+            be read by the telemetry polling thread. This is updated on each call to
+            compute_error().
     """
+
+
+    class PositionOffset(NamedTuple):
+        """Specifies an offset to be applied to a raw target position predicted from ephemeris.
+
+        Attributes:
+            direction: An angle that specifies the direction in which to apply the offset. A
+                direction angle of 0 is the direction of the target's current motion, and thus a
+                positive separation will move the target position further ahead in the trajectory.
+            separation: An angle that specifies the magnitude of the offset to apply. This is the
+                on-sky separation between the raw target and the offset target.
+        """
+        direction: Angle
+        separation: Angle
+
 
     def __init__(
             self,
             mount,
-            observer,
+            mount_model,
+            location,
             target,
-            meridian_side='west'
+            meridian_side=MeridianSide.WEST
         ):
         """Inits BlindErrorSource object.
 
         Args:
-            mount: A TelescopeMount object.
-            observer: A PyEphem Observer object for the observer's location.
-            target: A PyEphem Target object for the thing to point to.
-            meridian_side: A string with values 'east' or 'west' that indicates
-                which side of the meridian the mount should favor. Only applies
-                to equatorial mounts.
-
-        Raises:
-            ValueError: For invalid argument values.
+            mount (TelescopeMount): Error terms will be computed relative to the encoder positions
+                reported by this mount.
+            location (EarthLocation): Location of the observer on the Earth's surface.
+            target (Target): Object that identifies the target to be tracked.
+            meridian_side (MeridianSide): For equatorial mounts indicates which side of the
+                meridian is desired.
         """
-        if meridian_side not in ['east', 'west']:
-            raise ValueError("meridian_side must be 'east' or 'west'")
-        self.observer = observer
+        self.location = location
         self.target = target
         self.mount = mount
+        self.mount_model = mount_model
         self.meridian_side = meridian_side
-        self.offset_callback = None
-        self.mount_position_cached = {}
-        self.target_position_cached = {}
-        self.adjusted_position_cached = {}
-        self.error_cached = {}
-        self.axes = mount.get_axis_names()
+        self.target_position_offset = None
+        self._telem_channels = {}
 
-    def register_offset_callback(self, callback):
-        """Register a callback function for position adjustments.
+        # Create a PyEphem Observer object
+        self.observer = ephem.Observer()
+        self.observer.lat = location.lat.deg
+        self.observer.lon = location.lon.deg
+        self.observer.elevation = location.height.to_value(u.m)
 
-        When a callback is registered it will be called each time compute_error is invoked. The
-        return value of the callback contains values that are then used to adjust the predicted
-        position of the object.
+
+    def _compute_target_position(self, when):
+        """Get the position of the target at a specific time for the observer location.
 
         Args:
-            callback: A function that returns a two-element list or numpy array giving the offset
-            adjustments in degrees. The first element is the x-axis offset and the second element
-            is the y-axis offset. The +y axis is in the direction of the object's motion. The
-            x-axis is perpendicular to the object's motion. To un-register pass None.
+            when (datetime): Time of observation.
+
+        Returns:
+            SkyCoord: Coordinates of the target from the observer's location.
         """
-        self.offset_callback = callback
+        self.observer.date = ephem.Date(when)
+        self.target.compute(self.observer)
+        return SkyCoord(self.target.ra * u.rad, self.target.dec * u.rad)
 
-    def get_axis_names(self):
-        """Returns a list of strings containing the axis names."""
-        return self.axes
 
-    def meridian_flip(self):
-        """Cause an equatorial mount to perform a meridian flip."""
-        self.meridian_side = 'east' if self.meridian_side == 'west' else 'west'
+    def _offset_target_position(self, position, offset):
+        """Offset the target position by a specified amount in a trajectory-relative direction.
+
+        This shifts the position of the target. This could be used to adjust for pointing errors
+        based on real-time observations of the target. The adjustments are made relative to the
+        current apparent motion vector of the target such that it is easier to move it forward,
+        backward, or side-to-side along its current trajectory. This is much more intuitive than
+        trying to figure out the same adjustment in some coordinate system.
+
+        Args:
+            position (SkyCoord): The target position to be adjusted.
+            offset (PositionOffset): Offset to be applied.
+        """
+
+        # estimate direction vector of the target using positions now and several seconds later
+        now = datetime.now(timezone.utc)
+        position_now = self._compute_target_position(now)
+        position_later = self._compute_target_position(now + timedelta(seconds=10))
+
+        # position angle pointing in direction of target motion
+        trajectory_position_angle = position_now.position_angle(position_later)
+
+        # position angle in direction of offset to be applied
+        offset_position_angle = trajectory_position_angle + offset.direction
+
+        return position.directional_offset_by(offset_position_angle, offset.separation)
+
+
+    @staticmethod
+    def _compute_axis_error(mount_enc_position, target_enc_position, no_cross_position):
+        """Compute error term for a single axis taking into account no-cross positions
+
+        The shortest path on an axis is just the difference between the target and mount encoder
+        positions wrapped to [-180, +180] degrees. However the shortest path is not always allowed
+        because it may result in cord wrap or send the mount moving towards its built-in axis
+        limits. This function contains the logic needed to account for this, resulting in error
+        terms that are either the shortest distance if allowed or the longer distance if
+        constraints prevent taking the short path.
+
+        Args:
+            mount_enc_position (Longitude): The mount encoder position.
+            target_enc_position (Longitude): The target encoder position.
+            no_cross_position (Longitude): An encoder position that this axis is not allowed to
+                cross.
+
+        Returns:
+            Longitude: The error term for this axis, with wrap_angle set to 180 degrees.
+        """
+
+        # shortest path
+        prelim_error = Angle(
+            Longitude(mount_enc_position - target_enc_position, wrap_angle=180*u.deg)
+        )
+
+        # No limit, no problem! In this case always take the shortest distance path.
+        if no_cross_position is None:
+            return prelim_error
+
+        # error term as if the no-cross point were the target position
+        no_cross_error = Angle(
+            Longitude(mount_enc_position - no_cross_position, wrap_angle=180*u.deg)
+        )
+
+        # actual target is closer than the no-cross point so can't possibly be crossing it
+        if abs(prelim_error) <= abs(no_cross_error):
+            return prelim_error
+
+        # actual target is in opposite direction from the no-cross point
+        if np.sign(prelim_error) != np.sign(no_cross_error):
+            return prelim_error
+
+        # switch direction since prelim_error would have crossed the no-cross point
+        return prelim_error + 360*u.deg if prelim_error < 0 else prelim_error - 360*u.deg
+
 
     def compute_error(self):
 
-        # Get coordinates of the target from a past time for use in determining direction of
-        # motion. This needs to be far enough in the past that this position and the current
-        # position are separated enough to compute an accurate motion vector.
-        a_while_ago = datetime.datetime.utcnow() - datetime.timedelta(seconds=10)
-        self.observer.date = ephem.Date(a_while_ago)
-        self.target.compute(self.observer)
-        target_position_prev = {}
-        for axis in self.axes:
-            target_position_prev[axis] = eval('self.target.' + axis) * 180.0 / math.pi
+        datetime_now = datetime.now(timezone.utc)
+        astropy_time = Time(datetime_now, location=self.location)
 
         # get coordinates of target for current time
-        self.observer.date = ephem.Date(datetime.datetime.utcnow())
-        self.target.compute(self.observer)
-        target_position = {}
-        for axis in self.axes:
-            target_position[axis] = eval('self.target.' + axis) * 180.0 / math.pi
-        self.target_position_cached = target_position
+        target_position_raw = self._compute_target_position(datetime_now)
 
-        # get current position of telescope (degrees)
-        mount_position = self.mount.get_position()
-        self.mount_position_cached = mount_position
-
-        # make any corrections to predicted position
-        if self.offset_callback is not None:
-            adjusted_position = adjust_position(
-                target_position_prev,
+        if self.target_position_offset is not None:
+            target_position = self._offset_target_position(
                 target_position,
-                self.offset_callback()
+                self.target_position_offset
             )
-            self.adjusted_position_cached = adjusted_position
         else:
-            adjusted_position = target_position
+            target_position = target_position_raw
 
-        # compute pointing errors in degrees
-        error = {}
-        for axis in self.axes:
-            if axis == 'dec':
-                # error depends on which side of meridian is selected and which
-                # side of meridian the mount is on currently
-                if self.meridian_side == 'east':
-                    if mount_position['pdec'] < 180.0:
-                        error[axis] = mount_position[axis] - adjusted_position[axis]
-                    else:
-                        error[axis] = 180.0 - mount_position[axis] - adjusted_position[axis]
-                else:
-                    if mount_position['pdec'] < 180.0:
-                        error[axis] = adjusted_position[axis] + mount_position[axis] - 180.0
-                    else:
-                        error[axis] = adjusted_position[axis] - mount_position[axis]
-            elif axis == 'ra':
-                # error depends on which side of meridian is selected
-                mount_side = 'east' if mount_position['pdec'] < 180.0 else 'west'
-                if self.meridian_side == mount_side:
-                    error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis])
-                else:
-                    error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis] + 180.0)
+        # transform from astrometric coordinate system to mount encoder positions
+        target_enc_positions = self.mount_model.world_to_mount(
+            target_position,
+            self.meridian_side,
+            astropy_time
+        )
 
-                # avoid crossing through axis limit region (path to target
-                # should not require counter weight to ever point up)
-                if mount_position['pra'] - error[axis] > 360.0:
-                    error[axis] = error[axis] + 360.0
-                elif mount_position['pra'] - error[axis] < 0.0:
-                    error[axis] = error[axis] - 360.0
+        # get current position of telescope encoders
+        mount_enc_positions = self.mount.get_position()
 
-            else:
-                error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis])
+        pointing_error = PointingError(
+            *[self._compute_axis_error(
+                mount_enc_positions[idx],
+                target_enc_positions[idx],
+                self.mount.no_cross_encoder_positions()[idx],
+            ) for idx in range(2)]
+        )
 
-        # compute angular separation between target and mount positions
-        error['mag'] = angle_between(mount_position, adjusted_position)
+        # TODO: Update self._telem_channels dict
 
-        self.error_cached = error
-        return error
+        return pointing_error
+
 
     def get_telem_channels(self):
-        chans = {}
-        chans['meridian_side'] = self.meridian_side
-        for key, val in self.target_position_cached.items():
-            chans['target_' + key] = val
-        for key, val in self.adjusted_position_cached.items():
-            chans['adjusted_target_' + key] = val
-        for key, val in self.mount_position_cached.items():
-            chans['mount_' + key] = val
-        for key, val in self.error_cached.items():
-            chans['error_' + key] = val
-        return chans
+        return self._telem_channels
 
 
 class OpticalErrorSource(ErrorSource, TelemSource):

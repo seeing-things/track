@@ -231,67 +231,6 @@ def angle_between(u, v):
                              np.linalg.norm(v_norm * u + u_norm * v))
     return theta * 180.0 / math.pi
 
-def adjust_position(target_position_prev, target_position, offset):
-    """Adjust target position by correction factor.
-
-    Adjusts the position of the target by an offset where the offset is specified in a reference
-    frame defined by the object's direction of travel. This makes it possible to make adjustments
-    such as "1 degree ahead of the predicted position" or "0.3 degrees left with respect to the
-    object's direction of travel."  This is expected to be more useful than adjustments such as
-    "1 degree higher in altitude."
-
-    Args:
-        target_position_prev: A dict with keys for each axis giving the position of the target a
-            short time ago in degrees.
-        target_position: A dict with keys for each axis giving the current position of the target
-            in degrees.
-        offset: A two-element list or numpy array giving the offset adjustments in degrees. The
-            first element is the x-axis offset and the second element is the y-axis offset. The +y
-            axis is in the direction of the object's motion. The x-axis is perpendicular to the
-            object's motion.
-
-    Returns:
-        A dict with keys for each axis giving the adjusted position.
-    """
-    if set(target_position.keys()) == set(['az', 'alt']):
-        coord_system = 'horizontal'
-    elif set(target_position.keys()) == set(['ra', 'dec']):
-        coord_system = 'equatorial'
-    else:
-        raise ValueError("dict keys must be ['az','alt'] or ['ra','dec']")
-
-    # convert vectors in spherical coordinate systems to Cartesian
-    if coord_system == 'horizontal':
-        tpos_prev = horiz_to_cart(target_position_prev)
-        tpos = horiz_to_cart(target_position)
-    else:
-        tpos_prev = equatorial_to_cart(target_position_prev)
-        tpos = equatorial_to_cart(target_position)
-
-    if all(tpos == tpos_prev):
-        raise ValueError('current and previous positions are equal!')
-
-    # Compute object motion vector. This makes the assumption that tpos and tpos_prev are separated
-    # by a small angle. The more correct calculation would result in a vector tmotion that is
-    # tangent to the unit sphere at the location of tpos.
-    tmotion = normalize(tpos - tpos_prev)
-
-    # convert gamepad vector from Cartesian to polar
-    gpcomplex = offset[0] + 1j*offset[1]
-    gpmag = np.abs(gpcomplex)
-    gparg = np.angle(gpcomplex) * 180.0 / math.pi
-
-    # compute axis of rotation
-    axis = rotate(tmotion, tpos, gparg)
-
-    # rotate position about axis of rotation
-    tpos_new = rotate(tpos, axis, gpmag)
-
-    # convert back to original coordinate system
-    if coord_system == 'horizontal':
-        return cart_to_horiz(tpos_new)
-    else:
-        return cart_to_equatorial(tpos_new)
 
 def camera_eq_error(mount_position, target_xy, degrees_per_pixel):
     """Compute camera target error components in equatorial coordinate system.

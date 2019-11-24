@@ -90,6 +90,31 @@ class TelescopeMount(ABC):
         """
 
 
+    @abstractmethod
+    def no_cross_encoder_positions(self):
+        """Indicate encoder positions that should not be crossed.
+
+        For most mounts cord wrap or other physical limitations make it infeasible to slew all the
+        way around in either axis. For some mounts there exists a set of positions on each axis
+        that should never be crossed. For example, on a German Equatorial mount the declination
+        axis should never cross the position where the optical tube is 180 degrees away from the
+        celesitial pole (since this is always at or below the horizon) and the right ascension axis
+        should never need to be positioned such that the counter weight is facing directly up since
+        for most mounts the optical tube would collide with the tripod or pier before reaching this
+        position.
+
+        The return value of this method can be used in control software to ensure that when moving
+        towards a particular position that the direction is chosen such that it does not cross
+        throught these positions. This may force the control software to take a longer path than
+        it otherwise would.
+
+        Returns:
+            MountEncoderPositions: The encoder positions that should not be crossed. If there is
+            no reasonable choice (such as for the azimuth axis of an alt-az mount) the attribute of
+            the object can be set to None.
+        """
+
+
 class MeridianSide(enum.Enum):
     """Indicates side of mount meridian. This is significant for equatorial mounts."""
     EAST = enum.auto()
@@ -286,6 +311,18 @@ class NexStarMount(TelescopeMount):
         return success
 
 
+    def no_cross_encoder_positions(self):
+        """Indicate encoder positions that should not be crossed.
+
+        Since this is an alt-az mount, only the altitude axis has a range of values that cannot
+        be crossed. For the azimuth axis there is no particular value that should not be crossed.
+
+        Returns:
+            MountEncoderPositions: Contains the encoder positions that should not be crossed.
+        """
+        return MountEncoderPositions(None, Longitude(-90*u.deg, wrap_angle=180*u.deg))
+
+
 class LosmandyGeminiMount(TelescopeMount):
     """Interface class for Losmandy equatorial mounts with Gemini 2.
 
@@ -445,3 +482,16 @@ class LosmandyGeminiMount(TelescopeMount):
         # This method blocks until motion on both axes has ceased.
         self.mount.stop_motion()
         return True
+
+
+    def no_cross_encoder_positions(self):
+        """Indicate encoder positions that should not be crossed.
+
+        At startup in the counterweight down position the right ascension encoder has a value of
+        roughly 0 degrees and the declination axis has an encoder value of approximately 180
+        degrees. The no-cross positions are exactly 180 degrees away from these startup values.
+
+        Returns:
+            MountEncoderPositions: Contains the encoder positions that should not be crossed.
+        """
+        return MountEncoderPositions(Longitude(180*u.deg), Longitude(0*u.deg))

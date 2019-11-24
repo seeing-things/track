@@ -138,6 +138,12 @@ class MountModel:
     This class provides transformations between mount encoder position readings and coordinates in
     the celestial equatorial reference frame.
 
+    TODO: This class really ought to store the location, since the ModelParameters are only valid
+    for a particular location and this relieves the callers of these methods from needing to
+    provide instances of the Time class that are already populated with a matching location which
+    could allow subtle errors. Rather than requiring Time objects to be initialized with a location,
+    sidereal_time() should be called with the optional longitude argument set.
+
     Attributes:
         model_params (ModelParameters): The set of parameters to be used in the transformations.
     """

@@ -13,43 +13,6 @@ from track.telem import TelemSource
 from track.mathutils import clamp
 
 
-class ErrorSource(object):
-    """Abstract parent class for error sources.
-
-    This class provides some abstract methods to provide a common interface
-    for error sources to be used in the tracking loop. All error sources must
-    inheret from this class and implement the methods defined.
-    """
-    __metaclass__ = abc.ABCMeta
-
-    class NoSignalException(Exception):
-        """Raised when no signal is available for error calculation."""
-        pass
-
-    @abc.abstractmethod
-    def get_axis_names(self):
-        """Get axis names
-
-        Returns:
-            A list of strings giving abbreviated names of each axis. These must
-            be the keys of the dict returned by the compute_error method.
-        """
-        pass
-
-    @abc.abstractmethod
-    def compute_error(self):
-        """Computes the error signal.
-
-        Returns:
-            The pointing error as a dict with entries for each axis. The units
-            should be degrees.
-
-        Raises:
-            NoSignalException: If the error cannot be computed.
-        """
-        pass
-
-
 class LoopFilter(object):
     """Proportional plus integral (PI) loop filter.
 
