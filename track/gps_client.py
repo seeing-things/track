@@ -124,7 +124,7 @@ class GPS:
         if need_3d:
             fix_ok = lambda fix: fix == GPSFixType.FIX_3D
         else:
-            fix_ok = lambda fix: fix == GPSFixType.FIX_3D or fix == GPSFixType.FIX_2D
+            fix_ok = lambda fix: fix in (GPSFixType.FIX_3D, GPSFixType.FIX_2D)
 
         for report in self.client:
             if report['class'] != 'TPV': continue
