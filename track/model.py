@@ -1,6 +1,7 @@
 """Mount modeling and transformations between sky and mount reference frames"""
 
 import os
+import time
 from typing import NamedTuple
 import numpy as np
 import pandas as pd
@@ -146,25 +147,27 @@ class MountModel:
 
     Attributes:
         model_params (ModelParameters): The set of parameters to be used in the transformations.
+        location (EarthLocation): The location on Earth's surface from which observations are to
+            be made. This must match the location used to generate model_params.
     """
 
 
-    def __init__(self, model_params):
-        """Construct an instance of MountModel"""
-        self.model_params = model_params
+    def __init__(self, model_param_set):
+        """Construct an instance of MountModel
+
+        Args:
+            model_param_set (ModelParamSet): Set of model parameters to use in calculations.
+        """
+        self.model_params = model_param_set.model_params
+        self.location = model_param_set.location
 
 
-    def mount_to_world(
-            self,
-            encoder_positions,
-            t,
-        ):
+    def mount_to_world(self, encoder_positions, t):
         """Convert coordinate in mount frame to coordinate in celestial equatorial frame.
 
         Args:
             encoder_positions (MountEncoderPositions): Set of mount encoder positions.
-            t (Time): An Astropy Time object. This must be initialized with a location as well as
-                time.
+            t (Time): An Astropy Time object.
 
         Returns:
             A SkyCoord object with the right ascension and declination coordinates in the celestial
@@ -187,25 +190,19 @@ class MountModel:
         )
 
         # Calculate the right ascension at this time and place corresponding to the hour angle.
-        ra = t.sidereal_time('mean') - us_local.lon
+        ra = t.sidereal_time('apparent', longitude=self.location.lon) - us_local.lon
 
         return SkyCoord(ra, us_local.lat, frame='icrs')
 
 
-    def world_to_mount(
-            self,
-            sky_coord,
-            meridian_side,
-            t,
-        ):
+    def world_to_mount(self, sky_coord, meridian_side, t):
         """Convert coordinate in celestial equatorial frame to coordinate in mount frame.
 
         Args:
             sky_coord (SkyCoord): Celestial coordinate to be converted.
             meridian_side (MeridianSide): Gives the desired side of the meridian to use (for
                 equatorial mounts).
-            t (Time): An Astropy Time object. This must be initialized with a location as well as
-                time.
+            t (Time): An Astropy Time object.
 
         Returns:
             MountEncoderPositions object with the encoder positions corresponding to this sky
@@ -213,7 +210,7 @@ class MountModel:
         """
 
         # Calculate hour angle corresponding to SkyCoord right ascension at this time and place
-        ha = t.sidereal_time('mean') - sky_coord.ra
+        ha = t.sidereal_time('apparent', longitude=self.location.lon) - sky_coord.ra
         sc_local = SkyCoord(ha, sky_coord.dec)
 
         # transform from celestial pole to mount pole
@@ -312,10 +309,10 @@ def residual(observation, model_params, location):
         Longitude(observation.encoder_0*u.deg),
         Longitude(observation.encoder_1*u.deg),
     )
-    mount_model = MountModel(model_params)
+    mount_model = MountModel(ModelParamSet(model_params, location, time.time()))
     sc_mount = mount_model.mount_to_world(
         encoder_positions,
-        Time(observation.unix_timestamp, format='unix', location=location),
+        Time(observation.unix_timestamp, format='unix'),
     )
     sc_cam = SkyCoord(observation.solution_ra*u.deg, observation.solution_dec*u.deg, frame='icrs')
 

@@ -83,16 +83,9 @@ class BlindErrorSource(ErrorSource, TelemSource):
 
     This class implements an error source based on computed ephemeris information. It is dubbed
     a "blind" error source in the sense that no physical sensing of the target position is
-    involved (such as by use of a camera). The error terms for each mount axis are found by the
-    following procedure:
-
-    1) Calculate the position of the target in local equatorial coordinates (hour angle and
-       declination) for the observer's location and for the current time.
-    2) Use the mount model to transform the target coordinates to mount encoder positions.
-    3) Subtract the current encoder positions from the target encoder positions.
+    involved (such as by use of a camera).
 
     Attributes:
-        location (EarthLocation): Location of the observer.
         meridian_side (MeridianSide): Allows selection of a meridian side for equatorial mounts.
         mount (TelescopeMount): Provides a generic interface to a telescope mount.
         mount_model (MountModel): Transforms from sky coordinates to mount encoder positions.
@@ -126,7 +119,6 @@ class BlindErrorSource(ErrorSource, TelemSource):
             self,
             mount,
             mount_model,
-            location,
             target,
             meridian_side=MeridianSide.WEST
         ):
@@ -135,12 +127,10 @@ class BlindErrorSource(ErrorSource, TelemSource):
         Args:
             mount (TelescopeMount): Error terms will be computed relative to the encoder positions
                 reported by this mount.
-            location (EarthLocation): Location of the observer on the Earth's surface.
             target (Target): Object that identifies the target to be tracked.
             meridian_side (MeridianSide): For equatorial mounts indicates which side of the
                 meridian is desired.
         """
-        self.location = location
         self.target = target
         self.mount = mount
         self.mount_model = mount_model
@@ -150,9 +140,9 @@ class BlindErrorSource(ErrorSource, TelemSource):
 
         # Create a PyEphem Observer object
         self.observer = ephem.Observer()
-        self.observer.lat = location.lat.deg
-        self.observer.lon = location.lon.deg
-        self.observer.elevation = location.height.to_value(u.m)
+        self.observer.lat = mount_model.location.lat.deg
+        self.observer.lon = mount_model.location.lon.deg
+        self.observer.elevation = mount_model.location.height.to_value(u.m)
 
 
     def _compute_target_position(self, when):
@@ -245,9 +235,22 @@ class BlindErrorSource(ErrorSource, TelemSource):
 
 
     def compute_error(self):
+        """Compute encoder error terms based on target ephemeris.
+
+        The error terms for each mount axis are found by the following procedure (some details
+        are omitted from this outline for simplicity):
+
+        1) Calculate the position of the target in local astrometric equatorial coordinates for the
+           observer's location and for the current time.
+        2) Use the mount model to transform the target coordinates to mount encoder positions.
+        3) Subtract the current encoder positions from the target encoder positions.
+
+        Returns:
+            PositionError: Error terms for each mount axis.
+        """
 
         datetime_now = datetime.now(timezone.utc)
-        astropy_time = Time(datetime_now, location=self.location)
+        astropy_time = Time(datetime_now)
 
         # get coordinates of target for current time
         target_position_raw = self._compute_target_position(datetime_now)
