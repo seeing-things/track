@@ -133,19 +133,19 @@ class GPS:
                 else:                self.fix_type = GPSFixType.NO_FIX
 
             self.location = GPSLocation(
-                lat = report.lat if 'lat' in report else self.INIT_LOC['lat'],
-                lon = report.lon if 'lon' in report else self.INIT_LOC['lon'],
-                alt = report.alt if 'alt' in report else self.INIT_LOC['alt'],
+                lat = report.lat if 'lat' in report else self.INIT_LOC.lat,
+                lon = report.lon if 'lon' in report else self.INIT_LOC.lon,
+                alt = report.alt if 'alt' in report else self.INIT_LOC.alt,
             )
 
             self.errors = GPSErrors(
-                lat   = report.epy if 'epy' in report else self.INIT_ERR['lat'],
-                lon   = report.epx if 'epx' in report else self.INIT_ERR['lon'],
-                alt   = report.epv if 'epv' in report else self.INIT_ERR['alt'],
-                track = report.epd if 'epd' in report else self.INIT_ERR['track'],
-                speed = report.eps if 'eps' in report else self.INIT_ERR['speed'],
-                climb = report.epc if 'epc' in report else self.INIT_ERR['climb'],
-                time  = report.ept if 'ept' in report else self.INIT_ERR['time'],
+                lat   = report.epy if 'epy' in report else self.INIT_ERR.lat,
+                lon   = report.epx if 'epx' in report else self.INIT_ERR.lon,
+                alt   = report.epv if 'epv' in report else self.INIT_ERR.alt,
+                track = report.epd if 'epd' in report else self.INIT_ERR.track,
+                speed = report.eps if 'eps' in report else self.INIT_ERR.speed,
+                climb = report.epc if 'epc' in report else self.INIT_ERR.climb,
+                time  = report.ept if 'ept' in report else self.INIT_ERR.time,
             )
 
             if self._satisfies_criteria(err_max, fix_ok):
