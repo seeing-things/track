@@ -13,6 +13,9 @@ from math        import inf, nan, isnan
 from time        import perf_counter
 #from types import SimpleNamespace
 
+from astropy import units as u
+from astropy.coordinates import EarthLocation
+
 import gps
 
 # improved enum-ized version of the 'MODE_' constants from the gps module
@@ -97,7 +100,7 @@ class GPS:
     # - get a 3D fix
     # - all relevant errors need to be within the specified bounds
     # - we don't care about DGPS
-    # on success: returns a GPSLocation tuple
+    # on success: returns an astropy.coordinates.EarthLocation value
     # on failure: raises GetLocationFailure with flags showing which requirements were not met
     # parameters:
     # - timeout: how much time to spend attempting to get a good fix before giving up
@@ -150,7 +153,11 @@ class GPS:
             )
 
             if self._satisfies_criteria(err_max, fix_ok):
-                return self.location
+                return EarthLocation(
+                    lat    = self.location.lat*u.deg,
+                    lon    = self.location.lon*u.deg,
+                    height = self.location.alt*u.m,
+                )
 
             if timeout is not None:
                 t_now = perf_counter()
