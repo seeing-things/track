@@ -35,6 +35,7 @@ GPSErrors   = namedtuple('GPSErrors',   ['lat', 'lon', 'alt', 'track', 'speed', 
 # - climb: meters per second in Z  plane, [-inf, +inf]; upward positive
 # - time: absolute UTC time; up to millisecond precision
 # - errors: same units as the corresponding value; 95% confidence; always nonnegative;
+#           lat/lon errors are in meters
 #           time error is in seconds
 
 # TODO: put this somewhere else where it would belong, or find an existing module that provides this
