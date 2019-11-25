@@ -121,6 +121,12 @@ class GPS:
     def get_location(self, timeout, need_3d, err_max):
         if timeout < 0.0 or isnan(timeout): raise ValueError()
 
+        if not isinstance(err_max, GPSValues):  raise TypeError()
+
+        for v in err_max:
+            if not isinstance(v, float): raise TypeError()
+            if v < 0.0 or isnan(v):      raise ValueError()
+
         if need_3d:
             fix_ok = lambda fix: fix == GPSFixType.FIX_3D
         else:
