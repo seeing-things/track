@@ -16,7 +16,7 @@ system time to a reasonable degree of precision.
 
 from collections import namedtuple
 from datetime    import datetime
-from enum        import Enum, Flag, auto
+from enum        import Flag, IntEnum, auto
 from math        import inf, isinf, nan, isnan
 from time        import perf_counter
 #from types       import SimpleNamespace
@@ -28,7 +28,7 @@ from astropy.time import Time as APTime
 import gps
 
 # improved enum-ized version of the 'MODE_' constants from the gps module
-class GPSFixType(Enum):
+class GPSFixType(IntEnum):
     ZERO   = 0
     NO_FIX = 1
     FIX_2D = 2
@@ -155,11 +155,6 @@ class GPS:
             if not isinstance(v, float): raise TypeError()
             if v < 0.0 or isnan(v):      raise ValueError()
 
-        if need_3d:
-            fix_ok = lambda fix: fix == GPSFixType.FIX_3D
-        else:
-            fix_ok = lambda fix: fix in (GPSFixType.FIX_3D, GPSFixType.FIX_2D)
-
         t_start = perf_counter()
 
         for report in self.client:
@@ -189,61 +184,39 @@ class GPS:
                 time  = report.ept if 'ept' in report else self.INIT_ERR.time,
             )
 
-            if self._satisfies_criteria(err_max, margins, fix_ok):
+            fail = self._check_criteria(need_3d, err_max, margins)
+            if fail == self.FailureReason.NONE:
                 return EarthLocation(
                     lat    = self.values.lat*u.deg,
                     lon    = self.values.lon*u.deg,
                     height = self.values.alt*u.m,
                 )
 
-            t_now = perf_counter()
-            if t_now - t_start >= timeout:
-                self._raise_failure(err_max, margins, fix_ok)
+            if perf_counter() - t_start >= timeout:
+                raise self.GetLocationFailure(fail)
 
-    # NOTE: we could implement _satisfies_criteria and _raise_failure in terms of one common method;
-    # however we want short-circuit behavior for _satisfies_criteria (for the quickest possible True
-    # or False result), yet we want evaluate-everything behavior for _raise_failure (so that we can
-    # report to the caller ALL of the things that contributed to the failure)
+    def _check_criteria(self, need_3d, err_max, margins):
+        fail = self.FailureReason.NONE
 
-    def _satisfies_criteria(self, err_max, margins, fix_ok):
-        if not fix_ok(self.fix_type): return False
+        min_fix = (GPSFixType.FIX_3D if need_3d else GPSFixType.FIX_2D)
+        if self.fix_type < min_fix: fail |= self.FailureReason.BAD_FIX
 
-        if isnan(self.values.lat): return False
-        if isnan(self.values.lon): return False
+        if isnan(self.values.lat): fail |= self.FailureReason.NO_LAT
+        if isnan(self.values.lon): fail |= self.FailureReason.NO_LON
         # TODO: possibly enforce altitude checks
 
-        if _test_margin_zero_fail(self.values.speed, margins.speed): return False
-        if _test_margin_zero_fail(self.values.climb, margins.climb): return False
-        if _test_margin_time_fail(self.values.time,  margins.time):  return False
-
-        # TODO: make sure this works properly
-        # NOTE: could probably use an any() statement here but it doesn't make this any faster...
-        for field in self.errors._fields:
-            if self.errors._asdict()[field] > err_max._asdict()[field]: return False
-
-        return True
-
-    def _raise_failure(self, err_max, margins, fix_ok):
-        reason = self.FailureReason.NONE
-
-        if not fix_ok(self.fix_type): reason |= self.FailureReason.BAD_FIX
-
-        if isnan(self.values.lat): reason |= self.FailureReason.NO_LAT
-        if isnan(self.values.lon): reason |= self.FailureReason.NO_LON
-        # TODO: possibly enforce altitude checks
-
-        if _test_margin_zero_fail(self.values.speed, margins.speed): reason |= self.FailureReason.BAD_SPEED
-        if _test_margin_zero_fail(self.values.climb, margins.climb): reason |= self.FailureReason.BAD_CLIMB
-        if _test_margin_time_fail(self.values.time,  margins.time):  reason |= self.FailureReason.BAD_TIME
+        if _test_margin_zero_fail(self.values.speed, margins.speed): fail |= self.FailureReason.BAD_SPEED
+        if _test_margin_zero_fail(self.values.climb, margins.climb): fail |= self.FailureReason.BAD_CLIMB
+        if _test_margin_time_fail(self.values.time,  margins.time):  fail |= self.FailureReason.BAD_TIME
 
         # TODO: make sure this works properly
         for field in self.errors._fields:
             if self.errors._asdict()[field] > err_max._asdict()[field]:
                 # TODO: make sure this works properly
                 # TODO: add a comment here for mere mortals, explaining how the hell this line of code works
-                reason |= next(val for (name, val) in self.FailureReason.__members__.items() if name == 'ERR_' + field.upper())
+                fail |= next(val for (name, val) in self.FailureReason.__members__.items() if name == 'ERR_' + field.upper())
 
-        raise self.GetLocationFailure(reason)
+        return fail
 
 # TODO: decide whether margin tests should succeed or fail when the speed/climb/time value is
 #       unset (nan/None)... perhaps only if the margin comparison value is not inf? ugh...
