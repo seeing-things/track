@@ -3,10 +3,10 @@
 """Blind tracking of objects.
 
 This program uses a feedback control loop to cause a telescope mount to track an object based on
-the object's predicted position in the sky and the mount's self-reported position. It is called
-"blind" tracking because it does not rely on any direct measurement or observation of the object
-to function; it relies entirely on the accuracy of the mount's alignment and on the accuracy of
-the predicted position.
+the object's predicted position in the sky and the mount's self-reported encoder positions. It is
+called "blind" tracking because it does not rely on any direct measurement or observation of the
+object to function; it relies entirely on the accuracy of the mount alignment model and the
+accuracy of the predicted position.
 
 The object may be anything supported by the PyEmphem package which includes built-in lists of
 bright stars and solar system objects, ephemeris derived from two-line element (TLE) file for
@@ -16,10 +16,54 @@ An optional gamepad can be used to provide adjustments to the pointing in real t
 These adjustments are relative to the motion vector of the object across the sky.
 """
 
-from __future__ import print_function
 import sys
 import ephem
+import numpy as np
+import astropy.units as u
 import track
+from track.model import MountModel, ModelParamSet
+from track.mounts import MeridianSide
+from track.errorsources import BlindErrorSource
+
+
+def make_target(args):
+
+    # Create a PyEphem Body object corresonding to the TLE file
+    if args.mode == 'tle':
+        print('In TLE file mode: \'{}\'.'.format(args.file))
+        tle = []
+        with open(args.file) as tlefile:
+            for line in tlefile:
+                tle.append(line)
+        target = ephem.readtle(tle[0], tle[1], tle[2])
+
+    # Create a PyEphem Body object corresonding to the given fixed coordinates
+    elif args.mode == 'coord':
+        print('In fixed-body coordinate mode: (RA {}, dec {}).'.format(args.ra, args.dec))
+        target = ephem.FixedBody(_ra=np.radians(args.ra), _dec=np.radians(args.dec))
+
+    # Get the PyEphem Body object corresonding to the given named star
+    elif args.mode == 'star':
+        print('In named star mode: \'{}\''.format(args.name))
+        target = ephem.star(args.name)
+
+    # Get the PyEphem Body object corresonding to the given named solar system body
+    elif args.mode == 'solarsystem':
+        print('In named solar system body mode: \'{}\''.format(args.name))
+        ss_objs = [name for _, _, name in ephem._libastro.builtin_planets()]
+        if args.name in ss_objs:
+            body_type = getattr(ephem, args.name)
+            target = body_type()
+        else:
+            raise Exception(
+                'The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name)
+            )
+    else:
+        print('No target specified!')
+        sys.exit(1)
+
+    return target
+
 
 def main():
 
@@ -38,23 +82,8 @@ def main():
     parser.add_argument(
         '--meridian-side',
         help='side of meridian for equatorial mounts to prefer',
-        default='west'
-    )
-    parser.add_argument(
-        '--lat',
-        required=True,
-        help='latitude of observer (+N)'
-    )
-    parser.add_argument(
-        '--lon',
-        required=True,
-        help='longitude of observer (+E)'
-    )
-    parser.add_argument(
-        '--elevation',
-        required=True,
-        help='elevation of observer (m)',
-        type=float
+        default=MeridianSide.WEST.name.lower(),
+        choices=tuple(m.name.lower() for m in MeridianSide),
     )
     parser.add_argument(
         '--loop-bw',
@@ -112,6 +141,20 @@ def main():
 
     args = parser.parse_args()
 
+
+    mount_model = track.model.load_default_model()
+
+
+    # Create a PyEphem Observer object
+    observer = ephem.Observer()
+    observer.lat = mount_model.location.lat.deg
+    observer.lon = mount_model.location.lon.deg
+    observer.elevation = mount_model.location.height.to_value(u.m)
+
+    # Create a PyEphem Target object
+    target = make_target(args)
+
+
     # Create object with base type TelescopeMount
     if args.mount_type == 'nexstar':
         mount = track.NexStarMount(args.mount_path)
@@ -121,52 +164,33 @@ def main():
         print('mount-type not supported: ' + args.mount_type)
         sys.exit(1)
 
-    # Create a PyEphem Observer object
-    observer = ephem.Observer()
-    observer.lat = args.lat
-    observer.lon = args.lon
-    observer.elevation = args.elevation
 
-    # Create a PyEphem Body object corresonding to the TLE file
-    if args.mode == 'tle':
-        print('In TLE file mode: \'{}\'.'.format(args.file))
-        tle = []
-        with open(args.file) as tlefile:
-            for line in tlefile:
-                tle.append(line)
-        target = ephem.readtle(tle[0], tle[1], tle[2])
+    def target_offset_callback(tracker):
+        """Use gamepad integrator to adjust the target predicted position
 
-    # Create a PyEphem Body object corresonding to the given fixed coordinates
-    elif args.mode == 'coord':
-        print('In fixed-body coordinate mode: (RA {}, dec {}).'.format(args.ra, args.dec))
-        target = ephem.FixedBody(_ra=args.ra, _dec=args.dec)
+        This is registered as a callback for the Tracker object.
 
-    # Get the PyEphem Body object corresonding to the given named star
-    elif args.mode == 'star':
-        print('In named star mode: \'{}\''.format(args.name))
-        target = ephem.star(args.name)
+        Args:
+            tracker (Tracker): The instance of Tracker that called this function.
 
-    # Get the PyEphem Body object corresonding to the given named solar system body
-    elif args.mode == 'solarsystem':
-        print('In named solar system body mode: \'{}\''.format(args.name))
-        ss_objs = [name for _, _, name in ephem._libastro.builtin_planets()]
-        if args.name in ss_objs:
-            body_type = getattr(ephem, args.name)
-            target = body_type()
-        else:
-            raise Exception(
-                'The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name)
-            )
-    else:
-        print('No target specified!')
-        sys.exit(1)
+        Returns:
+            False to indicate that the control loop should continue execution as normal.
+        """
+        x, y = game_pad.get_integrator()
+        gamepad_polar = x + 1j*y
+        error_source.target_position_offset = BlindErrorSource.PositionOffset(
+            direction=np.angle(gamepad_polar),
+            separation=np.abs(gamepad_polar),
+        )
+        return False
+
 
     # Create object with base type ErrorSource
     error_source = track.BlindErrorSource(
         mount,
-        observer,
+        mount_model,
         target,
-        meridian_side=args.meridian_side
+        meridian_side=MeridianSide[args.meridian_side.upper()]
     )
     telem_sources = {'error_blind': error_source}
 
@@ -186,7 +210,6 @@ def main():
         game_pad.integrator_mode = True
         if laser is not None:
             game_pad.register_callback('BTN_SOUTH', laser.set)
-        error_source.register_offset_callback(game_pad.get_integrator)
         telem_sources['gamepad'] = game_pad
         print('Gamepad found and registered.')
     except RuntimeError:
@@ -198,6 +221,7 @@ def main():
         loop_bandwidth=args.loop_bw,
         damping_factor=args.loop_damping
     )
+    tracker.register_callback(target_offset_callback)
     telem_sources['tracker'] = tracker
 
     if args.telem_enable:
@@ -213,8 +237,8 @@ def main():
         tracker.run()
     except KeyboardInterrupt:
         print('Got CTRL-C, shutting down...')
-    except Exception as e:
-        print('Unhandled exception: ' + str(e))
+    # except Exception as e:
+    #     print('Unhandled exception: ' + str(e))
     finally:
         # don't rely on destructors to safe mount!
         print('Safing mount...')

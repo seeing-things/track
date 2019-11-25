@@ -257,7 +257,7 @@ class BlindErrorSource(ErrorSource, TelemSource):
 
         if self.target_position_offset is not None:
             target_position = self._offset_target_position(
-                target_position,
+                target_position_raw,
                 self.target_position_offset
             )
         else:
@@ -281,7 +281,7 @@ class BlindErrorSource(ErrorSource, TelemSource):
             ) for idx in range(2)]
         )
 
-        # TODO: Update self._telem_channels dict
+        # TODO: Update self._telem_channels dict. Use a mutex. See control.py for example.
 
         return pointing_error
 

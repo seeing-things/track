@@ -169,7 +169,7 @@ class NexStarMount(TelescopeMount):
     """
 
 
-    class AxisNames(enum.Enum):
+    class AxisName(enum.Enum):
         """Mapping from axis index to/from names"""
         AZIMUTH = 0
         ALTITUDE = 1
@@ -261,7 +261,7 @@ class NexStarMount(TelescopeMount):
         mount's position directly.
 
         Args:
-            axis (AxisNames): The axis to affect.
+            axis (AxisName): The axis to affect.
             rate (float): The slew rate in degrees per second. The sign of the value indicates the
                 direction of the slew.
 
@@ -272,7 +272,7 @@ class NexStarMount(TelescopeMount):
                 to True if any of the limits enforced by the mount were exceeded by the requested
                 slew rate.
         """
-        axis = self.AxisNames(axis)
+        axis = self.AxisName(axis)
 
         limits_exceeded = False
         if abs(rate) > self.max_slew_rate:
@@ -280,11 +280,11 @@ class NexStarMount(TelescopeMount):
             rate = np.clip(rate, -self.max_slew_rate, self.max_slew_rate)
 
         # enforce altitude limits
-        if axis == self.AxisNames.ALTITUDE and not self.bypass_alt_limits:
+        if axis == self.AxisName.ALTITUDE and not self.bypass_alt_limits:
             position = self.get_position(0.25)
             # pylint: disable=bad-continuation
-            if ((position[self.AxisNames.ALTITUDE].deg >= self.alt_max_limit and rate > 0.0) or
-                (position[self.AxisNames.ALTITUDE].deg <= self.alt_min_limit and rate < 0.0)):
+            if ((position[self.AxisName.ALTITUDE].deg >= self.alt_max_limit and rate > 0.0) or
+                (position[self.AxisName.ALTITUDE].deg <= self.alt_min_limit and rate < 0.0)):
                 limits_exceeded = True
                 rate = 0.0
 
@@ -303,7 +303,7 @@ class NexStarMount(TelescopeMount):
             True if the mount was safed successfully. False otherwise.
         """
         success = True
-        for axis in self.AxisNames:
+        for axis in self.AxisName:
             rate, _ = self.slew(axis, 0.0)
             if rate != 0.0:
                 success = False
@@ -343,10 +343,14 @@ class LosmandyGeminiMount(TelescopeMount):
     """
 
 
-    class AxisNames(enum.Enum):
+    class AxisName(enum.Enum):
         """Mapping from axis index to/from names"""
         RIGHT_ASCENSION = 0
         DECLINATION = 1
+
+        def short_name(self):
+            """Axis names as used by the point package API for this mount"""
+            return 'ra' if self == self.RIGHT_ASCENSION else 'dec'
 
 
     # pylint: disable=too-many-arguments
@@ -437,7 +441,7 @@ class LosmandyGeminiMount(TelescopeMount):
         independently. To slew in both axes, call this function twice: once for each axis.
 
         Args:
-            axis (AxisNames): The axis to affect.
+            axis (AxisName): The axis to affect.
             rate (float): The slew rate in degrees per second. The sign of the value indicates the
                 direction of the slew.
 
@@ -451,19 +455,18 @@ class LosmandyGeminiMount(TelescopeMount):
         Raises:
             ValueError: If an invalid axis is requested.
         """
-        if axis not in self.AxisNames:
-            raise ValueError('invalid axis value')
+        axis = self.AxisName(axis)
 
         axis_limit_exceeded = False
-        if axis == self.AxisNames.RIGHT_ASCENSION and not self.bypass_ra_limits:
-            pra = self.get_position(0.25)[self.AxisNames.RIGHT_ASCENSION]
+        if axis == self.AxisName.RIGHT_ASCENSION and not self.bypass_ra_limits:
+            pra = self.get_position(0.25)[self.AxisName.RIGHT_ASCENSION.value]
             # pylint: disable=bad-continuation
             if ((pra.deg < 180 - self.ra_west_limit and rate < 0.0) or
                 (pra.deg > 180 + self.ra_east_limit and rate > 0.0)):
                 axis_limit_exceeded = True
                 rate = 0.0
 
-        (actual_rate, limits_exceeded) = self.mount.slew(axis, rate)
+        (actual_rate, limits_exceeded) = self.mount.slew(axis.short_name(), rate)
 
         if axis_limit_exceeded:
             limits_exceeded = True
@@ -487,11 +490,11 @@ class LosmandyGeminiMount(TelescopeMount):
     def no_cross_encoder_positions(self):
         """Indicate encoder positions that should not be crossed.
 
-        At startup in the counterweight down position the right ascension encoder has a value of
-        roughly 0 degrees and the declination axis has an encoder value of approximately 180
-        degrees. The no-cross positions are exactly 180 degrees away from these startup values.
+        At startup in the counterweight down position both encoders have a value of 180 degrees.
+        The no-cross positions are exactly 180 degrees away from these startup values, at 0
+        degrees.
 
         Returns:
             MountEncoderPositions: Contains the encoder positions that should not be crossed.
         """
-        return MountEncoderPositions(Longitude(180*u.deg), Longitude(0*u.deg))
+        return MountEncoderPositions(Longitude(0*u.deg), Longitude(0*u.deg))
