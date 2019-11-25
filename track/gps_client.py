@@ -125,6 +125,7 @@ class GPS:
     # - we don't care about DGPS
     # on success: returns an astropy.coordinates.EarthLocation value
     # on failure: raises GetLocationFailure with flags showing which requirements were not met
+    # (also may raise RuntimeError if something screwy happens with gpsd)
     # parameters:
     # - timeout: how much time to spend attempting to get a good fix before giving up
     #            (set to inf for no timeout, i.e. try forever)
@@ -194,6 +195,8 @@ class GPS:
 
             if perf_counter() - t_start >= timeout:
                 raise self.GetLocationFailure(fail)
+
+        raise RuntimeError('gpsd client unexpectedly stopped receiving reports somehow')
 
     def _check_criteria(self, need_3d, err_max, margins):
         fail = self.FailureReason.NONE
