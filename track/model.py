@@ -274,6 +274,8 @@ def spherical_to_encoder(mount_coord, meridian_side=MeridianSide.EAST):
     Returns:
         An instance of MountEncoderPositions.
     """
+    if not isinstance(meridian_side, MeridianSide):
+        raise TypeError('meridian_side should be a MeridianSide!!')
 
     # TODO: This transformation is only correct if the mount axes are exactly orthogonal. This
     # should be replaced with a more general transformation that can handle non-orthogonal axes.
