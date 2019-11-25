@@ -25,8 +25,7 @@ class GPSFixType(Enum):
     FIX_2D = 2
     FIX_3D = 3
 
-GPSLocation = namedtuple('GPSLocation', ['lat', 'lon', 'alt'])
-GPSErrors   = namedtuple('GPSErrors',   ['lat', 'lon', 'alt', 'track', 'speed', 'climb', 'time'])
+GPSValues  = namedtuple('GPSValues',  ['lat', 'lon', 'alt', 'track', 'speed', 'climb', 'time'])
 
 # TODO: document the units on all the relevant fields here, and use types for them when appropriate
 #       (ask Brett for the best degree types and unit stuff to use here... astropy has good ones?)
@@ -37,9 +36,9 @@ GPSErrors   = namedtuple('GPSErrors',   ['lat', 'lon', 'alt', 'track', 'speed', 
 # - speed: meters per second in XY plane, [0.0, +inf]
 # - climb: meters per second in Z  plane, [-inf, +inf]; upward positive
 # - time: absolute UTC time; up to millisecond precision
-# - errors: same units as the corresponding value; 95% confidence; always nonnegative;
-#           lat/lon errors are in meters
-#           time error is in seconds
+# errors: same units as the corresponding value; 95% confidence; always nonnegative;
+#         lat/lon errors are in meters
+#         time error is in seconds
 
 # TODO: put this somewhere else where it would belong, or find an existing module that provides this
 def const(val): return property(fget=lambda _: val)
@@ -51,8 +50,8 @@ class GPS:
     """
 
     INIT_FIX = const(GPSFixType.NO_FIX)
-    INIT_LOC = const(GPSLocation(lat=nan, lon=nan, alt=0.0))
-    INIT_ERR = const(GPSErrors(lat=inf, lon=inf, alt=inf, track=inf, speed=inf, climb=inf, time=inf))
+    INIT_VAL = const(GPSValues(lat=nan, lon=nan, alt=0.0, track=nan, speed=nan, climb=nan, time=None))
+    INIT_ERR = const(GPSValues(lat=inf, lon=inf, alt=inf, track=inf, speed=inf, climb=inf, time=inf))
 
     class FailureReason(Flag):
         NONE      = 0
@@ -70,7 +69,7 @@ class GPS:
 
     # when you get this exception:
     # - look at the flags set in the exception's reason field to see which things did not pass
-    # - look at the GPS object's fix_type, location, and errors fields to get exact information
+    # - look at the GPS object's fix_type, values, and errors fields to get exact information
     class GetLocationFailure(Exception):
         def __init__(self, reason):
             super().__init__(str(reason))
@@ -80,7 +79,7 @@ class GPS:
         self.client = gps.gps(host, port, verbose=0, mode=gps.WATCH_ENABLE, reconnect=True)
 
         self.fix_type = self.INIT_FIX
-        self.location = self.INIT_LOC
+        self.values   = self.INIT_VAL
         self.errors   = self.INIT_ERR
 
     def __enter__(self):
@@ -106,7 +105,7 @@ class GPS:
     # - timeout: how much time to spend attempting to get a good fix before giving up
     #            (set to inf for no timeout, i.e. try forever)
     # - need_3d: whether a 3D fix should be considered necessary
-    # - err_max: an Errors tuple containing the thresholds that each 95% error value must be below
+    # - err_max: a GPSValues tuple containing the thresholds that each 95% error value must be below
     #            for the fix to be considered satisfactory
     #            (individual members of the tuple may be set to inf to ignore those ones)
     # TODO: we *may* (not sure!) need to ensure that we get N consecutive reports that all meet our
@@ -115,9 +114,9 @@ class GPS:
     #       (e.g. should we only enforce it if need_3d is True?)
     #       enforcement would mean:
     #       - change INIT_ALT from 0.0 to nan
-    #       - if isnan(self.location.alt) in _satisfies_criteria: return False
-    #       - if isnan(self.location.alt) in _raise_failure: add flag NO_ALT
-    #       also: if we are doing strictly a 2D fix, should we force self.location.alt to 0.0?
+    #       - if isnan(self.values.alt) in _satisfies_criteria: return False
+    #       - if isnan(self.values.alt) in _raise_failure: add flag NO_ALT
+    #       also: if we are doing strictly a 2D fix, should we force self.values.alt to 0.0?
     #       and do we even need to do that, or will the gps hw/sw do that for us...?
     def get_location(self, timeout, need_3d, err_max):
         if timeout < 0.0 or isnan(timeout): raise ValueError()
@@ -136,13 +135,17 @@ class GPS:
                 if report.mode != 0: self.fix_type = GPSFixType(report.mode)
                 else:                self.fix_type = GPSFixType.NO_FIX
 
-            self.location = GPSLocation(
-                lat = report.lat if 'lat' in report else self.INIT_LOC.lat,
-                lon = report.lon if 'lon' in report else self.INIT_LOC.lon,
-                alt = report.alt if 'alt' in report else self.INIT_LOC.alt,
+            self.values = GPSValues(
+                lat   = report.lat   if 'lat'   in report else self.INIT_VAL.lat,
+                lon   = report.lon   if 'lon'   in report else self.INIT_VAL.lon,
+                alt   = report.alt   if 'alt'   in report else self.INIT_VAL.alt,
+                track = report.track if 'track' in report else self.INIT_VAL.track,
+                speed = report.speed if 'speed' in report else self.INIT_VAL.speed,
+                climb = report.climb if 'climb' in report else self.INIT_VAL.climb,
+                time  = report.time  if 'time'  in report else self.INIT_VAL.time,
             )
 
-            self.errors = GPSErrors(
+            self.errors = GPSValues(
                 lat   = report.epy if 'epy' in report else self.INIT_ERR.lat,
                 lon   = report.epx if 'epx' in report else self.INIT_ERR.lon,
                 alt   = report.epv if 'epv' in report else self.INIT_ERR.alt,
@@ -154,9 +157,9 @@ class GPS:
 
             if self._satisfies_criteria(err_max, fix_ok):
                 return EarthLocation(
-                    lat    = self.location.lat*u.deg,
-                    lon    = self.location.lon*u.deg,
-                    height = self.location.alt*u.m,
+                    lat    = self.values.lat*u.deg,
+                    lon    = self.values.lon*u.deg,
+                    height = self.values.alt*u.m,
                 )
 
             t_now = perf_counter()
@@ -166,8 +169,8 @@ class GPS:
     def _satisfies_criteria(self, err_max, fix_ok):
         if not fix_ok(self.fix_type): return False
 
-        if isnan(self.location.lat): return False
-        if isnan(self.location.lon): return False
+        if isnan(self.values.lat): return False
+        if isnan(self.values.lon): return False
 
         # TODO: make sure this works properly
         for field in self.errors._fields:
@@ -180,8 +183,8 @@ class GPS:
 
         if not fix_ok(self.fix_type): reason |= self.FailureReason.BAD_FIX
 
-        if isnan(self.location.lat): reason |= self.FailureReason.NO_LAT
-        if isnan(self.location.lon): reason |= self.FailureReason.NO_LON
+        if isnan(self.values.lat): reason |= self.FailureReason.NO_LAT
+        if isnan(self.values.lon): reason |= self.FailureReason.NO_LON
 
         # TODO: make sure this works properly
         for field in self.errors._fields:

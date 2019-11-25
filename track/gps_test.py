@@ -7,7 +7,7 @@ from gps_client import *
 
 TIMEOUT = 10.0
 NEED_3D = True
-ERR_MAX = GPSErrors(lat=1.0, lon=1.0, alt=1.0, track=1.0, speed=1.0, climb=1.0, time=0.001)
+ERR_MAX = GPSValues(lat=1.0, lon=1.0, alt=1.0, track=1.0, speed=1.0, climb=1.0, time=0.001)
 
 def main():
     with GPS() as g:
@@ -16,7 +16,7 @@ def main():
             print(loc)
         finally:
             print('fix_type: {}'.format(g.fix_type))
-            print('location: {}'.format(g.location))
+            print('values:   {}'.format(g.values))
             print('errors:   {}'.format(g.errors))
 
 if __name__ == '__main__':
