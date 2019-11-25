@@ -43,6 +43,7 @@ setup(
     python_requires='>=3.6',
 
     install_requires=[
+        'appdirs>=1.4',
         'bs4>=0.0.1',
         'point @ https://github.com/seeing-things/point/tarball/master#egg=point-0.3',
         'ConfigArgParse==0.12.0',

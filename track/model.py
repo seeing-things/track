@@ -1,6 +1,7 @@
 """Mount modeling and transformations between sky and mount reference frames"""
 
 import os
+import pickle
 import time
 from typing import NamedTuple
 import numpy as np
@@ -425,3 +426,61 @@ def solve_model(observations, location):
         raise NoSolutionException(result.message)
 
     return ModelParameters.from_ndarray(result.x), result
+
+
+class StaleParametersException(Exception):
+    """Raised when model parameters are stale and potentially invalid"""
+
+
+def save_default_param_set(model_param_set):
+    """Saves the model parameter set to disk at the default location.
+
+    This overwrites any model parameters already saved at this location.
+
+    Args:
+        model_param_set (ModelParamSet): Parameters to save.
+    """
+    with open(DEFAULT_MODEL_FILENAME, 'wb') as f:
+        pickle.dump(model_param_set, f, pickle.HIGHEST_PROTOCOL)
+
+
+def load_default_param_set(max_age=12*3600):
+    """Loads the model parameter set from disk at the default location.
+
+    Args:
+        max_age (float): Max allowed age of the model parameters in seconds. If the parameter set
+            is older than this an exception is raised. If None no check is performed.
+
+    Returns:
+        ModelParamSet: Parameter set loaded from disk.
+
+    Raises:
+        StaleParametersException: When the timestamp of the ModelParamSet loaded from disk exceeds
+            max_age.
+    """
+    with open(DEFAULT_MODEL_FILENAME, 'rb') as f:
+        model_param_set = pickle.load(f)
+
+    param_set_age = time.time() - model_param_set.timestamp
+    if param_set_age > max_age:
+        raise StaleParametersException(
+            'model params are {.1f} hours old'.format(param_set_age / 3600.0))
+
+    return model_param_set
+
+
+def load_default_model(max_param_age=12*3600):
+    """Loads the model parameter set from disk and returns a MountModel instance.
+
+    Args:
+        max_age (float): Max allowed age of the model parameters in seconds. If the parameter set
+            is older than this an exception is raised. If None no check is performed.
+
+    Returns:
+        MountModel: A MountModel instantiated with the parameters loaded from disk.
+
+    Raises:
+        StaleParametersException: When the timestamp of the ModelParamSet loaded from disk exceeds
+            max_age.
+    """
+    return MountModel(load_default_param_set(max_param_age))

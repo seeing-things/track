@@ -1,10 +1,11 @@
 """Convenience class inherited from configargparse.ArgParser with project-special defaults."""
 
 import os
+import appdirs
 import configargparse
 
 
-CONFIG_PATH = '~/.config/track'
+CONFIG_PATH = appdirs.user_config_dir('track')
 
 DEFAULT_CONFIG_FILES = [
     os.path.join(CONFIG_PATH, 'track.cfg'),

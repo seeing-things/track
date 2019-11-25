@@ -16,7 +16,6 @@ things:
 
 import sys
 import time
-import pickle
 import numpy as np
 import pandas as pd
 from astropy_healpix import HEALPix
@@ -60,6 +59,7 @@ def alt_from_ha_dec(ha, dec, mount_pole_altitude):
     me = Observer(location=location)
     sc = SkyCoord(ra, dec, frame='icrs')
     return me.altaz(t, target=sc).alt
+
 
 def generate_positions(min_positions, mount_pole_altitude, min_altitude=0.0, meridian_side=None):
     """Generate a list of equally spaced positions on one hemisphere of the sky to search.
@@ -469,8 +469,7 @@ def main():
             print('success!')
             filename = track.model.DEFAULT_MODEL_FILENAME
             print('Saving model parameters to {}'.format(filename))
-            with open(filename, 'wb') as f:
-                pickle.dump((model_param_set, location), f)
+            track.model.save_default_model(model_param_set)
         except track.model.NoSolutionException as e:
             print('failed: {}'.format(str(e)))
 
