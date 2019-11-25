@@ -104,7 +104,7 @@ class GPS:
     # on failure: raises GetLocationFailure with flags showing which requirements were not met
     # parameters:
     # - timeout: how much time to spend attempting to get a good fix before giving up
-    #            (set to None for no timeout, i.e. try forever)
+    #            (set to inf for no timeout, i.e. try forever)
     # - need_3d: whether a 3D fix should be considered necessary
     # - err_max: an Errors tuple containing the thresholds that each 95% error value must be below
     #            for the fix to be considered satisfactory
@@ -120,14 +120,14 @@ class GPS:
     #       also: if we are doing strictly a 2D fix, should we force self.location.alt to 0.0?
     #       and do we even need to do that, or will the gps hw/sw do that for us...?
     def get_location(self, timeout, need_3d, err_max):
-        if timeout is not None:
-            assert timeout > 0.0
-            t_start = perf_counter()
+        if timeout < 0.0 or isnan(timeout): raise ValueError()
 
         if need_3d:
             fix_ok = lambda fix: fix == GPSFixType.FIX_3D
         else:
             fix_ok = lambda fix: fix in (GPSFixType.FIX_3D, GPSFixType.FIX_2D)
+
+        t_start = perf_counter()
 
         for report in self.client:
             if report['class'] != 'TPV': continue
@@ -159,10 +159,9 @@ class GPS:
                     height = self.location.alt*u.m,
                 )
 
-            if timeout is not None:
-                t_now = perf_counter()
-                if t_now - t_start >= timeout:
-                    self._raise_failure(err_max, fix_ok)
+            t_now = perf_counter()
+            if t_now - t_start >= timeout:
+                self._raise_failure(err_max, fix_ok)
 
     def _satisfies_criteria(self, err_max, fix_ok):
         if not fix_ok(self.fix_type): return False
