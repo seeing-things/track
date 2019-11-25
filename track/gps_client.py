@@ -19,7 +19,7 @@ from datetime    import datetime
 from enum        import Enum, Flag, auto
 from math        import inf, isinf, nan, isnan
 from time        import perf_counter
-#from types import SimpleNamespace
+#from types       import SimpleNamespace
 
 from astropy import units as u
 from astropy.coordinates import EarthLocation
@@ -34,6 +34,12 @@ class GPSFixType(Enum):
     FIX_2D = 2
     FIX_3D = 3
 
+# TODO: use alternative type-hint syntax for these namedtuple declarations:
+#   from typing import NamedTuple
+#   class GPSValues(NamedTuple):
+#     lat: Angle # or whatever type we actually want to use for this
+#     lon: Angle # likewise
+#     # etc...
 GPSValues  = namedtuple('GPSValues',  ['lat', 'lon', 'alt', 'track', 'speed', 'climb', 'time'])
 GPSMargins = namedtuple('GPSMargins', ['speed', 'climb', 'time'])
 
@@ -194,17 +200,24 @@ class GPS:
             if t_now - t_start >= timeout:
                 self._raise_failure(err_max, margins, fix_ok)
 
+    # NOTE: we could implement _satisfies_criteria and _raise_failure in terms of one common method;
+    # however we want short-circuit behavior for _satisfies_criteria (for the quickest possible True
+    # or False result), yet we want evaluate-everything behavior for _raise_failure (so that we can
+    # report to the caller ALL of the things that contributed to the failure)
+
     def _satisfies_criteria(self, err_max, margins, fix_ok):
         if not fix_ok(self.fix_type): return False
 
         if isnan(self.values.lat): return False
         if isnan(self.values.lon): return False
+        # TODO: possibly enforce altitude checks
 
         if _test_margin_zero_fail(self.values.speed, margins.speed): return False
         if _test_margin_zero_fail(self.values.climb, margins.climb): return False
         if _test_margin_time_fail(self.values.time,  margins.time):  return False
 
         # TODO: make sure this works properly
+        # NOTE: could probably use an any() statement here but it doesn't make this any faster...
         for field in self.errors._fields:
             if self.errors._asdict()[field] > err_max._asdict()[field]: return False
 
@@ -217,6 +230,7 @@ class GPS:
 
         if isnan(self.values.lat): reason |= self.FailureReason.NO_LAT
         if isnan(self.values.lon): reason |= self.FailureReason.NO_LON
+        # TODO: possibly enforce altitude checks
 
         if _test_margin_zero_fail(self.values.speed, margins.speed): reason |= self.FailureReason.BAD_SPEED
         if _test_margin_zero_fail(self.values.climb, margins.climb): reason |= self.FailureReason.BAD_CLIMB
@@ -226,6 +240,7 @@ class GPS:
         for field in self.errors._fields:
             if self.errors._asdict()[field] > err_max._asdict()[field]:
                 # TODO: make sure this works properly
+                # TODO: add a comment here for mere mortals, explaining how the hell this line of code works
                 reason |= next(val for (name, val) in self.FailureReason.__members__.items() if name == 'ERR_' + field.upper())
 
         raise self.GetLocationFailure(reason)
