@@ -190,10 +190,7 @@ class MountModel:
             -self.model_params.pole_rot_angle
         )
 
-        # Calculate the right ascension at this time and place corresponding to the hour angle.
-        ra = t.sidereal_time('apparent', longitude=self.location.lon) - us_local.lon
-
-        return SkyCoord(ra, us_local.lat, frame='icrs')
+        return SkyCoord(ha_to_ra(us_local.lon, self.location.lon), us_local.lat, frame='icrs')
 
 
     def world_to_mount(self, sky_coord, meridian_side, t):
@@ -211,8 +208,7 @@ class MountModel:
         """
 
         # Calculate hour angle corresponding to SkyCoord right ascension at this time and place
-        ha = t.sidereal_time('apparent', longitude=self.location.lon) - sky_coord.ra
-        sc_local = SkyCoord(ha, sky_coord.dec)
+        sc_local = SkyCoord(ra_to_ha(sky_coord.ra, self.location.lon), sky_coord.dec)
 
         # transform from celestial pole to mount pole
         us_mnt_offset = tip_axis(
@@ -230,6 +226,33 @@ class MountModel:
         )
 
         return encoder_positions
+
+
+def ha_to_ra(hour_angle, longitude):
+    """Converts hour angle to right ascension
+
+    Args:
+        hour_angle (Longitude): The hour angle to be converted.
+        longitude (Longitude): The longitude of the observer.
+
+    Returns:
+        Longitude: The right ascension angle.
+    """
+    return Longitude(t.sidereal_time('apparent', longitude=longitude) - hour_angle)
+
+
+def ra_to_ha(ra_angle, longitude):
+    """Converts right ascension to hour angle
+
+    Args:
+        ra_angle (Longitude): The right ascension angle to be converted.
+        longitude (Longitude): The longitude of the observer.
+
+    Returns:
+        Longitude: The hour angle.
+    """
+    # The operation is identical in both direction
+    return ha_to_ra(ra_angle, longitude)
 
 
 def spherical_to_encoder(mount_coord, meridian_side=MeridianSide.EAST):
