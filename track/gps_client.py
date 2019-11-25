@@ -41,7 +41,7 @@ class GPSFixType(Enum):
 #     lon: Angle # likewise
 #     # etc...
 GPSValues  = namedtuple('GPSValues',  ['lat', 'lon', 'alt', 'track', 'speed', 'climb', 'time'])
-GPSMargins = namedtuple('GPSMargins', ['speed', 'climb', 'time'])
+GPSMargins = namedtuple('GPSMargins',                               ['speed', 'climb', 'time'])
 
 # TODO: write some nicer documentation for GPSMargins: (for all: inf means don't-care)
 # - speed: float: max valid deviation from zero for horizontal speed   (unit: meters/second)
@@ -260,12 +260,12 @@ def _test_margin_time_fail(v_str, margin):
     if v_str is None: return _TEST_MARGIN_FAIL_IF_UNSET
     if isinf(margin): return False # short-circuit the time-parsing code if we don't need it
 
-    t_sys = datetime.utcnow()
     try:
         t_val = APTime(v_str, format='isot', scale='utc')
     except ValueError:
         return _TEST_MARGIN_FAIL_IF_UNSET
     t_val = t_val.to_datetime()
+    t_sys = datetime.utcnow()
 
     dt = abs(t_val - t_sys).total_seconds()
     return dt > margin
