@@ -1,20 +1,29 @@
 """GPS location determination via gpsd.
 
 Defines a single class GPS that encapsulates the procedures necessary to obtain the current location
-from the gpsd daemon. This code works on the assumption that gpsd is already configured and running
-on the system.
+as a client of the gpsd daemon.
+
+The code in this module works on the assumption that gpsd is already configured and running on the
+system.
+
+It is also highly suggested that ntpd is also already configured and running on the system, and
+preferably is configured to use the gps module's pps signal via gpsd as its time source. In any
+case, the validation code in this module will (optionally) enforce that the gps time matches the
+system time to a reasonable degree of precision.
 """
 
 # http://manpages.ubuntu.com/manpages/bionic/man5/gpsd_json.5.html
 
 from collections import namedtuple
+from datetime    import datetime
 from enum        import Enum, Flag, auto
-from math        import inf, nan, isnan
+from math        import inf, isinf, nan, isnan
 from time        import perf_counter
 #from types import SimpleNamespace
 
 from astropy import units as u
 from astropy.coordinates import EarthLocation
+from astropy.time import Time as APTime
 
 import gps
 
@@ -26,6 +35,12 @@ class GPSFixType(Enum):
     FIX_3D = 3
 
 GPSValues  = namedtuple('GPSValues',  ['lat', 'lon', 'alt', 'track', 'speed', 'climb', 'time'])
+GPSMargins = namedtuple('GPSMargins', ['speed', 'climb', 'time'])
+
+# TODO: write some nicer documentation for GPSMargins: (for all: inf means don't-care)
+# - speed: float: max valid deviation from zero for horizontal speed   (unit: meters/second)
+# - climb: float: max valid deviation from zero for vertical   speed   (unit: meters/second)
+# - time:  float: max valid deviation between gps time and system time (unit: seconds)
 
 # TODO: document the units on all the relevant fields here, and use types for them when appropriate
 #       (ask Brett for the best degree types and unit stuff to use here... astropy has good ones?)
@@ -35,7 +50,7 @@ GPSValues  = namedtuple('GPSValues',  ['lat', 'lon', 'alt', 'track', 'speed', 'c
 # - track: decimal degrees, [0.0, 360.0); standard compass heading: clockwise from north
 # - speed: meters per second in XY plane, [0.0, +inf]
 # - climb: meters per second in Z  plane, [-inf, +inf]; upward positive
-# - time: absolute UTC time; up to millisecond precision
+# - time: absolute UTC time; up to millisecond precision; represented as string in RFC 3339 format
 # errors: same units as the corresponding value; 95% confidence; always nonnegative;
 #         lat/lon errors are in meters
 #         time error is in seconds
@@ -59,6 +74,9 @@ class GPS:
         NO_LAT    = auto() # no latitude
         NO_LON    = auto() # no longitude
         NO_ALT    = auto() # no altitude (currently not actually enforced)
+        BAD_SPEED = auto() # horizontal speed != zero
+        BAD_CLIMB = auto() # vertical   speed != zero
+        BAD_TIME  = auto() # gps time != system time (suggests a ntpd<-->gpsd sync failure)
         ERR_LAT   = auto() # excessive error in parameter: lat
         ERR_LON   = auto() # excessive error in parameter: lon
         ERR_ALT   = auto() # excessive error in parameter: alt
@@ -107,7 +125,10 @@ class GPS:
     # - need_3d: whether a 3D fix should be considered necessary
     # - err_max: a GPSValues tuple containing the thresholds that each 95% error value must be below
     #            for the fix to be considered satisfactory
-    #            (individual members of the tuple may be set to inf to ignore those ones)
+    #            (individual members of the tuple may be set to inf to request no checking)
+    # - margins: a GPSMargins tuple indicating how far from zero the speed and climb values can be,
+    #            and how far from the system time the GPS time can be, for a satisfactory fix
+    #            (individual members of the tuple may be set to inf to request no checking)
     # TODO: we *may* (not sure!) need to ensure that we get N consecutive reports that all meet our
     #       requirements, before we declare ourselves successful and victorious
     # TODO: determine whether we should enforce alt, and in which circumstances
@@ -118,12 +139,13 @@ class GPS:
     #       - if isnan(self.values.alt) in _raise_failure: add flag NO_ALT
     #       also: if we are doing strictly a 2D fix, should we force self.values.alt to 0.0?
     #       and do we even need to do that, or will the gps hw/sw do that for us...?
-    def get_location(self, timeout, need_3d, err_max):
+    def get_location(self, timeout, need_3d, err_max, margins):
         if timeout < 0.0 or isnan(timeout): raise ValueError()
 
         if not isinstance(err_max, GPSValues):  raise TypeError()
+        if not isinstance(margins, GPSMargins): raise TypeError()
 
-        for v in err_max:
+        for v in err_max + margins:
             if not isinstance(v, float): raise TypeError()
             if v < 0.0 or isnan(v):      raise ValueError()
 
@@ -161,7 +183,7 @@ class GPS:
                 time  = report.ept if 'ept' in report else self.INIT_ERR.time,
             )
 
-            if self._satisfies_criteria(err_max, fix_ok):
+            if self._satisfies_criteria(err_max, margins, fix_ok):
                 return EarthLocation(
                     lat    = self.values.lat*u.deg,
                     lon    = self.values.lon*u.deg,
@@ -170,13 +192,17 @@ class GPS:
 
             t_now = perf_counter()
             if t_now - t_start >= timeout:
-                self._raise_failure(err_max, fix_ok)
+                self._raise_failure(err_max, margins, fix_ok)
 
-    def _satisfies_criteria(self, err_max, fix_ok):
+    def _satisfies_criteria(self, err_max, margins, fix_ok):
         if not fix_ok(self.fix_type): return False
 
         if isnan(self.values.lat): return False
         if isnan(self.values.lon): return False
+
+        if _test_margin_zero_fail(self.values.speed, margins.speed): return False
+        if _test_margin_zero_fail(self.values.climb, margins.climb): return False
+        if _test_margin_time_fail(self.values.time,  margins.time):  return False
 
         # TODO: make sure this works properly
         for field in self.errors._fields:
@@ -184,13 +210,17 @@ class GPS:
 
         return True
 
-    def _raise_failure(self, err_max, fix_ok):
+    def _raise_failure(self, err_max, margins, fix_ok):
         reason = self.FailureReason.NONE
 
         if not fix_ok(self.fix_type): reason |= self.FailureReason.BAD_FIX
 
         if isnan(self.values.lat): reason |= self.FailureReason.NO_LAT
         if isnan(self.values.lon): reason |= self.FailureReason.NO_LON
+
+        if _test_margin_zero_fail(self.values.speed, margins.speed): reason |= self.FailureReason.BAD_SPEED
+        if _test_margin_zero_fail(self.values.climb, margins.climb): reason |= self.FailureReason.BAD_CLIMB
+        if _test_margin_time_fail(self.values.time,  margins.time):  reason |= self.FailureReason.BAD_TIME
 
         # TODO: make sure this works properly
         for field in self.errors._fields:
@@ -199,3 +229,28 @@ class GPS:
                 reason |= next(val for (name, val) in self.FailureReason.__members__.items() if name == 'ERR_' + field.upper())
 
         raise self.GetLocationFailure(reason)
+
+# TODO: decide whether margin tests should succeed or fail when the speed/climb/time value is
+#       unset (nan/None)... perhaps only if the margin comparison value is not inf? ugh...
+
+_TEST_MARGIN_FAIL_IF_UNSET = False
+
+# returns True if the given float value is NOT within margin of zero
+def _test_margin_zero_fail(v_float, margin):
+    if isnan(v_float): return _TEST_MARGIN_FAIL_IF_UNSET
+    return v_float > margin
+
+# returns True if the given RFC 3339 time string is NOT within margin seconds of the system time
+def _test_margin_time_fail(v_str, margin):
+    if v_str is None: return _TEST_MARGIN_FAIL_IF_UNSET
+    if isinf(margin): return False # short-circuit the time-parsing code if we don't need it
+
+    t_sys = datetime.utcnow()
+    try:
+        t_val = APTime(v_str, format='isot', scale='utc')
+    except ValueError:
+        return _TEST_MARGIN_FAIL_IF_UNSET
+    t_val = t_val.to_datetime()
+
+    dt = abs(t_val - t_sys).total_seconds()
+    return dt > margin
