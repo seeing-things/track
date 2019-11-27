@@ -9,13 +9,11 @@ or by intelligently switching between sources.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 import numpy as np
-import ephem
 from astropy import units as u
 from astropy.coordinates import SkyCoord, Angle, Longitude
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 try:
     import cv2
     from track import webcam
@@ -24,8 +22,10 @@ except ImportError as e:
         print('Failed to import cv2. Optical tracking requires OpenCV.')
     raise
 from track.mathutils import angle_between, camera_eq_error
+from track.model import MountModel
+from track.mounts import TelescopeMount, MeridianSide
+from track.target import Target
 from track.telem import TelemSource
-from track.mounts import MeridianSide
 
 
 # pylint: disable=too-few-public-methods
@@ -117,19 +117,19 @@ class BlindErrorSource(ErrorSource, TelemSource):
 
     def __init__(
             self,
-            mount,
-            mount_model,
-            target,
-            meridian_side=MeridianSide.WEST
+            mount: TelescopeMount,
+            mount_model: MountModel,
+            target: Target,
+            meridian_side: MeridianSide = MeridianSide.WEST
         ):
         """Inits BlindErrorSource object.
 
         Args:
-            mount (TelescopeMount): Error terms will be computed relative to the encoder positions
-                reported by this mount.
-            target (Target): Object that identifies the target to be tracked.
-            meridian_side (MeridianSide): For equatorial mounts indicates which side of the
-                meridian is desired.
+            mount: Error terms will be computed relative to the encoder positions reported by this
+                mount.
+            mount_model: A model that transforms celestial coordinates to mount encoder positions.
+            target: Object that identifies the target to be tracked.
+            meridian_side: For equatorial mounts indicates which side of the meridian is desired.
         """
         self.target = target
         self.mount = mount
@@ -138,28 +138,8 @@ class BlindErrorSource(ErrorSource, TelemSource):
         self.target_position_offset = None
         self._telem_channels = {}
 
-        # Create a PyEphem Observer object
-        self.observer = ephem.Observer()
-        self.observer.lat = mount_model.location.lat.deg
-        self.observer.lon = mount_model.location.lon.deg
-        self.observer.elevation = mount_model.location.height.to_value(u.m)
 
-
-    def _compute_target_position(self, when):
-        """Get the position of the target at a specific time for the observer location.
-
-        Args:
-            when (datetime): Time of observation.
-
-        Returns:
-            SkyCoord: Coordinates of the target from the observer's location.
-        """
-        self.observer.date = ephem.Date(when)
-        self.target.compute(self.observer)
-        return SkyCoord(self.target.ra * u.rad, self.target.dec * u.rad)
-
-
-    def _offset_target_position(self, position, offset):
+    def _offset_target_position(self, position: SkyCoord, offset: PositionOffset) -> SkyCoord:
         """Offset the target position by a specified amount in a trajectory-relative direction.
 
         This shifts the position of the target. This could be used to adjust for pointing errors
@@ -169,14 +149,17 @@ class BlindErrorSource(ErrorSource, TelemSource):
         trying to figure out the same adjustment in some coordinate system.
 
         Args:
-            position (SkyCoord): The target position to be adjusted.
-            offset (PositionOffset): Offset to be applied.
+            position: The target position to be adjusted.
+            offset: Offset to be applied.
+
+        Returns:
+            Target position with offset applied.
         """
 
         # estimate direction vector of the target using positions now and several seconds later
-        now = datetime.now(timezone.utc)
-        position_now = self._compute_target_position(now)
-        position_later = self._compute_target_position(now + timedelta(seconds=10))
+        now = Time.now()
+        position_now = self.target.get_position(now)
+        position_later = self.target.get_position(now + TimeDelta(10.0, format='sec'))
 
         # position angle pointing in direction of target motion
         trajectory_position_angle = position_now.position_angle(position_later)
@@ -249,11 +232,10 @@ class BlindErrorSource(ErrorSource, TelemSource):
             PositionError: Error terms for each mount axis.
         """
 
-        datetime_now = datetime.now(timezone.utc)
-        astropy_time = Time(datetime_now)
+        current_time = Time.now()
 
         # get coordinates of target for current time
-        target_position_raw = self._compute_target_position(datetime_now)
+        target_position_raw = self.target.get_position(current_time)
 
         if self.target_position_offset is not None:
             target_position = self._offset_target_position(
@@ -267,11 +249,14 @@ class BlindErrorSource(ErrorSource, TelemSource):
         target_enc_positions = self.mount_model.world_to_mount(
             target_position,
             self.meridian_side,
-            astropy_time
+            current_time
         )
 
         # get current position of telescope encoders
         mount_enc_positions = self.mount.get_position()
+
+        print('mount: ' + str(mount_enc_positions))
+        print('target: ' + str(target_enc_positions))
 
         pointing_error = PointingError(
             *[self._compute_axis_error(

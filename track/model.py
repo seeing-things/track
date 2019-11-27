@@ -163,12 +163,13 @@ class MountModel:
         self.location = model_param_set.location
 
 
-    def mount_to_world(self, encoder_positions, t):
-        """Convert coordinate in mount frame to coordinate in celestial equatorial frame.
+    def mount_to_world(self, encoder_positions: MountEncoderPositions, t: Time = None) -> SkyCoord:
+        """Convert mount encoder positions to a coordinate in celestial equatorial frame.
 
         Args:
             encoder_positions (MountEncoderPositions): Set of mount encoder positions.
-            t (Time): An Astropy Time object.
+            t: Time of observation. If not specified, the return value will use hour angle rather
+                than right ascension.
 
         Returns:
             A SkyCoord object with the right ascension and declination coordinates in the celestial
@@ -190,25 +191,36 @@ class MountModel:
             -self.model_params.pole_rot_angle
         )
 
-        return SkyCoord(ha_to_ra(us_local.lon, self.location.lon), us_local.lat, frame='icrs')
+        if t is None:
+            return SkyCoord(us_local)
+
+        return SkyCoord(ha_to_ra(us_local.lon, self.location.lon, t), us_local.lat)
 
 
-    def world_to_mount(self, sky_coord, meridian_side, t):
-        """Convert coordinate in celestial equatorial frame to coordinate in mount frame.
+    def world_to_mount(
+            self,
+            sky_coord: SkyCoord,
+            meridian_side: MeridianSide,
+            t: Time
+        ) -> MountEncoderPositions:
+        """Convert coordinate in celestial equatorial frame to mount encoder positions.
 
         Args:
-            sky_coord (SkyCoord): Celestial coordinate to be converted.
-            meridian_side (MeridianSide): Gives the desired side of the meridian to use (for
-                equatorial mounts).
-            t (Time): An Astropy Time object.
+            sky_coord: Celestial coordinate to be converted.
+            meridian_side: Gives the desired side of the meridian to use (for equatorial mounts).
+            t: Time of observation. If not specified, the `lat` attribute of the sky_coord argument
+                will be interpreted as an hour angle rather than a right ascension.
 
         Returns:
-            MountEncoderPositions object with the encoder positions corresponding to this sky
-                coordinate and on the desired side of the meridian.
+            Encoder positions corresponding to this sky coordinate and on the desired side of the
+            meridian.
         """
 
-        # Calculate hour angle corresponding to SkyCoord right ascension at this time and place
-        sc_local = SkyCoord(ra_to_ha(sky_coord.ra, self.location.lon), sky_coord.dec)
+        if t is not None:
+            # Calculate hour angle corresponding to SkyCoord right ascension at this time and place
+            sc_local = SkyCoord(ra_to_ha(sky_coord.ra, self.location.lon, t), sky_coord.dec)
+        else:
+            sc_local = sky_coord
 
         # transform from celestial pole to mount pole
         us_mnt_offset = tip_axis(
@@ -228,31 +240,33 @@ class MountModel:
         return encoder_positions
 
 
-def ha_to_ra(hour_angle, longitude):
+def ha_to_ra(hour_angle: Longitude, longitude: Longitude, t: Time) -> Longitude:
     """Converts hour angle to right ascension
 
     Args:
-        hour_angle (Longitude): The hour angle to be converted.
-        longitude (Longitude): The longitude of the observer.
+        hour_angle: The hour angle to be converted.
+        longitude: The longitude of the observer.
+        t: Time of observation.
 
     Returns:
-        Longitude: The right ascension angle.
+        The right ascension angle.
     """
     return Longitude(t.sidereal_time('apparent', longitude=longitude) - hour_angle)
 
 
-def ra_to_ha(ra_angle, longitude):
+def ra_to_ha(ra_angle: Longitude, longitude: Longitude, t: Time) -> Longitude:
     """Converts right ascension to hour angle
 
     Args:
-        ra_angle (Longitude): The right ascension angle to be converted.
-        longitude (Longitude): The longitude of the observer.
+        ra_angle: The right ascension angle to be converted.
+        longitude: The longitude of the observer.
+        t: Time of observation.
 
     Returns:
-        Longitude: The hour angle.
+        The hour angle.
     """
-    # The operation is identical in both direction
-    return ha_to_ra(ra_angle, longitude)
+    # the operation is its own inverse
+    return ha_to_ra(ra_angle, longitude, t)
 
 
 def spherical_to_encoder(mount_coord, meridian_side=MeridianSide.EAST):
@@ -486,10 +500,11 @@ def load_default_param_set(max_age=12*3600):
     with open(DEFAULT_MODEL_FILENAME, 'rb') as f:
         model_param_set = pickle.load(f)
 
-    param_set_age = time.time() - model_param_set.timestamp
-    if param_set_age > max_age:
-        raise StaleParametersException(
-            'model params are {.1f} hours old'.format(param_set_age / 3600.0))
+    if max_age is not None:
+        param_set_age = time.time() - model_param_set.timestamp
+        if param_set_age > max_age:
+            raise StaleParametersException(
+                'model params are {:.1f} hours old'.format(param_set_age / 3600.0))
 
     return model_param_set
 

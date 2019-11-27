@@ -19,14 +19,18 @@ These adjustments are relative to the motion vector of the object across the sky
 import sys
 import ephem
 import numpy as np
-import astropy.units as u
 import track
-from track.model import MountModel, ModelParamSet
+from track.control import Tracker
+from track.gamepad import Gamepad
+from track.laser import LaserPointer
 from track.mounts import MeridianSide
 from track.errorsources import BlindErrorSource
+from track.target import PyEphemTarget
+from track.telem import TelemLogger
 
 
 def make_target(args):
+    """Create a PyEphem object to use as a target"""
 
     # Create a PyEphem Body object corresonding to the TLE file
     if args.mode == 'tle':
@@ -142,19 +146,6 @@ def main():
     args = parser.parse_args()
 
 
-    mount_model = track.model.load_default_model()
-
-
-    # Create a PyEphem Observer object
-    observer = ephem.Observer()
-    observer.lat = mount_model.location.lat.deg
-    observer.lon = mount_model.location.lon.deg
-    observer.elevation = mount_model.location.height.to_value(u.m)
-
-    # Create a PyEphem Target object
-    target = make_target(args)
-
-
     # Create object with base type TelescopeMount
     if args.mount_type == 'nexstar':
         mount = track.NexStarMount(args.mount_path)
@@ -165,13 +156,13 @@ def main():
         sys.exit(1)
 
 
-    def target_offset_callback(tracker):
+    def target_offset_callback(tracker: Tracker) -> False:
         """Use gamepad integrator to adjust the target predicted position
 
         This is registered as a callback for the Tracker object.
 
         Args:
-            tracker (Tracker): The instance of Tracker that called this function.
+            tracker: The instance of Tracker that called this function.
 
         Returns:
             False to indicate that the control loop should continue execution as normal.
@@ -186,23 +177,24 @@ def main():
 
 
     # Create object with base type ErrorSource
+    mount_model = track.model.load_default_model(None) # FIXME: don't allow stale parameters!
     error_source = track.BlindErrorSource(
-        mount,
-        mount_model,
-        target,
+        mount=mount,
+        mount_model=mount_model,
+        target=PyEphemTarget(make_target(args), mount_model.location),
         meridian_side=MeridianSide[args.meridian_side.upper()]
     )
     telem_sources = {'error_blind': error_source}
 
     try:
-        laser = track.LaserPointer(serial_num=args.laser_ftdi_serial)
+        laser = LaserPointer(serial_num=args.laser_ftdi_serial)
     except OSError:
         print('Could not connect to laser pointer FTDI device.')
         laser = None
 
     try:
         # Create gamepad object and register callback
-        game_pad = track.Gamepad(
+        game_pad = Gamepad(
             left_gain=2.0,  # left stick degrees per second
             right_gain=0.5, # right stick degrees per second
             int_limit=5.0,  # max correction in degrees for either axis
@@ -215,7 +207,7 @@ def main():
     except RuntimeError:
         print('No gamepads found.')
 
-    tracker = track.Tracker(
+    tracker = Tracker(
         mount=mount,
         error_source=error_source,
         loop_bandwidth=args.loop_bw,
@@ -225,7 +217,7 @@ def main():
     telem_sources['tracker'] = tracker
 
     if args.telem_enable:
-        telem_logger = track.TelemLogger(
+        telem_logger = TelemLogger(
             host=args.telem_db_host,
             port=args.telem_db_port,
             period=args.telem_period,
