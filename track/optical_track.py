@@ -24,8 +24,8 @@ def main():
         default='/dev/video0'
     )
     parser.add_argument(
-        '--camera-res',
-        help='webcam resolution in arcseconds per pixel',
+        '--pixel-scale',
+        help='camera pixel scale in arcseconds per pixel',
         required=True,
         type=float
     )
@@ -142,16 +142,20 @@ def main():
         print('mount-type not supported: ' + args.mount_type)
         sys.exit(1)
 
-    # Create object with base type ErrorSource
-    error_source = track.OpticalErrorSource(
+
+    camera = cameras.WebCam(
         cam_dev_path=args.camera,
-        arcsecs_per_pixel=args.camera_res,
         cam_num_buffers=args.camera_bufs,
         cam_ctlval_exposure=args.camera_exposure,
+        frame_dump_dir=args.frame_dump_dir,
+        pixel_scale=args.pixel_scale / 3600.0,  # program arg is in arcseconds
+    )
+
+    # Create object with base type ErrorSource
+    error_source = track.OpticalErrorSource(
         x_axis_name=x_axis_name,
         y_axis_name=y_axis_name,
         mount=mount,
-        frame_dump_dir=args.frame_dump_dir,
     )
     telem_sources = {'error_optical': error_source}
 

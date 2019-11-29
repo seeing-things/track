@@ -283,12 +283,9 @@ class OpticalErrorSource(ErrorSource, TelemSource):
     to an error vector in the mount's coordinate system.
 
     Attributes:
-        degrees_per_pixel: Apparent size of a photosite in degrees.
-        webcam: A WebCam object instance.
+        camera: An instance of class Camera
         x_axis_name: Name of mount axis parallel to the camera's x-axis.
         y_axis_name: Name of mount axis parallel to the camera's y-axis.
-        frame_width_px: Width of the image in pixels.
-        frame_height_px: Height of the image in pixels.
         frame_center_px: A tuple with the coordinates of the image center.
         concec_detect_frames: Number of consecutive frames where a target was detected.
         consec_no_detect_frames: Number of consecutive frames since a target was last detected.
@@ -297,24 +294,13 @@ class OpticalErrorSource(ErrorSource, TelemSource):
 
     def __init__(
             self,
-            cam_dev_path,
-            arcsecs_per_pixel,
-            cam_num_buffers,
-            cam_ctlval_exposure,
-            x_axis_name,
-            y_axis_name,
-            mount=None,
-            frame_dump_dir=None,
+            camera: Camera,
+            x_axis_name: str,
+            y_axis_name: str,
+            mount: Mount = None,
         ):
 
-        self.degrees_per_pixel = arcsecs_per_pixel / 3600.0
-
-        self.webcam = webcam.WebCam(
-            cam_dev_path,
-            cam_num_buffers,
-            cam_ctlval_exposure,
-            frame_dump_dir
-        )
+        self.camera = camera
 
         self.x_axis_name = x_axis_name
         self.y_axis_name = y_axis_name
@@ -324,7 +310,8 @@ class OpticalErrorSource(ErrorSource, TelemSource):
         self.frame_width_px = self.webcam.get_res_x()
         self.frame_height_px = self.webcam.get_res_y()
 
-        self.frame_center_px = (self.frame_width_px / 2.0, self.frame_height_px / 2.0)
+        frame_width, frame_height = camera.frame_shape
+        self.frame_center_px = (frame_width / 2.0, frame_height / 2.0)
 
         # cached values from last error calculation (for telemetry)
         self.error_cached = {}
@@ -401,17 +388,18 @@ class OpticalErrorSource(ErrorSource, TelemSource):
         frame_annotated = frame.copy()
 
         # add grey crosshairs
+        frame_width, frame_height = camera.frame_shape
         cv2.line(
             frame_annotated,
             (int(self.frame_center_px[0]), 0),
-            (int(self.frame_center_px[0]), int(self.frame_height_px) - 1),
+            (int(self.frame_center_px[0]), frame_height - 1),
             (50, 50, 50),
             1
         )
         cv2.line(
             frame_annotated,
             (0, int(self.frame_center_px[1])),
-            (int(self.frame_width_px) - 1, int(self.frame_center_px[1])),
+            (frame_width - 1, int(self.frame_center_px[1])),
             (50, 50, 50),
             1
         )
@@ -445,9 +433,9 @@ class OpticalErrorSource(ErrorSource, TelemSource):
         cv2.imshow('frame', frame_annotated)
         cv2.waitKey(1)
 
-    def compute_error(self, blocking=True):
+    def compute_error(self, timeout: float = inf):
 
-        frame = self.webcam.get_fresh_frame(blocking=blocking)
+        frame = self.camera.get_frame(timeout=timeout)
 
         if frame is None:
             self.error_cached = {}
@@ -477,8 +465,8 @@ class OpticalErrorSource(ErrorSource, TelemSource):
                 error_x_px = e_x
                 error_y_px = e_y
 
-        error_x_deg = error_x_px * self.degrees_per_pixel
-        error_y_deg = error_y_px * self.degrees_per_pixel
+        error_x_deg = error_x_px * self.camera.pixel_scale
+        error_y_deg = error_y_px * self.camera.pixel_scale
 
         if self.mount is None:
             # This is a crude approximation. It breaks down near the mount's pole.
@@ -491,7 +479,7 @@ class OpticalErrorSource(ErrorSource, TelemSource):
             error = camera_eq_error(
                 self.mount.get_position(max_cache_age=0.1),
                 [error_x_px, error_y_px],
-                self.degrees_per_pixel
+                self.camera.pixel_scale,
             )
         # angular separation between detected target and center of camera frame in degrees
         error['mag'] = np.abs(error_x_deg + 1j*error_y_deg)
@@ -538,14 +526,10 @@ class HybridErrorSource(ErrorSource, TelemSource):
             mount,
             observer,
             target,
-            cam_dev_path,
-            arcsecs_per_pixel,
-            cam_num_buffers,
-            cam_ctlval_exposure,
+            camera: Camera,
             max_divergence=5.0,
             max_optical_no_signal_frames=4,
             meridian_side='west',
-            frame_dump_dir=None,
         ):
         self.axes = mount.get_axis_names()
         self.blind = BlindErrorSource(
@@ -558,24 +542,16 @@ class HybridErrorSource(ErrorSource, TelemSource):
         # camera is oriented with respect to the mount axes.
         if set(self.axes) == set(['az', 'alt']):
             self.optical = OpticalErrorSource(
-                cam_dev_path,
-                arcsecs_per_pixel,
-                cam_num_buffers,
-                cam_ctlval_exposure,
+                camera=camera,
                 x_axis_name='az',
                 y_axis_name='alt',
-                frame_dump_dir=frame_dump_dir,
             )
         elif set(self.axes) == set(['ra', 'dec']):
             self.optical = OpticalErrorSource(
-                cam_dev_path,
-                arcsecs_per_pixel,
-                cam_num_buffers,
-                cam_ctlval_exposure,
+                camera=camera,
                 x_axis_name='ra',
                 y_axis_name='dec',
                 mount=mount,
-                frame_dump_dir=frame_dump_dir,
             )
         else:
             raise ValueError('unrecognized axis names')
@@ -596,7 +572,8 @@ class HybridErrorSource(ErrorSource, TelemSource):
         blind_error = self.blind.compute_error()
 
         try:
-            optical_error = self.optical.compute_error(blocking=(self.state == 'optical'))
+            timeout = inf if self.state == 'optical' else 0.0
+            optical_error = self.optical.compute_error(timeout=timeout)
         except ErrorSource.NoSignalException:
             self.divergence_angle = None
             if self.state == 'blind':
