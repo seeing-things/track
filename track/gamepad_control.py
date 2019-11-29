@@ -6,8 +6,7 @@ This program allows direct control of a telescope mount with a gamepad. The slew
 are controlled by the analog sticks.
 """
 
-from __future__ import print_function
-import sys
+from threading import Event
 import track
 
 def main():
@@ -87,22 +86,27 @@ def main():
         telem_logger.start()
 
     try:
-        while True:
-            if mount is not None:
+        if mount is None:
+            # do nothing in this thread until CTRL-C
+            Event().wait()
+        else:
+            while True:
                 x, y = game_pad.get_value()
                 mount.slew('ra', mount.max_slew_rate * x)
                 mount.slew('dec', mount.max_slew_rate * y)
+
     except KeyboardInterrupt:
         print('Got CTRL-C, shutting down...')
     except Exception as e:
         print('Unhandled exception: ' + str(e))
     finally:
-        # don't rely on destructors to safe mount!
-        print('Safing mount...')
-        if mount.safe():
-            print('Mount safed successfully!')
-        else:
-            print('Warning: Mount may be in an unsafe state!')
+        if mount is not None:
+            # don't rely on destructors to safe mount!
+            print('Safing mount...')
+            if mount.safe():
+                print('Mount safed successfully!')
+            else:
+                print('Warning: Mount may be in an unsafe state!')
 
     if args.telem_enable:
         telem_logger.stop()
