@@ -1,3 +1,11 @@
+"""cameras for use in telescope tracking control loop.
+
+A set of classes that inherit from the abstract base class Camera, providing a common API for
+interacting with cameras. The main application for a camera relevant to this package is as a
+sensor to be paired with computer vision algorithms that can estimate the position error of a
+target.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Tuple
 from math import inf
@@ -11,17 +19,15 @@ import errno
 import ctypes
 import numpy as np
 import v4l2
-import cv2
-from track.config import ArgParser
 from configargparse import Namespace
-
-# pylint: disable=unused-wildcard-import
-from asi import *
+import cv2
+import asi
+from asi import ASICheck
+from track.config import ArgParser
 
 
 class Camera(ABC):
     """Abstract base class for cameras"""
-
 
     @property
     @abstractmethod
@@ -37,8 +43,8 @@ class Camera(ABC):
             Scale of a pixel in degrees per pixel.
         """
 
-
     @property
+    @abstractmethod
     def field_of_view(self) -> Tuple[float, float]:
         """Field of view of the camera.
 
@@ -48,8 +54,6 @@ class Camera(ABC):
         Returns:
             A tuple (height, width) giving the field of view in degrees.
         """
-        return (self._pixel_scale * self.info.MaxHeight, self._pixel_scale * self.info.MaxWidth)
-
 
     @property
     @abstractmethod
@@ -63,7 +67,6 @@ class Camera(ABC):
         Returns:
             Resolution as a tuple of (height, width) in pixels.
         """
-
 
     @abstractmethod
     def get_frame(self, timeout: float = inf) -> np.ndarray:
@@ -84,7 +87,6 @@ class Camera(ABC):
             shape of the array should match the frame_shape property.
         """
 
-
     @staticmethod
     @abstractmethod
     def add_program_arguments(parser: ArgParser) -> None:
@@ -100,15 +102,16 @@ class CameraTimeout(Exception):
 
 
 class ASICamera(Camera):
+    """ZWO ASI Cameras"""
 
     class BitDepth(enum.IntEnum):
         """Indicates side of mount meridian. This is significant for equatorial mounts."""
-        RAW8 = ASI_IMG_RAW8
-        RAW16 = ASI_IMG_RAW16
+        RAW8 = asi.ASI_IMG_RAW8
+        RAW16 = asi.ASI_IMG_RAW16
 
         def bytes_per_pixel(self):
+            """Number of bytes per pixel in raw array of frame data retrieved from ASI driver"""
             return 1 if self == self.RAW8 else 2
-
 
     @staticmethod
     def add_program_arguments(parser: ArgParser) -> None:
@@ -118,19 +121,8 @@ class ASICamera(Camera):
             default=0.5,
             type=float
         )
-        parser.add_argument(
-            '--zwo-gain',
-            help='ZWO camera gain',
-            default=400,
-            type=int
-        )
-        parser.add_argument(
-            '--zwo-binning',
-            help='ZWO camera binning',
-            default=4,
-            type=int
-        )
-
+        parser.add_argument('--zwo-gain', help='ZWO camera gain', default=400, type=int)
+        parser.add_argument('--zwo-binning', help='ZWO camera binning', default=4, type=int)
 
     @staticmethod
     def from_program_args(args: Namespace) -> 'ASICamera':
@@ -142,7 +134,6 @@ class ASICamera(Camera):
         camera.exposure = args.zwo_exposure_time
         camera.gain = args.zwo_gain
         return camera
-
 
     def __init__(
             self,
@@ -160,58 +151,57 @@ class ASICamera(Camera):
         Raises:
             RuntimeError for any camera related problems.
         """
-        if ASIGetNumOfConnectedCameras() == 0:
+        if asi.ASIGetNumOfConnectedCameras() == 0:
             raise RuntimeError('No cameras connected')
-        self.info = ASICheck(ASIGetCameraProperty(0))
+        self.info = ASICheck(asi.ASIGetCameraProperty(0))
         self._pixel_scale = pixel_scale
         self._binning = binning
         self._bit_depth = bit_depth
         width = self.info.MaxWidth // binning
         height = self.info.MaxHeight // binning
         self._frame_shape = (height, width)
-        ASICheck(ASIOpenCamera(self.info.CameraID))
-        ASICheck(ASIInitCamera(self.info.CameraID))
-        ASICheck(ASISetControlValue(self.info.CameraID, ASI_MONO_BIN, 1, ASI_FALSE))
-        ASICheck(ASISetControlValue(self.info.CameraID, ASI_BANDWIDTHOVERLOAD, 94, ASI_FALSE))
+        ASICheck(asi.ASIOpenCamera(self.info.CameraID))
+        ASICheck(asi.ASIInitCamera(self.info.CameraID))
+        ASICheck(asi.ASISetControlValue(self.info.CameraID, asi.ASI_MONO_BIN, 1, asi.ASI_FALSE))
+        ASICheck(
+            asi.ASISetControlValue(
+                self.info.CameraID,
+                asi.ASI_BANDWIDTHOVERLOAD,
+                94,
+                asi.ASI_FALSE
+            )
+        )
         self.video_mode = False
 
-
     def __del__(self):
-        ASICheck(ASICloseCamera(self.info.CameraID))
-
+        ASICheck(asi.ASICloseCamera(self.info.CameraID))
 
     def _set_ctrl(self, ctrl, value: int):
         # auto mode always disabled since we generally don't trust it
-        ASICheck(ASISetControlValue(self.info.CameraID, ctrl, value, ASI_FALSE))
-
+        ASICheck(asi.ASISetControlValue(self.info.CameraID, ctrl, value, asi.ASI_FALSE))
 
     def _get_ctrl(self, ctrl):
-        return ASICheck(ASIGetControlValue(self.info.CameraID, ctrl))
-
+        return ASICheck(asi.ASIGetControlValue(self.info.CameraID, ctrl))
 
     @property
     def pixel_scale(self) -> float:
         """Scale of a pixel in degrees per pixel"""
         return self._pixel_scale
 
-
     @property
     def frame_shape(self) -> Tuple[int, int]:
         """Shape of array returned by get_frame()"""
         return self._frame_shape
-
 
     @property
     def field_of_view(self) -> Tuple[float, float]:
         """Field of view of the camera (height, width) in degrees."""
         return (self._pixel_scale * self.info.MaxHeight, self._pixel_scale * self.info.MaxWidth)
 
-
     @property
     def video_mode(self) -> bool:
         """True if video mode is enabled"""
         return self._video_mode
-
 
     @video_mode.setter
     def video_mode(self, enabled: bool) -> None:
@@ -219,39 +209,54 @@ class ASICamera(Camera):
         self._bit_depth = self.BitDepth.RAW8 if enabled else self.BitDepth.RAW16
         height, width = self._frame_shape
         self._frame_size_bytes = width * height * self._bit_depth.bytes_per_pixel()
-        ASICheck(ASISetROIFormat(self.info.CameraID, width, height, self._binning, self._bit_depth))
+        ASICheck(
+            asi.ASISetROIFormat(self.info.CameraID,
+                                width,
+                                height,
+                                self._binning,
+                                self._bit_depth)
+        )
         if enabled:
-            ASICheck(ASISetControlValue(self.info.CameraID, ASI_HIGH_SPEED_MODE, 1, ASI_FALSE))
-            ASICheck(ASIStartVideoCapture(self.info.CameraID))
+            ASICheck(
+                asi.ASISetControlValue(
+                    self.info.CameraID,
+                    asi.ASI_HIGH_SPEED_MODE,
+                    1,
+                    asi.ASI_FALSE
+                )
+            )
+            ASICheck(asi.ASIStartVideoCapture(self.info.CameraID))
         else:
-            ASICheck(ASISetControlValue(self.info.CameraID, ASI_HIGH_SPEED_MODE, 0, ASI_FALSE))
-            ASICheck(ASIStopVideoCapture(self.info.CameraID))
+            ASICheck(
+                asi.ASISetControlValue(
+                    self.info.CameraID,
+                    asi.ASI_HIGH_SPEED_MODE,
+                    0,
+                    asi.ASI_FALSE
+                )
+            )
+            ASICheck(asi.ASIStopVideoCapture(self.info.CameraID))
         self._video_mode = enabled
-
 
     @property
     def gain(self) -> int:
         """Camera gain"""
-        return self._get_ctrl(ASI_GAIN)[0]
-
+        return self._get_ctrl(asi.ASI_GAIN)[0]
 
     @gain.setter
     def gain(self, gain: int) -> None:
         """Set camera gain"""
-        self._set_ctrl(ASI_GAIN, gain)
-
+        self._set_ctrl(asi.ASI_GAIN, gain)
 
     @property
     def exposure(self) -> float:
         """Exposure time in seconds"""
-        return self._get_ctrl(ASI_EXPOSURE)[0] / 1e6
-
+        return self._get_ctrl(asi.ASI_EXPOSURE)[0] / 1e6
 
     @exposure.setter
     def exposure(self, exposure: float) -> None:
         """Set exposure time in seconds"""
-        self._set_ctrl(ASI_EXPOSURE, int(exposure * 1e6))
-
+        self._set_ctrl(asi.ASI_EXPOSURE, int(exposure * 1e6))
 
     def _reshape_frame_data(self, frame: np.ndarray) -> np.ndarray:
         """Reshape raw byte array from ASI driver to a 2D array image"""
@@ -259,26 +264,24 @@ class ASICamera(Camera):
             frame = frame.view(dtype=np.uint16)
         return np.reshape(frame, self._frame_shape)
 
-
     def get_frame(self, timeout: float = inf) -> np.ndarray:
 
         if self.video_mode:
             timeout_ms = int(timeout * 1000) if timeout < inf else -1
-            frame = ASICheck(ASIGetVideoData(
-                self.info.CameraID,
-                self._frame_size_bytes,
-                timeout_ms
-            ))
+            frame = ASICheck(
+                asi.ASIGetVideoData(self.info.CameraID,
+                                    self._frame_size_bytes,
+                                    timeout_ms)
+            )
             frame = self._reshape_frame_data(frame)
         else:
             frame = self.take_exposure(timeout)
 
-        if self.info.IsColorCam == ASI_TRUE and self._binning == 1:
+        if self.info.IsColorCam == asi.ASI_TRUE and self._binning == 1:
             print('debayering')
             frame = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2GRAY)
 
         return frame
-
 
     def take_exposure(self, timeout: float = inf) -> np.ndarray:
         """Take an exposure in non-video mode.
@@ -299,30 +302,27 @@ class ASICamera(Camera):
             RuntimeError if the exposure failed.
             CameraTimeout if the timeout expires before exposure completes.
         """
-        ASICheck(ASIStartExposure(self.info.CameraID, ASI_FALSE))
+        ASICheck(asi.ASIStartExposure(self.info.CameraID, asi.ASI_FALSE))
         start_time = time.perf_counter()
         while True:
             time.sleep(0.01)
-            status = ASICheck(ASIGetExpStatus(info.CameraID))
-            if status == ASI_EXP_SUCCESS:
+            status = ASICheck(asi.ASIGetExpStatus(self.info.CameraID))
+            if status == asi.ASI_EXP_SUCCESS:
                 break
-            if status == ASI_EXP_FAILED:
+            if status == asi.ASI_EXP_FAILED:
                 raise RuntimeError('Exposure failed')
             if time.perf_counter() - start_time > timeout:
                 raise CameraTimeout('Timeout waiting for exposure completion')
-        frame = ASICheck(ASIGetDataAfterExp(info.CameraID, self._frame_size_bytes))
+        frame = ASICheck(asi.ASIGetDataAfterExp(self.info.CameraID, self._frame_size_bytes))
         return self._reshape_frame_data(frame)
 
 
 class WebCam(Camera):
+    """Webcams or other cameras that can be accessed using the 'Video4Linux' (V4L) drivers."""
 
     @staticmethod
     def add_program_arguments(parser: ArgParser) -> None:
-        parser.add_argument(
-            '--webcam-dev',
-            help='webcam device node path',
-            default='/dev/video0'
-        )
+        parser.add_argument('--webcam-dev', help='webcam device node path', default='/dev/video0')
         parser.add_argument(
             '--webcam-exposure',
             help='webcam exposure time (unspecified units)',
@@ -334,7 +334,6 @@ class WebCam(Camera):
             help='directory to save webcam frames as jpeg files on disk',
         )
 
-
     @staticmethod
     def from_program_args(args: Namespace) -> 'WebCam':
         """Factory to make a WebCam instance from program arguments"""
@@ -345,26 +344,20 @@ class WebCam(Camera):
             frame_dump_dir=args.webcam_frame_dump_dir,
         )
 
-
-    def __init__(self,
+    def __init__(
+            self,
             dev_path: str,
             ctrl_exposure: int,
             pixel_scale: float,
-            bufs_wanted: int = 15,
             frame_dump_dir: str = None,
         ):
 
         self.dev_path = dev_path
-        self.bufs_wanted = bufs_wanted
         self._pixel_scale = pixel_scale
         self.dump_frames_to_files = frame_dump_dir is not None
         self.dev_fd = -1
         self.bufmaps = []
         self.started = False
-
-        # detect OpenCV version to handle API differences between 2 and 3
-        self.opencv_ver = int(cv2.__version__.split('.')[0])
-        assert (self.opencv_ver == 2 or self.opencv_ver == 3)
 
         self.dev_fd = os.open(self.dev_path, os.O_RDWR | os.O_NONBLOCK)
 
@@ -377,14 +370,13 @@ class WebCam(Camera):
         frame_shape_wanted = self._verify_capabilities()
         self._frame_shape = self._set_format(frame_shape_wanted, v4l2.V4L2_PIX_FMT_JPEG)
 
-        self._setup_buffers(self.bufs_wanted)
+        self._setup_buffers(buf_count=15)
         self._queue_all_buffers()
 
         if self.dump_frames_to_files:
             self._dump_init(frame_dump_dir)
 
         self.start()
-
 
     def __del__(self):
         self.stop()
@@ -393,16 +385,17 @@ class WebCam(Camera):
         if self.dev_fd != -1:
             os.close(self.dev_fd)
 
-
     @property
     def frame_shape(self):
         return self._frame_shape
 
+    @property
+    def field_of_view(self):
+        return tuple([self._pixel_scale * side for side in self._frame_shape])
 
     @property
     def pixel_scale(self):
         return self._pixel_scale
-
 
     def get_frame(self, timeout: float = inf) -> np.ndarray:
         """Get the most recent frame from the webcam.
@@ -429,15 +422,16 @@ class WebCam(Camera):
             return None
 
         # decode the JPEG from the webcam into BGR for OpenCV's use
-        if self.opencv_ver == 2:
-            return cv2.imdecode(np.fromstring(frames[-1], dtype=np.uint8), cv2.CV_LOAD_IMAGE_COLOR)
-        if self.opencv_ver == 3:
-            return cv2.imdecode(np.fromstring(frames[-1], dtype=np.uint8), cv2.IMREAD_COLOR)
+        return cv2.imdecode(np.fromstring(frames[-1], dtype=np.uint8), cv2.IMREAD_COLOR)
 
-
-    # get one frame from the webcam buffer; the frame is not guaranteed to be the most recent frame
-    # available! (the frame is a JPEG byte string)
     def get_one_frame(self):
+        """Get one frame from the webcam buffer.
+
+        The frame is not guaranteed to be the most recent frame available!
+
+        Returns:
+            The frame as a JPEG byte string.
+        """
         return self._read_and_queue()
 
     def block_until_frame_ready(self, timeout: float = inf) -> bool:
@@ -451,18 +445,17 @@ class WebCam(Camera):
         """
         if timeout < inf:
             dev_fd_ready, _, _ = select.select((self.dev_fd,), (), (), timeout=timeout)
-            return False if len(dev_fd_ready) == 0 else True
         else:
-            select.select((self.dev_fd,), (), ())
-            return True
+            dev_fd_ready, _, _ = select.select((self.dev_fd,), (), ())
+        return len(dev_fd_ready) > 0
 
-    # query whether the webcam has at least one frame ready for us to read (non-blocking)
     def has_frames_available(self):
+        """query whether the webcam has at least one frame ready for us to read (non-blocking)"""
         readable, _, _ = select.select((self.dev_fd,), (), (), 0.0)
-        return (len(readable) != 0)
+        return len(readable) != 0
 
-    # tell the camera to start capturing
     def start(self):
+        """tell the camera to start capturing"""
         if not self.started:
             self._v4l2_ioctl(
                 v4l2.VIDIOC_STREAMON,
@@ -470,8 +463,8 @@ class WebCam(Camera):
             )
             self.started = True
 
-    # tell the camera to stop capturing
     def stop(self):
+        """tell the camera to stop capturing"""
         if self.started:
             self._v4l2_ioctl(
                 v4l2.VIDIOC_STREAMOFF,
@@ -479,9 +472,9 @@ class WebCam(Camera):
             )
             self.started = False
 
-
     def _enum_pixel_formats(self):
-        return self._enum_common(v4l2.VIDIOC_ENUM_FMT,
+        return self._enum_common(
+            v4l2.VIDIOC_ENUM_FMT,
             lambda idx: v4l2.v4l2_fmtdesc(
                 type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE,
                 index=idx,
@@ -490,7 +483,8 @@ class WebCam(Camera):
 
     def _enum_frame_sizes(self, pixel_format):
         # TODO: handle types other than V4L2_FRMSIZE_TYPE_DISCRETE sanely
-        return self._enum_common(v4l2.VIDIOC_ENUM_FRAMESIZES,
+        return self._enum_common(
+            v4l2.VIDIOC_ENUM_FRAMESIZES,
             lambda idx: v4l2.v4l2_frmsizeenum(
                 index=idx,
                 pixel_format=pixel_format,
@@ -499,7 +493,8 @@ class WebCam(Camera):
 
     def _enum_frame_intervals(self, pixel_format, width, height):
         # TODO: handle types other than V4L2_FRMIVAL_TYPE_DISCRETE sanely
-        return self._enum_common(v4l2.VIDIOC_ENUM_FRAMEINTERVALS,
+        return self._enum_common(
+            v4l2.VIDIOC_ENUM_FRAMEINTERVALS,
             lambda idx: v4l2.v4l2_frmivalenum(
                 index=idx,
                 pixel_format=pixel_format,
@@ -518,12 +513,10 @@ class WebCam(Camera):
             except OSError as e:
                 if e.errno == errno.EINVAL:
                     break
-                else:
-                    raise
+                raise
             results += [request]
             idx += 1
         return results
-
 
     def _verify_capabilities(self) -> Tuple[int, int]:
         fmt = v4l2.v4l2_format(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE)
@@ -538,28 +531,24 @@ class WebCam(Camera):
 
         # sanity-check the allegedly supported camera width and height
         assert fmt.fmt.win.w.left > 0 and fmt.fmt.win.w.left <= 10240
-        assert fmt.fmt.win.w.top > 0 and fmt.fmt.win.w.top  <= 10240
+        assert fmt.fmt.win.w.top > 0 and fmt.fmt.win.w.top <= 10240
 
         # return supported resolution
         return (fmt.fmt.win.w.top, fmt.fmt.win.w.left)
 
-
     def _set_exposure(self, level):
         self._set_ctrl(v4l2.V4L2_CID_EXPOSURE, int(level), 'exposure level')
-
 
     def _set_autogain(self, enable):
         self._set_ctrl(v4l2.V4L2_CID_AUTOGAIN, bool(enable), 'automatic gain')
 
-
-    def _set_ctrl(self, id, value, desc):
-        ctrl = v4l2.v4l2_control(id=id, value=value)
+    def _set_ctrl(self, ctrl_id, value, desc):
+        ctrl = v4l2.v4l2_control(id=ctrl_id, value=value)
         self._v4l2_ioctl_nonfatal(
             v4l2.VIDIOC_S_CTRL,
             ctrl,
             'failed to set control: {}'.format(desc)
         )
-
 
     def _set_jpeg_quality(self, quality):
         jpegcomp = v4l2.v4l2_jpegcompression()
@@ -575,9 +564,8 @@ class WebCam(Camera):
             'failed to set JPEG compression quality'
         )
 
-
-    # roughly equivalent to v4l2capture's set_format
     def _set_format(self, shape_wanted: Tuple[int, int], fourcc) -> Tuple[int, int]:
+        """roughly equivalent to v4l2capture's set_format"""
         assert not self.started
 
         fmt = v4l2.v4l2_format(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE)
@@ -594,8 +582,8 @@ class WebCam(Camera):
         # return actual resolution
         return (fmt.fmt.pix.height, fmt.fmt.pix.width)
 
-    # roughly equivalent to v4l2capture's create_buffers
     def _setup_buffers(self, buf_count):
+        """roughly equivalent to v4l2capture's create_buffers"""
         assert not self.started
         assert len(self.bufmaps) == 0
 
@@ -605,7 +593,7 @@ class WebCam(Camera):
             memory=v4l2.V4L2_MEMORY_MMAP
         )
         self._v4l2_ioctl(v4l2.VIDIOC_REQBUFS, reqbuf)
-        assert (reqbuf.count > 0)
+        assert reqbuf.count > 0
 
         for idx in range(reqbuf.count):
             buf = v4l2.v4l2_buffer(
@@ -614,15 +602,15 @@ class WebCam(Camera):
                 memory=v4l2.V4L2_MEMORY_MMAP
             )
             self._v4l2_ioctl(v4l2.VIDIOC_QUERYBUF, buf)
-            self.bufmaps += [mmap.mmap(
-                self.dev_fd,
-                buf.length,
-                access=mmap.ACCESS_WRITE,
-                offset=buf.m.offset
-            )]
+            self.bufmaps += [
+                mmap.mmap(self.dev_fd,
+                          buf.length,
+                          access=mmap.ACCESS_WRITE,
+                          offset=buf.m.offset)
+            ]
 
-    # roughly equivalent to v4l2capture's queue_all_buffers
     def _queue_all_buffers(self):
+        """roughly equivalent to v4l2capture's queue_all_buffers"""
         assert not self.started
         assert len(self.bufmaps) != 0
 
@@ -634,8 +622,8 @@ class WebCam(Camera):
             )
             self._v4l2_ioctl(v4l2.VIDIOC_QBUF, buf)
 
-    # roughly equivalent to v4l2capture's read_and_queue
     def _read_and_queue(self):
+        """roughly equivalent to v4l2capture's read_and_queue"""
         assert self.started
 
         buf = v4l2.v4l2_buffer(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE, memory=v4l2.V4L2_MEMORY_MMAP)
@@ -692,7 +680,8 @@ def add_program_arguments(parser: ArgParser) -> None:
     parser.add_argument(
         'camera_type',
         help='type of camera',
-        choices=['zwo', 'webcam'],
+        choices=['zwo',
+                 'webcam'],
     )
     parser.add_argument(
         'camera_pixel_scale',
@@ -715,7 +704,6 @@ def make_camera_from_args(args: Namespace) -> Camera:
     """Construct the appropriate camera based on the program arguments provided."""
     if args.camera_type == 'webcam':
         return WebCam.from_program_args(args)
-    elif args.camera_type == 'zwo':
+    if args.camera_type == 'zwo':
         return ASICamera.from_program_args(args)
-    else:
-        raise ValueError('Invalid camera-type {}'.format(args.camera_type))
+    raise ValueError('Invalid camera-type {}'.format(args.camera_type))
