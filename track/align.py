@@ -132,112 +132,10 @@ def generate_positions(
     return positions
 
 
-def camera_setup(gain, exposure_time, binning):
-    """Initialize and configure ZWO ASI camera.
-
-    TODO: Abstract this ZWO-specific code behind some generic interface.
-
-    Args:
-        gain (int): Camera gain setting.
-        exposure_time (float): Exposure time in seconds. Will be rounded down to the nearest
-            microsecond.
-        binning (int): Camera binning.
-
-    Returns:
-        A tuple containing the following:
-            info: An ASI_CAMERA_INFO object.
-            width: Width of the frame in pixels.
-            height: Height of the frame in pixels.
-            frame_size: Frame size in bytes. The camera is configured for 16-bit mode, so there
-                are two bytes per pixel.
-
-    Raises:
-        RuntimeError for any camera related problems.
-    """
-    if asi.ASIGetNumOfConnectedCameras() == 0:
-        raise RuntimeError('No cameras connected')
-    info = asi.ASICheck(asi.ASIGetCameraProperty(0))
-    width = info.MaxWidth // binning
-    height = info.MaxHeight // binning
-    frame_size = width * height * 2
-    asi.ASICheck(asi.ASIOpenCamera(info.CameraID))
-    asi.ASICheck(asi.ASIInitCamera(info.CameraID))
-    asi.ASICheck(asi.ASISetROIFormat(
-        info.CameraID,
-        width,
-        height,
-        binning,
-        asi.ASI_IMG_RAW16
-    ))
-    asi.ASICheck(asi.ASISetControlValue(
-        info.CameraID,
-        asi.ASI_EXPOSURE,
-        int(exposure_time * 1e6),
-        asi.ASI_FALSE
-    ))
-    asi.ASICheck(asi.ASISetControlValue(info.CameraID, asi.ASI_GAIN, gain, asi.ASI_FALSE))
-    asi.ASICheck(asi.ASISetControlValue(info.CameraID, asi.ASI_MONO_BIN, 1, asi.ASI_FALSE))
-
-    return info, width, height, frame_size
-
-
-def camera_take_exposure(info, width, height, frame_size):
-    """Take an exposure with the camera.
-
-    Args:
-        info: An ASI_CAMERA_INFO object.
-        width: Width of the frame in pixels.
-        height: Height of the frame in pixels.
-        frame_size: Size of the frame in bytes (not necessarily equal to width*height).
-
-    Returns:
-        A numpy array containing a debayered grayscale camera frame.
-
-    Raises:
-        RuntimeError if the exposure failed.
-    """
-    asi.ASICheck(asi.ASIStartExposure(info.CameraID, asi.ASI_FALSE))
-    while True:
-        time.sleep(0.01)
-        status = asi.ASICheck(asi.ASIGetExpStatus(info.CameraID))
-        if status == asi.ASI_EXP_SUCCESS:
-            break
-        if status == asi.ASI_EXP_FAILED:
-            raise RuntimeError('Exposure failed')
-    frame = asi.ASICheck(asi.ASIGetDataAfterExp(info.CameraID, frame_size))
-    frame = frame.view(dtype=np.uint16)
-    frame = np.reshape(frame, (height, width))
-    return cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2GRAY)
-
-
 def main():
     """Run the alignment procedure! See module docstring for a description."""
 
     parser = track.ArgParser()
-    parser.add_argument(
-        '--camera-res',
-        help='guidescope camera resolution in arcseconds per pixel',
-        required=True,
-        type=float
-    )
-    parser.add_argument(
-        '--exposure-time',
-        help='camera exposure time in seconds',
-        default=0.5,
-        type=float
-    )
-    parser.add_argument(
-        '--gain',
-        help='camera gain',
-        default=400,
-        type=int
-    )
-    parser.add_argument(
-        '--binning',
-        help='camera binning',
-        default=4,
-        type=int
-    )
     parser.add_argument(
         '--mount-type',
         help='select mount type (nexstar or gemini)',
@@ -337,6 +235,7 @@ def main():
         '--laser-ftdi-serial',
         help='serial number of laser pointer FTDI device',
     )
+    cameras.add_program_arguments(parser)
     args = parser.parse_args()
 
     # This program only supports Gemini mounts
@@ -389,11 +288,7 @@ def main():
     tracker.stop_when_converged = True
     tracker.converge_max_error_mag = 2.0
 
-    camera_info, frame_width, frame_height, frame_size = camera_setup(
-        gain=args.gain,
-        exposure_time=args.exposure_time,
-        binning=args.binning
-    )
+    camera = cameras.make_camera_from_args(args)
 
     if args.telem_enable:
         telem_logger = track.TelemLogger(
@@ -439,12 +334,12 @@ def main():
                 print('\tPlate solver attempt {} of {}...'.format(i + 1, args.max_tries), end='')
 
                 timestamp = time.time()
-                frame = camera_take_exposure(camera_info, frame_width, frame_height, frame_size)
+                frame = camera.get_frame()
 
                 try:
                     sc = track.plate_solve(
                         frame,
-                        camera_width=(camera_info.MaxWidth * args.camera_res / 3600.0)
+                        camera_width=camera.field_of_view[1]
                     )
                     print('Solution found!')
                     mount_position = mount.get_position()

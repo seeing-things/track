@@ -11,40 +11,13 @@ An optional gamepad can be used to manually control the mount when no targets ar
 a target is acquired by the camera gamepad control is inhibited.
 """
 
-from __future__ import print_function
 import sys
 import track
 
 def main():
 
     parser = track.ArgParser()
-    parser.add_argument(
-        '--camera',
-        help='device node path for tracking webcam',
-        default='/dev/video0'
-    )
-    parser.add_argument(
-        '--pixel-scale',
-        help='camera pixel scale in arcseconds per pixel',
-        required=True,
-        type=float
-    )
-    parser.add_argument(
-        '--camera-bufs',
-        help='number of webcam capture buffers',
-        required=True,
-        type=int
-    )
-    parser.add_argument(
-        '--camera-exposure',
-        help='webcam exposure level',
-        default=3200,
-        type=int
-    )
-    parser.add_argument(
-        '--frame-dump-dir',
-        help='directory to save webcam frames as jpeg files on disk',
-    )
+
     parser.add_argument(
         '--mount-type',
         help='select mount type (nexstar or gemini)',
@@ -98,7 +71,9 @@ def main():
         '--laser-ftdi-serial',
         help='serial number of laser pointer FTDI device',
     )
+    cameras.add_program_arguments(parser)
     args = parser.parse_args()
+
 
     def gamepad_callback(tracker):
         """Callback for gamepad control.
@@ -142,17 +117,9 @@ def main():
         print('mount-type not supported: ' + args.mount_type)
         sys.exit(1)
 
-
-    camera = cameras.WebCam(
-        cam_dev_path=args.camera,
-        cam_num_buffers=args.camera_bufs,
-        cam_ctlval_exposure=args.camera_exposure,
-        frame_dump_dir=args.frame_dump_dir,
-        pixel_scale=args.pixel_scale / 3600.0,  # program arg is in arcseconds
-    )
-
     # Create object with base type ErrorSource
     error_source = track.OpticalErrorSource(
+        camera=cameras.make_from_program_args(args),
         x_axis_name=x_axis_name,
         y_axis_name=y_axis_name,
         mount=mount,

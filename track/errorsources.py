@@ -16,11 +16,11 @@ from astropy.coordinates import SkyCoord, Angle, Longitude
 from astropy.time import Time, TimeDelta
 try:
     import cv2
-    from track import webcam
 except ImportError as e:
     if 'cv2' in str(e):
         print('Failed to import cv2. Optical tracking requires OpenCV.')
     raise
+from track.cameras import Camera
 from track.mathutils import angle_between, camera_eq_error
 from track.model import MountModel
 from track.mounts import TelescopeMount, MeridianSide
@@ -307,10 +307,7 @@ class OpticalErrorSource(ErrorSource, TelemSource):
 
         self.mount = mount
 
-        self.frame_width_px = self.webcam.get_res_x()
-        self.frame_height_px = self.webcam.get_res_y()
-
-        frame_width, frame_height = camera.frame_shape
+        frame_height, frame_width = camera.frame_shape
         self.frame_center_px = (frame_width / 2.0, frame_height / 2.0)
 
         # cached values from last error calculation (for telemetry)
@@ -388,7 +385,7 @@ class OpticalErrorSource(ErrorSource, TelemSource):
         frame_annotated = frame.copy()
 
         # add grey crosshairs
-        frame_width, frame_height = camera.frame_shape
+        frame_height, frame_width = camera.frame_shape
         cv2.line(
             frame_annotated,
             (int(self.frame_center_px[0]), 0),
