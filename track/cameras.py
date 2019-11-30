@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Tuple
 from math import inf
+import enum
 import os
 import time
 import fcntl
@@ -11,42 +12,11 @@ import ctypes
 import numpy as np
 import v4l2
 import cv2
+from track.config import ArgParser
+from configargparse import Namespace
 
 # pylint: disable=unused-wildcard-import
 from asi import *
-
-
-def add_program_arguments(parser: ArgParser):
-    """Add program arguments for all cameras"""
-    parser.add_argument(
-        'camera-type',
-        help='type of camera',
-        choices=['zwo', 'webcam'],
-    )
-    parser.add_argument(
-        'camera-pixel-scale',
-        help='camera pixel scale in arcseconds per pixel',
-        required=True,
-        type=float
-    )
-    webcam_group = parser.add_argument_group(
-        title='Webcam Options',
-        description='Options that apply when camera-type is set to "webcam"',
-    )
-    WebCam.add_program_arguments(webcam_group)
-    zwo_group = parser.add_argument_group(
-        title='ZWO ASI Camera Options',
-        description='Options that apply when camera-type is set to "zwo"',
-    )
-
-def make_camera_from_args(args: Namespace) -> Camera:
-    """Construct the appropriate camera based on the program arguments provided."""
-    if args.camera_type == 'webcam':
-        return WebCam.from_program_args(args)
-    elif args.camera_type == 'zwo':
-        return ASICamera.from_program_args(args)
-    else:
-        raise ValueError('Invalid camera-type {}'.format(args.camera_type))
 
 
 class Camera(ABC):
@@ -115,8 +85,8 @@ class Camera(ABC):
         """
 
 
-    @abstractmethod
     @staticmethod
+    @abstractmethod
     def add_program_arguments(parser: ArgParser) -> None:
         """Adds program arguments specific to this camera.
 
@@ -163,10 +133,10 @@ class ASICamera(Camera):
 
 
     @staticmethod
-    def from_program_args(args: Namespace) -> ASICamera:
+    def from_program_args(args: Namespace) -> 'ASICamera':
         """Factory to make a WebCam instance from program arguments"""
         camera = ASICamera(
-            pixel_scale=args.pixel_scale,
+            pixel_scale=args.camera_pixel_scale / 3600.0,
             binning=args.zwo_binning,
         )
         camera.exposure = args.zwo_exposure_time
@@ -193,6 +163,8 @@ class ASICamera(Camera):
         if ASIGetNumOfConnectedCameras() == 0:
             raise RuntimeError('No cameras connected')
         self.info = ASICheck(ASIGetCameraProperty(0))
+        self._pixel_scale = pixel_scale
+        self._binning = binning
         self._bit_depth = bit_depth
         width = self.info.MaxWidth // binning
         height = self.info.MaxHeight // binning
@@ -218,6 +190,12 @@ class ASICamera(Camera):
 
 
     @property
+    def pixel_scale(self) -> float:
+        """Scale of a pixel in degrees per pixel"""
+        return self._pixel_scale
+
+
+    @property
     def frame_shape(self) -> Tuple[int, int]:
         """Shape of array returned by get_frame()"""
         return self._frame_shape
@@ -238,10 +216,10 @@ class ASICamera(Camera):
     @video_mode.setter
     def video_mode(self, enabled: bool) -> None:
         """Enable or disable video mode"""
-        self._bit_depth = BitDepth.RAW8 if enabled else BitDepth.RAW16
+        self._bit_depth = self.BitDepth.RAW8 if enabled else self.BitDepth.RAW16
         height, width = self._frame_shape
         self._frame_size_bytes = width * height * self._bit_depth.bytes_per_pixel()
-        ASICheck(ASISetROIFormat(self.info.CameraID, width, height, binning, self._bit_depth))
+        ASICheck(ASISetROIFormat(self.info.CameraID, width, height, self._binning, self._bit_depth))
         if enabled:
             ASICheck(ASISetControlValue(self.info.CameraID, ASI_HIGH_SPEED_MODE, 1, ASI_FALSE))
             ASICheck(ASIStartVideoCapture(self.info.CameraID))
@@ -277,7 +255,7 @@ class ASICamera(Camera):
 
     def _reshape_frame_data(self, frame: np.ndarray) -> np.ndarray:
         """Reshape raw byte array from ASI driver to a 2D array image"""
-        if self._bit_depth == BitDepth.RAW16:
+        if self._bit_depth == self.BitDepth.RAW16:
             frame = frame.view(dtype=np.uint16)
         return np.reshape(frame, self._frame_shape)
 
@@ -286,12 +264,17 @@ class ASICamera(Camera):
 
         if self.video_mode:
             timeout_ms = int(timeout * 1000) if timeout < inf else -1
-            frame = ASICheck(ASIGetVideoData(info.CameraID, self._frame_size_bytes, timeout_ms))
+            frame = ASICheck(ASIGetVideoData(
+                self.info.CameraID,
+                self._frame_size_bytes,
+                timeout_ms
+            ))
             frame = self._reshape_frame_data(frame)
         else:
             frame = self.take_exposure(timeout)
 
-        return cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2GRAY)
+        # TODO: Only debayer if it's a color camera!
+        return frame #cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2GRAY)
 
 
     def take_exposure(self, timeout: float = inf) -> np.ndarray:
@@ -350,12 +333,12 @@ class WebCam(Camera):
 
 
     @staticmethod
-    def from_program_args(args: Namespace) -> WebCam:
+    def from_program_args(args: Namespace) -> 'WebCam':
         """Factory to make a WebCam instance from program arguments"""
         return WebCam(
             dev_path=args.webcam_dev,
             ctrl_exposure=args.webcam_exposure,
-            pixel_scale=args.pixel_scale / 3600.0,  # program arg is in arcseconds
+            pixel_scale=args.camera_pixel_scale / 3600.0,  # program arg is in arcseconds
             frame_dump_dir=args.webcam_frame_dump_dir,
         )
 
@@ -699,3 +682,37 @@ class WebCam(Camera):
 
         with open(file_path, 'wb') as f:
             f.write(jpeg)
+
+
+def add_program_arguments(parser: ArgParser) -> None:
+    """Add program arguments for all cameras"""
+    parser.add_argument(
+        'camera_type',
+        help='type of camera',
+        choices=['zwo', 'webcam'],
+    )
+    parser.add_argument(
+        'camera_pixel_scale',
+        help='camera pixel scale in arcseconds per pixel',
+        type=float
+    )
+    webcam_group = parser.add_argument_group(
+        title='Webcam Options',
+        description='Options that apply when camera-type is set to "webcam"',
+    )
+    WebCam.add_program_arguments(webcam_group)
+    zwo_group = parser.add_argument_group(
+        title='ZWO ASI Camera Options',
+        description='Options that apply when camera-type is set to "zwo"',
+    )
+    ASICamera.add_program_arguments(zwo_group)
+
+
+def make_camera_from_args(args: Namespace) -> Camera:
+    """Construct the appropriate camera based on the program arguments provided."""
+    if args.camera_type == 'webcam':
+        return WebCam.from_program_args(args)
+    elif args.camera_type == 'zwo':
+        return ASICamera.from_program_args(args)
+    else:
+        raise ValueError('Invalid camera-type {}'.format(args.camera_type))

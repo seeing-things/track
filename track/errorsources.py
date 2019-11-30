@@ -10,6 +10,7 @@ or by intelligently switching between sources.
 
 from abc import ABC, abstractmethod
 from typing import NamedTuple
+from math import inf
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord, Angle, Longitude
@@ -297,7 +298,7 @@ class OpticalErrorSource(ErrorSource, TelemSource):
             camera: Camera,
             x_axis_name: str,
             y_axis_name: str,
-            mount: Mount = None,
+            mount: TelescopeMount = None,
         ):
 
         self.camera = camera
