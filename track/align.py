@@ -350,7 +350,7 @@ def main():
     # Create object with base type ErrorSource. No target for now; that will be populated later.
     error_source = track.BlindErrorSource(
         mount=mount,
-        observer=None,
+        mount_model=None,  # FIXME!
         target=None,
         meridian_side=args.meridian_side
     )
@@ -425,7 +425,7 @@ def main():
 
             print('Moving to position {} of {}: {}'.format(idx, len(positions), str(position)))
 
-            error_source.target = position
+            error_source.target = FixedTarget(position)
             stop_reason = tracker.run()
             mount.safe()
             if stop_reason != 'converged':
