@@ -273,8 +273,11 @@ class ASICamera(Camera):
         else:
             frame = self.take_exposure(timeout)
 
-        # TODO: Only debayer if it's a color camera!
-        return frame #cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2GRAY)
+        if self.info.IsColorCam == ASI_TRUE and self._binning == 1:
+            print('debayering')
+            frame = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2GRAY)
+
+        return frame
 
 
     def take_exposure(self, timeout: float = inf) -> np.ndarray:
