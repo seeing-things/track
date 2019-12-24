@@ -29,43 +29,11 @@ import asi
 import track
 from track.model import ModelParamSet
 from track.mounts import MeridianSide
-
-
-def alt_from_ha_dec(ha, dec, mount_pole_altitude):
-    """Get the approximate altitude of a target specified with a local hour angle and declination.
-
-    Args:
-        ha: Target local hour angle as an astropy Angle object.
-        dec: Target declination as an astropy Angle object.
-        mount_pole_altitude: Altitude of the mount's pole in degrees above the horizon.
-
-    Returns:
-        The altitude of the target as an astropy Angle object.
-    """
-
-    # This is a fake location required in order to determine the altitude of each HEALPix pixel.
-    # In these conversions, which only need to be approximate, the longitude and elevation of the
-    # observer don't matter. The "latitude" is set to the altitude of the mount's pole since our
-    # HEALPix hour angles and declinations are relative to the mount's pole location and not the
-    # celestial pole.
-    location = EarthLocation(lat=mount_pole_altitude*u.deg, lon=0*u.deg, height=0*u.m)
-
-    # The time should be relatively unimportant for these calculations; it is only necessary
-    # because astropy does not provide a direct transformation between local coordinates given as
-    # hour angle / declination and local coordinates in azimuth / altitude format. Therefore, we
-    # must transform first to equatorial coordinates (right ascension / declination) before
-    # converting finally to azimuth / altitude.
-    t = Time(time.time(), format='unix', location=location)
-    st = t.sidereal_time('mean')
-    ra = st - ha
-    me = Observer(location=location)
-    sc = SkyCoord(ra, dec, frame='icrs')
-    return me.altaz(t, target=sc).alt
+from track.targets import FixedTopocentricTarget
 
 
 def generate_positions(
         min_positions: int,
-        mount_pole_altitude: Angle,
         min_altitude: Angle = 0.0*u.deg,
         meridian_side: Optional[MeridianSide] = None
     ) -> List[SkyCoord]:
@@ -77,28 +45,21 @@ def generate_positions(
     want positions that are roughly evenly distributed over the sphere, and HEALPix does a
     reasonable job of this as well. The full set of HEALPix pixels is filtered to exclude pixels
     that are below a minimum altitude threshold and (optionally) those that are on the opposite
-    side of the meridian. HEALPix is oriented with the top co-located with the pole of the mount.
+    side of the meridian. HEALPix is oriented with the top approximately at local zenith. Since
+    these positions are used prior to alignment the mount may not point to the actual azimuth
+    of each coordinate but this is not important.
 
     Args:
         min_positions: Minimum number of positions. The actual number of positions returned may be
             larger than requested.
-        mount_pole_altitude: Altitude of the mount's pole. For a German equatorial mount in the
-            Northern hemisphere this is usually equal to the current latitude, however it is valid
-            for the mount pole to have a different altitude.
         min_altitude: Restrict positions to be above this altitude.
         meridian_side: If specified, restricts positions to only be on this side of the meridian,
             where meridian is defined as the great circle passing through local zenith and the
             mount pole.
 
     Returns:
-        A list of SkyCoord objects with the set of positions to be searched during alignment.
-        Since this is used for alignment and no assumptions are made about the orientation
-        of the mount, particularly the location of the mount's pole, these coordinates are
-        interpreted with respect to the mount's startup position. In other words, declination
-        0 means the optical tube is pointed towards the mount's physical pole, and not
-        necessarily towards Polaris. Similarly, hour angle 0 means that the counter weight is
-        pointed down, and this does not necessarily correspond to the great circle passing
-        through the local zenith and the celestial pole.
+        A list of SkyCoord objects in topocentric frame with the set of positions to be searched
+        during alignment.
     """
     level = 0
     while True:
@@ -106,22 +67,22 @@ def generate_positions(
         positions = []
         for i in range(healpix.npix):
 
-            # interpret each HEALPix as an hour angle and declination coordinate
-            (ha, dec) = healpix.healpix_to_lonlat(i)
+            # interpret each HEALPix as a topocentric (AzAlt) coordinate
+            (az, alt) = healpix.healpix_to_lonlat(i)
 
-            # skip points on wrong side of meridian
-            if ha <= 180*u.deg and meridian_side == MeridianSide.EAST:
+            # skip points on wrong side of mount meridian
+            # TODO: need to confirm that using azimuth to filter for this actually works
+            if az <= 180*u.deg and meridian_side == MeridianSide.EAST:
                 continue
 
-            if ha > 180*u.deg and meridian_side == MeridianSide.WEST:
+            if az > 180*u.deg and meridian_side == MeridianSide.WEST:
                 continue
 
             # skip points below min altitude threshold
-            alt = alt_from_ha_dec(ha, dec, mount_pole_altitude)
             if alt < min_altitude:
                 continue
 
-            positions.append(SkyCoord(ha, dec))
+            positions.append(SkyCoord(az, alt, frame='altaz'))
 
         if len(positions) >= min_positions:
             break
@@ -238,18 +199,30 @@ def main():
     cameras.add_program_arguments(parser)
     args = parser.parse_args()
 
-    # This program only supports Gemini mounts
-    # TODO: Abstract Gemini-specific code
     if args.mount_type == 'gemini':
         mount = track.LosmandyGeminiMount(args.mount_path)
+    elif args.mount_type == 'nexstar':
+        mount = track.NexStarMount(args.mount_path)
     else:
         print('mount-type not supported: ' + args.mount_type)
         sys.exit(1)
 
+    location = EarthLocation(lat=args.lat*u.deg, lon=args.lon*u.deg, height=args.elevation*u.m)
+
+    # Parameters for use during alignment. This is meant to be just good enough that the model is
+    # able to tell roughly which direction is up so that the positions used during alignment are
+    # (hopefully) all above the horizon.
+    model_params = ModelParameters(
+        axis_0_offset=Angle(0*u.deg),
+        axis_1_offset=Angle(0*u.deg),
+        pole_rot_axis_az=Angle(0*u.deg),
+        pole_rot_angle=Angle((90.0 - args.mount_pole_alt)*u.deg),
+    )
+
     # Create object with base type ErrorSource. No target for now; that will be populated later.
     error_source = track.BlindErrorSource(
         mount=mount,
-        mount_model=None,  # FIXME!
+        mount_model=MountModel(model_params),
         target=None,
         meridian_side=args.meridian_side
     )
@@ -301,7 +274,6 @@ def main():
 
     positions = generate_positions(
         min_positions=args.min_positions,
-        mount_pole_altitude=args.mount_pole_alt,
         min_altitude=args.min_alt,
         meridian_side=args.meridian_side
     )
@@ -320,7 +292,7 @@ def main():
 
             print('Moving to position {} of {}: {}'.format(idx, len(positions), str(position)))
 
-            error_source.target = FixedTarget(position)
+            error_source.target = FixedTopocentricTarget(position)
             stop_reason = tracker.run()
             mount.safe()
             if stop_reason != 'converged':
@@ -337,18 +309,21 @@ def main():
                 frame = camera.get_frame()
 
                 try:
-                    sc = track.plate_solve(
+                    sc_eq = track.plate_solve(
                         frame,
                         camera_width=camera.field_of_view[1]
                     )
+                    sc_eq.obstime=Time(timestamp, format='unix')
+                    sc_eq.location=location
+                    sc_topo = sc_eq.transform_to('altaz')
                     print('Solution found!')
                     mount_position = mount.get_position()
                     observations.append({
                         'unix_timestamp': timestamp,
                         'encoder_0': mount_position['pra'],
                         'encoder_1': mount_position['pdec'],
-                        'sky_ra': sc.ra.deg,
-                        'sky_dec': sc.dec.deg,
+                        'sky_az': sc_topo.az.deg,
+                        'sky_alt': sc_topo.alt.deg,
                     })
                     num_solutions += 1
                     break
@@ -360,7 +335,6 @@ def main():
             len(positions)
         ))
 
-        location = EarthLocation(lat=args.lat*u.deg, lon=args.lon*u.deg, height=args.elevation*u.m)
         try:
             print('Solving for mount model parameters...', end='')
             model_params = track.model.solve_model(observations, location)

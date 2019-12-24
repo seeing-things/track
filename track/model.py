@@ -35,9 +35,7 @@ class ModelParameters(NamedTuple):
 
     When paired with the equations in the world_to_mount and mount_to_world functions these
     parameters define a unique transformation between mount encoder positions and coordinates in
-    a local equatorial coordinate system (hour angle and declination). When further augmented with
-    a location and time, these local coordinates can be further transformed to positions on the
-    celestial sphere (right ascension and declination).
+    the topocentric coordinate system (azimuth and altitude).
 
     Attributes:
         axis_0_offset: Encoder zero-point offset for the longitude mount axis. For equatorial
@@ -45,14 +43,17 @@ class ModelParameters(NamedTuple):
             axis.
         axis_1_offset: Encoder zero-point offset for the latitude mount axis. For equatorial
             mounts this is the declination axis. For altazimuth mounts this is the altitude axis.
-        pole_rot_axis_lon: The longitude angle of the axis of rotation used to transform from a
-            spherical coordinate system using the mount physical pole to a coordinate system using
-            the celestial pole.
-        pole_rot_angle: The angular separation between the instrument pole and the celestial pole.
+        pole_rot_axis_az: The azimuthal angle of the axis of rotation used to transform from a
+            spherical coordinate system using the mount physical axes to the topocentric coordinate
+            system.
+        pole_rot_angle: The angular separation between the instrument pole and local zenith. For
+            altazimuth mounts this will be close to zero. For equatorial mounts oriented with the
+            instrument pole aligned with the celestial pole this will be approximately 90 degrees
+            minus the latitude of the observer.
     """
     axis_0_offset: Angle
     axis_1_offset: Angle
-    pole_rot_axis_lon: Angle
+    pole_rot_axis_az: Angle
     pole_rot_angle: Angle
 
     @staticmethod
@@ -66,7 +67,7 @@ class ModelParameters(NamedTuple):
         return ModelParameters(
             axis_0_offset=Angle(param_array[0]*u.deg),
             axis_1_offset=Angle(param_array[1]*u.deg),
-            pole_rot_axis_lon=Angle(param_array[2]*u.deg),
+            pole_rot_axis_az=Angle(param_array[2]*u.deg),
             pole_rot_angle=Angle(param_array[3]*u.deg),
         )
 
@@ -81,7 +82,7 @@ class ModelParameters(NamedTuple):
         return np.array([
             self.axis_0_offset.deg,
             self.axis_1_offset.deg,
-            self.pole_rot_axis_lon.deg,
+            self.pole_rot_axis_az.deg,
             self.pole_rot_angle.deg,
         ])
 
@@ -107,13 +108,17 @@ class ModelParamSet(NamedTuple):
     timestamp: float
 
 
-def tip_axis(coord, axis_lon, rot_angle):
+def tip_axis(
+        coord: UnitSphericalRepresentation,
+        axis_lon: Angle,
+        rot_angle: Angle
+    ) -> UnitSphericalRepresentation:
     """Perform a rotation about an axis perpendicular to the Z-axis.
 
     The purpose of this rotation is to move the pole of the coordinate system from one place to
     another. For example, transforming from a coordinate system where the pole is aligned with the
-    physical pole of a mount to a celestial coordinate system where the pole is aligned with the
-    celestial pole.
+    physical pole of a mount to a topocentric coordinate system where the pole is aligned with
+    zenith.
 
     Note that this is a true rotation, and the same rotation is applied to all coordinates in the
     originating coordinate system equally. It is not equivalent to using SkyCoord
@@ -121,14 +126,17 @@ def tip_axis(coord, axis_lon, rot_angle):
     magntidue of the offset depend on the value of coord.
 
     Args:
-        coord (UnitSphericalRepresentation): Coordinate to be transformed.
-        axis_lon (Angle): Longitude angle of the axis of rotation.
-        rot_angle (Angle): Angle of rotation.
+        coord: Coordinate to be transformed.
+        axis_lon: Longitude angle of the axis of rotation.
+        rot_angle: Angle of rotation.
 
     Returns:
-        UnitSphericalRepresentation of the coordinate after rotation is applied.
+        Coordinate after transformation.
     """
-    rot = rotation_matrix(rot_angle, axis=SkyCoord(axis_lon, 0*u.deg).represent_as('cartesian').xyz)
+    rot = rotation_matrix(
+        rot_angle,
+        axis=SkyCoord(axis_lon, 0*u.deg).represent_as('cartesian').xyz
+    )
     coord_cart = coord.represent_as(CartesianRepresentation)
     coord_rot_cart = coord_cart.transform(rot)
     return coord_rot_cart.represent_as(UnitSphericalRepresentation)
@@ -138,42 +146,32 @@ class MountModel:
     """A math model of a telescope mount.
 
     This class provides transformations between mount encoder position readings and coordinates in
-    the celestial equatorial reference frame.
-
-    TODO: This class really ought to store the location, since the ModelParameters are only valid
-    for a particular location and this relieves the callers of these methods from needing to
-    provide instances of the Time class that are already populated with a matching location which
-    could allow subtle errors. Rather than requiring Time objects to be initialized with a location,
-    sidereal_time() should be called with the optional longitude argument set.
+    topocentric (AzAlt) frame.
 
     Attributes:
         model_params (ModelParameters): The set of parameters to be used in the transformations.
-        location (EarthLocation): The location on Earth's surface from which observations are to
-            be made. This must match the location used to generate model_params.
     """
 
 
-    def __init__(self, model_param_set):
+    def __init__(self, model_params: ModelParameters):
         """Construct an instance of MountModel
 
         Args:
-            model_param_set (ModelParamSet): Set of model parameters to use in calculations.
+            model_params: Set of model parameters to use in calculations.
         """
-        self.model_params = model_param_set.model_params
-        self.location = model_param_set.location
+        self.model_params = model_params
 
 
-    def mount_to_world(self, encoder_positions: MountEncoderPositions, t: Time = None) -> SkyCoord:
-        """Convert mount encoder positions to a coordinate in celestial equatorial frame.
+    def mount_to_topocentric(self, encoder_positions: MountEncoderPositions) -> SkyCoord:
+        """Convert mount encoder positions to a topocentric coordinate.
 
         Args:
             encoder_positions (MountEncoderPositions): Set of mount encoder positions.
-            t: Time of observation. If not specified, the return value will use hour angle rather
-                than right ascension.
 
         Returns:
-            A SkyCoord object with the right ascension and declination coordinates in the celestial
-                coordinate system.
+            A SkyCoord object with AltAz frame. The location and obstime attributes of this object
+            will not be populated. These will need to be set in order to transform it to an
+            inertial equatorial frame such as ICRS.
         """
 
         # apply encoder offsets
@@ -184,48 +182,40 @@ class MountModel:
 
         us_mnt_offset = encoder_to_spherical(encoders_corrected)
 
-        # transform from mount pole to celestial pole
-        us_local = tip_axis(
+        # transform pole of coordinate system from mount pole to local zenith
+        return SkyCoord(tip_axis(
             us_mnt_offset,
-            self.model_params.pole_rot_axis_lon,
+            self.model_params.pole_rot_axis_az,
             -self.model_params.pole_rot_angle
-        )
-
-        if t is None:
-            return SkyCoord(us_local)
-
-        return SkyCoord(ha_to_ra(us_local.lon, self.location.lon, t), us_local.lat)
+        ), frame=AltAz)
 
 
-    def world_to_mount(
+    def topocentric_to_mount(
             self,
             sky_coord: SkyCoord,
             meridian_side: MeridianSide,
-            t: Time
         ) -> MountEncoderPositions:
-        """Convert coordinate in celestial equatorial frame to mount encoder positions.
+        """Convert coordinate for a position on the sky to mount encoder positions.
 
         Args:
-            sky_coord: Celestial coordinate to be converted.
+            sky_coord: Coordinate in AltAz frame to be converted.
             meridian_side: Gives the desired side of the meridian to use (for equatorial mounts).
-            t: Time of observation. If not specified, the `lat` attribute of the sky_coord argument
-                will be interpreted as an hour angle rather than a right ascension.
 
         Returns:
             Encoder positions corresponding to this sky coordinate and on the desired side of the
             meridian.
+
+        Raises:
+            TypeError if frame of sky_coord is not AltAz.
         """
 
-        if t is not None:
-            # Calculate hour angle corresponding to SkyCoord right ascension at this time and place
-            sc_local = SkyCoord(ra_to_ha(sky_coord.ra, self.location.lon, t), sky_coord.dec)
-        else:
-            sc_local = sky_coord
+        if not isinstance(sky_coord.frame, AltAz):
+            raise TypeError('frame of sky_coord must be AltAz')
 
-        # transform from celestial pole to mount pole
+        # transform pole of coordinate system from local zenith to mount pole
         us_mnt_offset = tip_axis(
-            sc_local,
-            self.model_params.pole_rot_axis_lon,
+            sky_coord,
+            self.model_params.pole_rot_axis_az,
             self.model_params.pole_rot_angle
         )
 
@@ -269,7 +259,10 @@ def ra_to_ha(ra_angle: Longitude, longitude: Longitude, t: Time) -> Longitude:
     return ha_to_ra(ra_angle, longitude, t)
 
 
-def spherical_to_encoder(mount_coord, meridian_side=MeridianSide.EAST):
+def spherical_to_encoder(
+        mount_coord: UnitSphericalRepresentation,
+        meridian_side=MeridianSide.EAST,
+    ) -> MountEncoderPositions:
     """Convert from mount-relative spherical coordinates to mount encoder positions
 
     The details of the transformation applied here follow the conventions used by the Losmandy G11
@@ -302,7 +295,7 @@ def spherical_to_encoder(mount_coord, meridian_side=MeridianSide.EAST):
     return MountEncoderPositions(encoder_0, encoder_1)
 
 
-def encoder_to_spherical(encoder_positions):
+def encoder_to_spherical(encoder_positions: MountEncoderPositions) -> UnitSphericalRepresentation:
     """Convert from mount encoder positions to mount-relative spherical coordinates.
 
     The details of the transformation applied here follow the conventions used by the Losmandy G11
@@ -313,13 +306,11 @@ def encoder_to_spherical(encoder_positions):
     positions.
 
     Args:
-        encoder_positions (MountEncoderPositions): Set of mount encoder positions to be converted.
+        encoder_positions: Set of mount encoder positions to be converted.
 
     Returns:
-        UnitSphericalRepresentation where longitude angle is like hour angle and the latitude
-            angle is like declination but in the mount reference frame. These may not correspond
-            to true hour angle and declination depending on how the polar axis of the mount is
-            oriented.
+        UnitSphericalRepresentation where longitude corresponds to mount axis 0 and latitude
+        corresponds to mount axis 1.
     """
 
     # TODO: This transformation is only correct if the mount axes are exactly orthogonal. This
@@ -334,13 +325,17 @@ def encoder_to_spherical(encoder_positions):
     return UnitSphericalRepresentation(mount_lon, mount_lat)
 
 
-def residual(observation, model_params, location):
+def residual(
+        observation: pd.Series,
+        model_params: ModelParameters,
+        location: EarthLocation
+    ) -> pd.Series:
     """Compute the residual (error) between observed and modeled positions
 
     Args:
-        observation: A Pandas Series containing a single observation.
-        model_params (ModelParameters): Set of mount model parameters.
-        location: An EarthLocation object.
+        observation: A single observation.
+        model_params: Set of mount model parameters.
+        location: Observer location.
 
     Returns:
         A Pandas Series containing a separation angle and position angle.
@@ -349,26 +344,27 @@ def residual(observation, model_params, location):
         Longitude(observation.encoder_0*u.deg),
         Longitude(observation.encoder_1*u.deg),
     )
-    mount_model = MountModel(ModelParamSet(model_params, location, time.time()))
-    sc_mount = mount_model.mount_to_world(
-        encoder_positions,
-        Time(observation.unix_timestamp, format='unix'),
-    )
-    sc_cam = SkyCoord(observation.solution_ra*u.deg, observation.solution_dec*u.deg, frame='icrs')
+    mount_model = MountModel(model_params)
+    sc_mount = mount_model.mount_to_topocentric(encoder_positions)
+    sc_cam = SkyCoord(observation.solution_az*u.deg, observation.solution_alt*u.deg, frame='altaz')
 
     return pd.Series([sc_mount.separation(sc_cam), sc_mount.position_angle(sc_cam)],
                      index=['separation', 'position_angle'])
 
 
-def residuals(param_array, observations, location):
+def residuals(
+        param_array: np.ndarray,
+        observations: pd.dataframe,
+        location: EarthLocation
+    ) -> pd.Series:
     """Generate series of residuals for a set of observations and model parameters.
 
     This is intended for use as the callback function passed to scipy.optimize.least_squares.
 
     Args:
-        param_array (ndarray): Set of model parameters.
-        observations (dataframe): Data from observations.
-        location (EarthLocation): Observer location.
+        param_array: Set of model parameters.
+        observations: Data from observations.
+        location: Observer location.
 
     Returns:
         A Pandas Series containing the magnitudes of the residuals in degrees.
@@ -382,13 +378,17 @@ def residuals(param_array, observations, location):
     return res.apply(lambda res_angle: res_angle.deg)
 
 
-def plot_residuals(model_params, observations, location):
+def plot_residuals(
+        model_params: ModelParameters,
+        observations: pd.dataframe,
+        location: EarthLocation
+    ):
     """Plot the residuals on a polar plot.
 
     Args:
-        model_params (ModelParameters): Set of model parameters.
-        observations (dataframe): Data from observations.
-        location (EarthLocation): Observer location.
+        model_params: Set of model parameters.
+        observations: Data from observations.
+        location: Observer location.
     """
     res = observations.apply(
         residual,
@@ -408,7 +408,7 @@ class NoSolutionException(Exception):
     """Raised when optimization algorithm to solve for mount model parameters fails."""
 
 
-def solve_model(observations, location):
+def solve_model(observations: pd.dataframe, location: EarthLocation) -> ModelParameters:
     """Solves for mount model parameters using a set of observations and location.
 
     Finds a least-squares solution to the mount model parameters. The solution can then be used
@@ -431,7 +431,7 @@ def solve_model(observations, location):
     init_values = ModelParameters(
         axis_0_offset=Angle(0*u.deg),
         axis_1_offset=Angle(0*u.deg),
-        pole_rot_axis_lon=Angle(0*u.deg),
+        pole_rot_axis_az=Angle(0*u.deg),
         pole_rot_angle=Angle(0*u.deg),
     )
 
@@ -439,7 +439,7 @@ def solve_model(observations, location):
     min_values = ModelParameters(
         axis_0_offset=Angle(-180*u.deg),
         axis_1_offset=Angle(-180*u.deg),
-        pole_rot_axis_lon=Angle(-180*u.deg),
+        pole_rot_axis_az=Angle(-180*u.deg),
         pole_rot_angle=Angle(-180*u.deg),
     )
 
@@ -447,7 +447,7 @@ def solve_model(observations, location):
     max_values = ModelParameters(
         axis_0_offset=Angle(180*u.deg),
         axis_1_offset=Angle(180*u.deg),
-        pole_rot_axis_lon=Angle(180*u.deg),
+        pole_rot_axis_az=Angle(180*u.deg),
         pole_rot_angle=Angle(180*u.deg),
     )
 
@@ -523,4 +523,4 @@ def load_default_model(max_param_age=12*3600):
         StaleParametersException: When the timestamp of the ModelParamSet loaded from disk exceeds
             max_age.
     """
-    return MountModel(load_default_param_set(max_param_age))
+    return MountModel(load_default_param_set(max_param_age).model_params)

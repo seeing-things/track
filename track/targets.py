@@ -12,24 +12,32 @@ class Target(ABC):
 
     @abstractmethod
     def get_position(self, t: Time) -> SkyCoord:
-        """Get the position of the target for the specified time.
+        """Get the apparent topocentric position of the target for the specified time.
 
         Args:
-            t: The time for which the position should correspond. For some targets such as stars
-                this argument may not be needed.
+            t: The time for which the position should correspond.
 
         Returns:
-            A set of coordinates giving the apparent position of the object.
+            A SkyCoord object having AltAz frame giving the apparent position of the object in the
+            topocentric reference frame for the given time and for the observer's location.
         """
 
 
-class FixedTarget(Target):
+class FixedTopocentricTarget(Target):
+    """A target at a fixed topocentric position.
 
-    def __init__(self, sky_coord: SkyCoord):
-        self.coord = sky_coord
+    Targets of this type remain at a fixed apparent position in the sky. An example might be a tall
+    building. These objects do not appear to move as the Earth rotates and do not have any
+    significant velocity relative to the observer.
+    """
 
+    def __init__(self, coord: SkyCoord):
+        if not isinstance(coord.frame, AltAz):
+            raise TypeError('frame of coord must be AltAz')
+        self.coord = coord
 
     def get_position(self, t: Time = None) -> SkyCoord:
+        """Since the topocentric position is fixed the t argument is ignored"""
         return self.coord
 
 

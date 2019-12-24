@@ -25,7 +25,7 @@ from track.gamepad import Gamepad
 from track.laser import LaserPointer
 from track.mounts import MeridianSide
 from track.errorsources import BlindErrorSource
-from track.target import PyEphemTarget
+from track.targets import PyEphemTarget
 from track.telem import TelemLogger
 
 

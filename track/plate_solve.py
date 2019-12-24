@@ -9,7 +9,7 @@ from astropy import units as u
 class NoSolutionException(Exception):
     """Raised when plate solving fails to find a solution."""
 
-def plate_solve(frame, camera_width=None):
+def plate_solve(frame: np.ndarray, camera_width: Optional[float] = None) -> SkyCoord:
     """Perform plate solving on a camera frame using Astrometry.net software.
 
     This function requires astrometry.net software to be installed and the solve-field binary to be
@@ -39,8 +39,7 @@ def plate_solve(frame, camera_width=None):
         hdu.writeto(frame_filename, overwrite=True)
 
         args = [
-            # TODO: assume that solve-field is on the PATH and not in a specific directory
-            './bin/solve-field',
+            'solve-field',
             '--overwrite',
             '--objs=100',
             '--depth=20',
@@ -54,8 +53,6 @@ def plate_solve(frame, camera_width=None):
         # Call astrometry.net binary solve-field
         subprocess.run(
             args,
-            # TODO: Remove this
-            cwd='/home/rgottula/dev/astrometry.net',
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -74,4 +71,7 @@ def plate_solve(frame, camera_width=None):
             (frame_height - 1) / 2.0,
             0
         )
+
+        # making an assumption here that the coordinates reported by astrometry.net are actually in
+        # ICRS frame or something close enough to this
         return SkyCoord(center_coord[0] * u.deg, center_coord[1] * u.deg, frame='icrs')

@@ -25,7 +25,7 @@ from track.cameras import Camera
 from track.mathutils import angle_between, camera_eq_error
 from track.model import MountModel
 from track.mounts import TelescopeMount, MeridianSide
-from track.target import Target
+from track.targets import Target
 from track.telem import TelemSource
 
 
