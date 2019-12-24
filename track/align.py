@@ -16,18 +16,15 @@ things:
 
 import sys
 import time
-import numpy as np
-import pandas as pd
 from typing import List, Optional
+import pandas as pd
 from astropy_healpix import HEALPix
 from astropy import units as u
 from astropy.time import Time
 from astropy.coordinates import SkyCoord, EarthLocation, Angle
-from astroplan import Observer
-import cv2
-import asi
 import track
-from track.model import ModelParamSet
+from track import cameras
+from track.model import ModelParameters, ModelParamSet, MountModel
 from track.mounts import MeridianSide
 from track.targets import FixedTopocentricTarget
 
@@ -192,10 +189,6 @@ def main():
         default=20.0,
         type=float
     )
-    parser.add_argument(
-        '--laser-ftdi-serial',
-        help='serial number of laser pointer FTDI device',
-    )
     cameras.add_program_arguments(parser)
     args = parser.parse_args()
 
@@ -227,27 +220,6 @@ def main():
         meridian_side=args.meridian_side
     )
     telem_sources = {'error_blind': error_source}
-
-    try:
-        laser = track.LaserPointer(serial_num=args.laser_ftdi_serial)
-    except OSError:
-        print('Could not connect to laser pointer FTDI device.')
-        laser = None
-
-    try:
-        # Create gamepad object and register callback
-        game_pad = track.Gamepad(
-            left_gain=2.0,  # left stick degrees per second
-            right_gain=0.5,  # right stick degrees per second
-            int_limit=5.0,  # max correction in degrees for either axis
-        )
-        game_pad.integrator_mode = True
-        if laser is not None:
-            game_pad.register_callback('BTN_SOUTH', laser.set)
-        telem_sources['gamepad'] = game_pad
-        print('Gamepad found and registered.')
-    except RuntimeError:
-        print('No gamepads found.')
 
     tracker = track.Tracker(
         mount=mount,
@@ -313,8 +285,8 @@ def main():
                         frame,
                         camera_width=camera.field_of_view[1]
                     )
-                    sc_eq.obstime=Time(timestamp, format='unix')
-                    sc_eq.location=location
+                    sc_eq.obstime = Time(timestamp, format='unix')
+                    sc_eq.location = location
                     sc_topo = sc_eq.transform_to('altaz')
                     print('Solution found!')
                     mount_position = mount.get_position()
@@ -346,7 +318,7 @@ def main():
             print('success!')
             filename = track.model.DEFAULT_MODEL_FILENAME
             print('Saving model parameters to {}'.format(filename))
-            track.model.save_default_model(model_param_set)
+            track.model.save_default_param_set(model_param_set)
         except track.model.NoSolutionException as e:
             print('failed: {}'.format(str(e)))
 
@@ -367,12 +339,6 @@ def main():
 
     if args.telem_enable:
         telem_logger.stop()
-
-    try:
-        game_pad.stop()
-    # pylint: disable=bare-except
-    except:
-        pass
 
 if __name__ == "__main__":
     main()

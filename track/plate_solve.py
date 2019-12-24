@@ -1,6 +1,8 @@
 import os
 import tempfile
 import subprocess
+import numpy as np
+from typing import Optional
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy import wcs

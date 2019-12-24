@@ -354,7 +354,7 @@ def residual(
 
 def residuals(
         param_array: np.ndarray,
-        observations: pd.dataframe,
+        observations: pd.DataFrame,
         location: EarthLocation
     ) -> pd.Series:
     """Generate series of residuals for a set of observations and model parameters.
@@ -380,7 +380,7 @@ def residuals(
 
 def plot_residuals(
         model_params: ModelParameters,
-        observations: pd.dataframe,
+        observations: pd.DataFrame,
         location: EarthLocation
     ):
     """Plot the residuals on a polar plot.
@@ -408,7 +408,7 @@ class NoSolutionException(Exception):
     """Raised when optimization algorithm to solve for mount model parameters fails."""
 
 
-def solve_model(observations: pd.dataframe, location: EarthLocation) -> ModelParameters:
+def solve_model(observations: pd.DataFrame, location: EarthLocation) -> ModelParameters:
     """Solves for mount model parameters using a set of observations and location.
 
     Finds a least-squares solution to the mount model parameters. The solution can then be used
@@ -416,12 +416,12 @@ def solve_model(observations: pd.dataframe, location: EarthLocation) -> ModelPar
     reference frame and celestial equatorial frame.
 
     Args:
-        observations (dataframe): A set of observations where each contains a timestamp, mount
+        observations: A set of observations where each contains a timestamp, mount
             encoder positions, and the corresponding celestial coordinates.
-        location (EarthLocation): Location from which the observations were made.
+        location: Location from which the observations were made.
 
     Returns:
-        A ModelParameters object containing the solution.
+        The parameters for the solution.
 
     Raises:
         NoSolutionException if a solution could not be found.
