@@ -65,7 +65,7 @@ class PyEphemTarget(Target):
 
 
     def get_position(self, t: Time) -> SkyCoord:
-        """Get apparent position of this target"""
+        """Get apparent topocentric position of this target"""
         self.observer.date = ephem.Date(t.datetime)
         self.target.compute(self.observer)
-        return SkyCoord(self.target.ra * u.rad, self.target.dec * u.rad)
+        return SkyCoord(self.target.az * u.rad, self.target.alt * u.rad, frame='altaz')
