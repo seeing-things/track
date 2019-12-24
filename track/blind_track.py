@@ -177,11 +177,11 @@ def main():
 
 
     # Create object with base type ErrorSource
-    mount_model = track.model.load_default_model(None) # FIXME: don't allow stale parameters!
+    mount_model, location = track.model.load_default_model()
     error_source = track.BlindErrorSource(
         mount=mount,
         mount_model=mount_model,
-        target=PyEphemTarget(make_target(args), mount_model.location),
+        target=PyEphemTarget(make_target(args), location),
         meridian_side=MeridianSide[args.meridian_side.upper()]
     )
     telem_sources = {'error_blind': error_source}

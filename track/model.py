@@ -3,7 +3,7 @@
 import os
 import pickle
 import time
-from typing import NamedTuple
+from typing import NamedTuple, Optional, Tuple
 import numpy as np
 import pandas as pd
 import scipy.optimize
@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from astropy.utils import iers
 from astropy import units as u
 from astropy.time import Time
-from astropy.coordinates import SkyCoord, Longitude, Angle, EarthLocation
+from astropy.coordinates import SkyCoord, Longitude, Angle, EarthLocation, AltAz
 from astropy.coordinates.matrix_utilities import rotation_matrix
 from astropy.coordinates.representation import UnitSphericalRepresentation, CartesianRepresentation
 from track.config import CONFIG_PATH
@@ -328,14 +328,12 @@ def encoder_to_spherical(encoder_positions: MountEncoderPositions) -> UnitSpheri
 def residual(
         observation: pd.Series,
         model_params: ModelParameters,
-        location: EarthLocation
     ) -> pd.Series:
     """Compute the residual (error) between observed and modeled positions
 
     Args:
         observation: A single observation.
         model_params: Set of mount model parameters.
-        location: Observer location.
 
     Returns:
         A Pandas Series containing a separation angle and position angle.
@@ -355,7 +353,6 @@ def residual(
 def residuals(
         param_array: np.ndarray,
         observations: pd.DataFrame,
-        location: EarthLocation
     ) -> pd.Series:
     """Generate series of residuals for a set of observations and model parameters.
 
@@ -364,7 +361,6 @@ def residuals(
     Args:
         param_array: Set of model parameters.
         observations: Data from observations.
-        location: Observer location.
 
     Returns:
         A Pandas Series containing the magnitudes of the residuals in degrees.
@@ -373,7 +369,7 @@ def residuals(
         residual,
         axis='columns',
         reduce=False,
-        args=(ModelParameters.from_ndarray(param_array), location)
+        args=(ModelParameters.from_ndarray(param_array),)
     ).separation
     return res.apply(lambda res_angle: res_angle.deg)
 
@@ -381,20 +377,18 @@ def residuals(
 def plot_residuals(
         model_params: ModelParameters,
         observations: pd.DataFrame,
-        location: EarthLocation
     ):
     """Plot the residuals on a polar plot.
 
     Args:
         model_params: Set of model parameters.
         observations: Data from observations.
-        location: Observer location.
     """
     res = observations.apply(
         residual,
         axis='columns',
         reduce=False,
-        args=(model_params, location)
+        args=(model_params,)
     )
     position_angles = res.position_angle.apply(lambda x: x.rad)
     separations = res.separation.apply(lambda x: x.arcmin)
@@ -408,17 +402,16 @@ class NoSolutionException(Exception):
     """Raised when optimization algorithm to solve for mount model parameters fails."""
 
 
-def solve_model(observations: pd.DataFrame, location: EarthLocation) -> ModelParameters:
-    """Solves for mount model parameters using a set of observations and location.
+def solve_model(observations: pd.DataFrame) -> ModelParameters:
+    """Solves for mount model parameters using a set of observations.
 
     Finds a least-squares solution to the mount model parameters. The solution can then be used
-    with the world_to_mount and mount_to_world functions in this module to convert between mount
-    reference frame and celestial equatorial frame.
+    with the topocentric_to_mount and mount_to_topocentric functions in this module to convert
+    between mount reference frame and celestial equatorial frame.
 
     Args:
-        observations: A set of observations where each contains a timestamp, mount
-            encoder positions, and the corresponding celestial coordinates.
-        location: Location from which the observations were made.
+        observations: A set of observations where each contains a timestamp, mount encoder
+            positions, and the corresponding topocentric coordinates.
 
     Returns:
         The parameters for the solution.
@@ -458,7 +451,7 @@ def solve_model(observations: pd.DataFrame, location: EarthLocation) -> ModelPar
             min_values.to_ndarray(),
             max_values.to_ndarray(),
         ),
-        args=(observations, location),
+        args=(observations,),
     )
 
     if not result.success:
@@ -509,18 +502,22 @@ def load_default_param_set(max_age=12*3600):
     return model_param_set
 
 
-def load_default_model(max_param_age=12*3600):
+def load_default_model(
+        max_param_age: Optional[float] = 12*3600
+    ) -> Tuple[MountModel, EarthLocation]:
     """Loads the model parameter set from disk and returns a MountModel instance.
 
     Args:
-        max_age (float): Max allowed age of the model parameters in seconds. If the parameter set
-            is older than this an exception is raised. If None no check is performed.
+        max_param_age (float): Max allowed age of the model parameters in seconds. If the parameter
+            set is older than this an exception is raised. If None no check is performed.
 
     Returns:
-        MountModel: A MountModel instantiated with the parameters loaded from disk.
+        A MountModel instantiated with the parameters loaded from disk and the observer location
+        for which the model applies.
 
     Raises:
         StaleParametersException: When the timestamp of the ModelParamSet loaded from disk exceeds
-            max_age.
+        max_age.
     """
-    return MountModel(load_default_param_set(max_param_age).model_params)
+    model_param_set = load_default_param_set(max_param_age)
+    return MountModel(model_param_set.model_params), model_param_set.location

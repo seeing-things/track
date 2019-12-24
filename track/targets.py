@@ -1,7 +1,7 @@
 """targets for use in telescope tracking control loop"""
 
 from abc import ABC, abstractmethod
-from astropy.coordinates import EarthLocation, SkyCoord
+from astropy.coordinates import EarthLocation, SkyCoord, AltAz
 from astropy.time import Time
 from astropy import units as u
 import ephem
@@ -42,6 +42,7 @@ class FixedTopocentricTarget(Target):
 
 
 class PyEphemTarget(Target):
+    """A target using the PyEphem package"""
 
     def __init__(self, target, location: EarthLocation):
         """Init a PyEphem target

@@ -1,8 +1,8 @@
 import os
 import tempfile
 import subprocess
-import numpy as np
 from typing import Optional
+import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy import wcs
@@ -61,7 +61,7 @@ def plate_solve(frame: np.ndarray, camera_width: Optional[float] = None) -> SkyC
 
         try:
             wcs_file = fits.open(os.path.join(tempdir, filename_prefix + '.wcs'))
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             raise NoSolutionException()
 
         # get "world coordinates" for center of frame

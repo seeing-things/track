@@ -309,7 +309,7 @@ def main():
 
         try:
             print('Solving for mount model parameters...', end='')
-            model_params = track.model.solve_model(observations, location)
+            model_params = track.model.solve_model(observations)
             model_param_set = ModelParamSet(
                 model_params=model_params,
                 location=location,
