@@ -169,7 +169,7 @@ class NexStarMount(TelescopeMount):
     """
 
 
-    class AxisName(enum.Enum):
+    class AxisName(enum.IntEnum):
         """Mapping from axis index to/from names"""
         AZIMUTH = 0
         ALTITUDE = 1
@@ -343,7 +343,7 @@ class LosmandyGeminiMount(TelescopeMount):
     """
 
 
-    class AxisName(enum.Enum):
+    class AxisName(enum.IntEnum):
         """Mapping from axis index to/from names"""
         RIGHT_ASCENSION = 0
         DECLINATION = 1

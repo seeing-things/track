@@ -6,6 +6,8 @@ loop.
 
 import time
 import threading
+import astropy.units as u
+from astropy.coordinates import Angle
 from track.errorsources import ErrorSource, PointingError
 from track.telem import TelemSource
 from track.mathutils import clamp
@@ -194,7 +196,7 @@ class Tracker(TelemSource):
         self.axes = list(mount.AxisName)
         self.loop_filter = dict.fromkeys(self.axes, LoopFilter(loop_bandwidth, damping_factor))
         self.loop_filter_output = dict.fromkeys(self.axes, 0.0)
-        self.error = PointingError(None, None)
+        self.error = PointingError(None, None, None)
         self.slew_rate = dict.fromkeys(self.axes, 0.0)
         self.mount = mount
         self.error_source = error_source
@@ -204,7 +206,7 @@ class Tracker(TelemSource):
         self.stop_on_timer = False
         self.max_run_time = 0.0
         self.stop_when_converged = False
-        self.converge_max_error_mag = 50.0 / 3600.0
+        self.converge_max_error_mag = Angle(50.0 / 3600.0 * u.deg)
         self.converge_min_iterations = 50
         self.converge_error_state = None
         self.telem_mutex = threading.Lock()
@@ -268,16 +270,15 @@ class Tracker(TelemSource):
                 self._finish_control_cycle()
                 continue
 
-            # TODO: Fix this
-            # if self.error['mag'] > self.converge_max_error_mag:
-            #     low_error_iterations = 0
-            # else:
-            #     if self.converge_error_state is None:
-            #         low_error_iterations += 1
-            #     elif self.error_source.state == self.converge_error_state:
-            #         low_error_iterations +=1
-            #     else:
-            #         low_error_iterations = 0
+            if self.error.magnitude > self.converge_max_error_mag:
+                low_error_iterations = 0
+            else:
+                if self.converge_error_state is None:
+                    low_error_iterations += 1
+                elif self.error_source.state == self.converge_error_state:
+                    low_error_iterations +=1
+                else:
+                    low_error_iterations = 0
 
             # update loop filters
             for axis in self.axes:

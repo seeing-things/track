@@ -65,18 +65,20 @@ class PointingError(NamedTuple):
     conventional axis names such as "ra" for "right-ascension" or "dec" for "declination" since
     these names are not appropriate in all scenarios.
 
-    Both attirubutes are instances of the Astropy Angle class. The range of values should be
-    restricted to [-360, +360] degrees.
-
     Attributes:
         encoder_0: The axis closer to the base of the mount. For an equatorial mount this is
             usually the right ascension axis. For az-alt mounts this is usually the azimuth axis.
+             Range is [-360, +360] degrees.
         encoder_1: The axis further from the base of the mount but closer to the optical tube. For
             an equatorial mount this is usually the declination axis. For az-alt mounts this is
-            usually the altitude axis.
+            usually the altitude axis. Range is [-360, +360] degrees.
+        magnitude: The separation angle between the target and the mount's current position on the
+            sky. The individual encoder error terms could be significantly larger than this value
+            when the target is near the mount's pole. Range is [0, +180] degrees.
     """
     encoder_0: Angle
     encoder_1: Angle
+    magnitude: Angle
 
 
 class BlindErrorSource(ErrorSource, TelemSource):
@@ -224,8 +226,8 @@ class BlindErrorSource(ErrorSource, TelemSource):
         The error terms for each mount axis are found by the following procedure (some details
         are omitted from this outline for simplicity):
 
-        1) Calculate the position of the target in local astrometric equatorial coordinates for the
-           observer's location and for the current time.
+        1) Calculate the position of the target in topocentric coordinates for the observer's
+           location and for the current time.
         2) Use the mount model to transform the target coordinates to mount encoder positions.
         3) Subtract the current encoder positions from the target encoder positions.
 
@@ -247,24 +249,25 @@ class BlindErrorSource(ErrorSource, TelemSource):
             target_position = target_position_raw
 
         # transform from astrometric coordinate system to mount encoder positions
-        target_enc_positions = self.mount_model.world_to_mount(
+        target_enc_positions = self.mount_model.topocentric_to_mount(
             target_position,
             self.meridian_side,
-            current_time
         )
 
         # get current position of telescope encoders
         mount_enc_positions = self.mount.get_position()
 
-        print('mount: ' + str(mount_enc_positions))
-        print('target: ' + str(target_enc_positions))
+        # required for error magnitude calcaulation
+        mount_topocentric = self.mount_model.mount_to_topocentric(mount_enc_positions)
+        error_magnitude = mount_topocentric.separation(target_position)
 
         pointing_error = PointingError(
             *[self._compute_axis_error(
                 mount_enc_positions[idx],
                 target_enc_positions[idx],
                 self.mount.no_cross_encoder_positions()[idx],
-            ) for idx in range(2)]
+            ) for idx in range(2)],
+            error_magnitude
         )
 
         # TODO: Update self._telem_channels dict. Use a mutex. See control.py for example.

@@ -33,9 +33,9 @@ iers.conf.auto_max_age = None  # Disable strict stale cache check
 class ModelParameters(NamedTuple):
     """Set of parameters for the mount model.
 
-    When paired with the equations in the world_to_mount and mount_to_world functions these
-    parameters define a unique transformation between mount encoder positions and coordinates in
-    the topocentric coordinate system (azimuth and altitude).
+    When paired with the equations in the topocentric_to_mount and mount_to_topocentric methods of
+    the MountModel class these parameters define a unique transformation between mount encoder
+    positions and coordinates in the topocentric coordinate system (azimuth and altitude).
 
     Attributes:
         axis_0_offset: Encoder zero-point offset for the longitude mount axis. For equatorial
@@ -265,6 +265,12 @@ def spherical_to_encoder(
     ) -> MountEncoderPositions:
     """Convert from mount-relative spherical coordinates to mount encoder positions
 
+    For an equatorial mount with the pole tipped up to be aligned with zenith the spherical
+    coordinates passed to this function can be interpreted as topocentric azimuth and altitude.
+    Alternatively, they can be interpreted as local hour angle and declination if used with an
+    equatorial mount where the pole of the mount is perfectly aligned with the celestial pole after
+    applying a 180-degree shift to the longitude coordinate.
+
     The details of the transformation applied here follow the conventions used by the Losmandy G11
     mount's "physical" encoder position "pra" and "pdec". In particular, the default starting
     values of the encoders in the "counterweight down" startup position are used. This should still
@@ -287,16 +293,22 @@ def spherical_to_encoder(
     # TODO: This transformation is only correct if the mount axes are exactly orthogonal. This
     # should be replaced with a more general transformation that can handle non-orthogonal axes.
     if meridian_side == MeridianSide.EAST:
-        encoder_0 = Longitude(90*u.deg - mount_coord.lon)
+        encoder_0 = Longitude(270*u.deg - mount_coord.lon)
         encoder_1 = Longitude(90*u.deg + mount_coord.lat)
     else:
-        encoder_0 = Longitude(270*u.deg - mount_coord.lon)
+        encoder_0 = Longitude(90*u.deg - mount_coord.lon)
         encoder_1 = Longitude(270*u.deg - mount_coord.lat)
     return MountEncoderPositions(encoder_0, encoder_1)
 
 
 def encoder_to_spherical(encoder_positions: MountEncoderPositions) -> UnitSphericalRepresentation:
     """Convert from mount encoder positions to mount-relative spherical coordinates.
+
+    For an equatorial mount with the pole tipped up to be aligned with zenith the spherical
+    coordinates returned by this function can be interpreted as topocentric azimuth and altitude.
+    Alternatively, they can be interpreted as local hour angle and declination if used with an
+    equatorial mount where the pole of the mount is perfectly aligned with the celestial pole after
+    applying a 180-degree shift to the longitude coordinate.
 
     The details of the transformation applied here follow the conventions used by the Losmandy G11
     mount's "physical" encoder position "pra" and "pdec". In particular, the default starting
@@ -306,7 +318,8 @@ def encoder_to_spherical(encoder_positions: MountEncoderPositions) -> UnitSpheri
     positions.
 
     Args:
-        encoder_positions: Set of mount encoder positions to be converted.
+        encoder_positions: Set of mount encoder positions to be converted. Any offsets should be
+            applied prior to using this function.
 
     Returns:
         UnitSphericalRepresentation where longitude corresponds to mount axis 0 and latitude
@@ -316,10 +329,10 @@ def encoder_to_spherical(encoder_positions: MountEncoderPositions) -> UnitSpheri
     # TODO: This transformation is only correct if the mount axes are exactly orthogonal. This
     # should be replaced with a more general transformation that can handle non-orthogonal axes.
     if encoder_positions[1] < 180*u.deg:  # east of mount meridian
-        mount_lon = 90*u.deg - encoder_positions[0]
+        mount_lon = 270*u.deg - encoder_positions[0]
         mount_lat = encoder_positions[1] - 90*u.deg
     else:  # west of mount meridian
-        mount_lon = 270*u.deg - encoder_positions[0]
+        mount_lon = 90*u.deg - encoder_positions[0]
         mount_lat = 270*u.deg - encoder_positions[1]
 
     return UnitSphericalRepresentation(mount_lon, mount_lat)
