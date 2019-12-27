@@ -5,6 +5,10 @@ import math
 #import track
 from gps_client import *
 
+# NOTE: The default ERR_MAX and MARGINS values in this file are INTENTIONALLY over-restrictive.
+# If you want to run a real test that stands a chance of getting an error-free fix, you'll
+# definitely want to loosen up those tolerances to be a bit more realistic.
+
 TIMEOUT = 10.0
 NEED_3D = True
 ERR_MAX = GPSValues(lat=1.0, lon=1.0, alt=1.0, track=1.0, speed=1.0, climb=1.0, time=0.001)
