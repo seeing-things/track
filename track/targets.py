@@ -59,8 +59,8 @@ class PyEphemTarget(Target):
 
         # Create a PyEphem Observer object for the given location
         self.observer = ephem.Observer()
-        self.observer.lat = location.lat.deg
-        self.observer.lon = location.lon.deg
+        self.observer.lat = location.lat.rad
+        self.observer.lon = location.lon.rad
         self.observer.elevation = location.height.to_value(u.m)
 
 
