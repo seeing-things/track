@@ -259,9 +259,9 @@ def main():
         )
         telem_logger.start()
 
-    try:
+    if args.meridian_side is not None:
         meridian_side = MeridianSide[args.meridian_side.upper()]
-    except KeyError:
+    else:
         meridian_side = None
     positions = generate_positions(
         min_positions=args.min_positions,
@@ -271,13 +271,7 @@ def main():
 
     # pylint: disable=broad-except
     try:
-        observations = pd.DataFrame(columns=[
-            'unix_timestamp',
-            'encoder_0',
-            'encoder_1',
-            'sky_ra',
-            'sky_dec'
-        ])
+        observations = []
         num_solutions = 0
         for idx, position in enumerate(positions):
 
@@ -312,8 +306,8 @@ def main():
                     mount_position = mount.get_position()
                     observations.append({
                         'unix_timestamp': timestamp,
-                        'encoder_0': mount_position['pra'],
-                        'encoder_1': mount_position['pdec'],
+                        'encoder_0': mount_position.encoder_0.deg,
+                        'encoder_1': mount_position.encoder_1.deg,
                         'sky_az': sc_topo.az.deg,
                         'sky_alt': sc_topo.alt.deg,
                     })
@@ -326,16 +320,18 @@ def main():
             num_solutions,
             len(positions)
         ))
+        observations = pd.DataFrame(observations)
 
         try:
             print('Solving for mount model parameters...', end='')
-            model_params = track.model.solve_model(observations)
+            model_params, result = track.model.solve_model(observations)
             model_param_set = ModelParamSet(
                 model_params=model_params,
                 location=location,
                 timestamp=time.time(),
             )
             print('success!')
+            print(result)
             filename = track.model.DEFAULT_MODEL_FILENAME
             print('Saving model parameters to {}'.format(filename))
             track.model.save_default_param_set(model_param_set)

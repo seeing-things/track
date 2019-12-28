@@ -277,8 +277,9 @@ class BlindErrorSource(ErrorSource, TelemSource):
         self._telem_chans['target_raw_alt'] = target_position_raw.alt.deg
         self._telem_chans['target_az'] = target_position.az.deg
         self._telem_chans['target_alt'] = target_position.alt.deg
-        self._telem_chans['target_offset_dir'] = self.target_position_offset.direction.deg
-        self._telem_chans['target_offset_sep'] = self.target_position_offset.separation.deg
+        if self.target_position_offset is not None:
+            self._telem_chans['target_offset_dir'] = self.target_position_offset.direction.deg
+            self._telem_chans['target_offset_sep'] = self.target_position_offset.separation.deg
         self._telem_chans['mount_az'] = mount_topocentric.az.deg
         self._telem_chans['mount_alt'] = mount_topocentric.alt.deg
         self._telem_chans['error_mag'] = error_magnitude.deg

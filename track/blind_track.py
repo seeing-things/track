@@ -20,6 +20,8 @@ import sys
 import ephem
 import numpy as np
 import track
+import astropy.units as u
+from astropy.coordinates import Angle
 from track.control import Tracker
 from track.gamepad import Gamepad
 from track.laser import LaserPointer
@@ -170,8 +172,8 @@ def main():
         x, y = game_pad.get_integrator()
         gamepad_polar = x + 1j*y
         error_source.target_position_offset = BlindErrorSource.PositionOffset(
-            direction=np.angle(gamepad_polar),
-            separation=np.abs(gamepad_polar),
+            direction=Angle(np.angle(gamepad_polar)*u.rad),
+            separation=Angle(np.abs(gamepad_polar)*u.deg),
         )
         return False
 

@@ -357,7 +357,7 @@ def residual(
     )
     mount_model = MountModel(model_params)
     sc_mount = mount_model.mount_to_topocentric(encoder_positions)
-    sc_cam = SkyCoord(observation.solution_az*u.deg, observation.solution_alt*u.deg, frame='altaz')
+    sc_cam = SkyCoord(observation.sky_az*u.deg, observation.sky_alt*u.deg, frame='altaz')
 
     return pd.Series([sc_mount.separation(sc_cam), sc_mount.position_angle(sc_cam)],
                      index=['separation', 'position_angle'])

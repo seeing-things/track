@@ -278,7 +278,6 @@ class ASICamera(Camera):
             frame = self.take_exposure(timeout)
 
         if self.info.IsColorCam == asi.ASI_TRUE and self._binning == 1:
-            print('debayering')
             frame = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2GRAY)
 
         return frame
@@ -678,14 +677,16 @@ class WebCam(Camera):
 def add_program_arguments(parser: ArgParser) -> None:
     """Add program arguments for all cameras"""
     parser.add_argument(
-        'camera_type',
+        '--camera_type',
         help='type of camera',
+        default='zwo',
         choices=['zwo',
                  'webcam'],
     )
     parser.add_argument(
-        'camera_pixel_scale',
+        '--camera-pixel-scale',
         help='camera pixel scale in arcseconds per pixel',
+        required=True,
         type=float
     )
     webcam_group = parser.add_argument_group(
