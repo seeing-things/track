@@ -8,6 +8,7 @@ classes can also be designed to compute an error vector by combining data from m
 or by intelligently switching between sources.
 """
 
+import threading
 from abc import ABC, abstractmethod
 from typing import NamedTuple
 from math import inf
@@ -139,7 +140,8 @@ class BlindErrorSource(ErrorSource, TelemSource):
         self.mount_model = mount_model
         self.meridian_side = meridian_side
         self.target_position_offset = None
-        self._telem_channels = {}
+        self._telem_chans = {}
+        self._telem_mutex = threading.Lock()
 
 
     def _offset_target_position(self, position: SkyCoord, offset: PositionOffset) -> SkyCoord:
@@ -235,10 +237,8 @@ class BlindErrorSource(ErrorSource, TelemSource):
             PositionError: Error terms for each mount axis.
         """
 
-        current_time = Time.now()
-
         # get coordinates of target for current time
-        target_position_raw = self.target.get_position(current_time)
+        target_position_raw = self.target.get_position(Time.now())
 
         if self.target_position_offset is not None:
             target_position = self._offset_target_position(
@@ -263,20 +263,40 @@ class BlindErrorSource(ErrorSource, TelemSource):
 
         pointing_error = PointingError(
             *[self._compute_axis_error(
-                mount_enc_positions[idx],
-                target_enc_positions[idx],
-                self.mount.no_cross_encoder_positions()[idx],
-            ) for idx in range(2)],
+                mount_enc_positions[axis],
+                target_enc_positions[axis],
+                self.mount.no_cross_encoder_positions()[axis],
+            ) for axis in self.mount.AxisName],
             error_magnitude
         )
 
-        # TODO: Update self._telem_channels dict. Use a mutex. See control.py for example.
+        # update telemetry channels dict in one atomic operation
+        self._telem_mutex.acquire()
+        self._telem_chans = {}
+        self._telem_chans['target_raw_az'] = target_position_raw.az.deg
+        self._telem_chans['target_raw_alt'] = target_position_raw.alt.deg
+        self._telem_chans['target_az'] = target_position.az.deg
+        self._telem_chans['target_alt'] = target_position.alt.deg
+        self._telem_chans['target_offset_dir'] = self.target_position_offset.direction.deg
+        self._telem_chans['target_offset_sep'] = self.target_position_offset.separation.deg
+        self._telem_chans['mount_az'] = mount_topocentric.az.deg
+        self._telem_chans['mount_alt'] = mount_topocentric.alt.deg
+        self._telem_chans['error_mag'] = error_magnitude.deg
+        for axis in self.mount.AxisName:
+            self._telem_chans[f'target_enc_{axis}'] = target_enc_positions[axis].deg
+            self._telem_chans[f'mount_enc_{axis}'] = mount_enc_positions[axis].deg
+            self._telem_chans[f'error_enc_{axis}'] = pointing_error[axis].deg
+        self._telem_mutex.release()
 
         return pointing_error
 
-
     def get_telem_channels(self):
-        return self._telem_channels
+        """Called by telemetry polling thread -- see TelemSource abstract base class"""
+        # Protect dict copy with mutex since this method is called from another thread
+        self._telem_mutex.acquire()
+        chans = self._telem_chans.copy()
+        self._telem_mutex.release()
+        return chans
 
 
 class OpticalErrorSource(ErrorSource, TelemSource):
