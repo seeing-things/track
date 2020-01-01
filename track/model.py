@@ -21,12 +21,16 @@ from track.mounts import MeridianSide, MountEncoderPositions
 DEFAULT_MODEL_FILENAME = os.path.join(CONFIG_PATH, 'model_params.pickle')
 
 
-# Try to download IERS data if online but disable strict checking in subsequent calls to methods
-# that depend on this data if it is a bit stale. Ideally this data should be fresh, so if this code
-# is to be used offline it would be best to provide a mechanism for updating Astropy's IERS cache
-# whenever network connectivity is available.
-# See https://docs.astropy.org/en/stable/utils/iers.html for additional details.
-iers.IERS_Auto().open()  # Will try to download if cache is stale
+# Disable IERS data age checking in calls to methods that depend on this data so that the code will
+# still work when offline. Even when online this is helpful as otherwise the first call to a method
+# in Astropy that uses IERS data will block and wait for the update mechanism to download the
+# latest data, and such delays could be problematic. Note however that it is necessary to
+# download this at least once using `iers.IERS_Auto().open()`, otherwise the affected methods will
+# still fail. (Previously the aforementioned method call was invoked here such that it runs when
+# this module is imported such that the data would at least be downloaded when the machine has
+# internet access, but this causes the import to take a second or two to complete which is
+# annoying so it was removed.) For exacting pointing accuracy this data should be updated
+# regularly. See https://docs.astropy.org/en/stable/utils/iers.html for additional details.
 iers.conf.auto_max_age = None  # Disable strict stale cache check
 
 
