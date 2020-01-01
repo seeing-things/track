@@ -279,7 +279,8 @@ def main():
         num_solutions = 0
         for idx, position in enumerate(positions):
 
-            print(f'Moving to position {idx} of {len(positions)}: {str(position.position)}')
+            print(f'Moving to position {idx} of {len(positions)}: '
+                f'Az: {position.position.az.deg}, Alt: {position.position.alt.deg}')
 
             error_source.target = FixedTopocentricTarget(position.position)
             error_source.meridian_side = position.meridian_side
@@ -293,7 +294,7 @@ def main():
             # plate solver doesn't always work on the first try
             for i in range(args.max_tries):
 
-                print('\tPlate solver attempt {} of {}...'.format(i + 1, args.max_tries), end='')
+                print(f'\tPlate solver attempt {i + 1} of {args.max_tries}...', end='', flush=True)
 
                 timestamp = time.time()
                 frame = camera.get_frame()
@@ -335,7 +336,7 @@ def main():
             pickle.dump(observations, f, pickle.HIGHEST_PROTOCOL)
 
         try:
-            print('Solving for mount model parameters...', end='')
+            print('Solving for mount model parameters...', end='', flush=True)
             model_params, result = track.model.solve_model(observations)
             model_param_set = ModelParamSet(
                 model_params=model_params,
