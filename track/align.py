@@ -14,8 +14,11 @@ things:
 4) Store the mount model parameters on disk for future use during the same observing session
 """
 
+import os
 import sys
 import time
+import pickle
+from datetime import datetime
 from typing import List, Optional, NamedTuple
 import pandas as pd
 from astropy_healpix import HEALPix
@@ -24,6 +27,7 @@ from astropy.time import Time
 from astropy.coordinates import SkyCoord, EarthLocation, Angle
 import track
 from track import cameras
+from track.config import DATA_PATH
 from track.model import ModelParameters, ModelParamSet, MountModel
 from track.mounts import MeridianSide
 from track.targets import FixedTopocentricTarget
@@ -321,6 +325,14 @@ def main():
             len(positions)
         ))
         observations = pd.DataFrame(observations)
+
+        observations_filename = os.path.join(
+            DATA_PATH,
+            f'alignment_observations_{datetime.utcnow().replace(microsecond=0).isoformat()}.pickle'
+        )
+        print(f'Saving observations to {observations_filename}')
+        with open(observations_filename, 'wb') as f:
+            pickle.dump(observations, f, pickle.HIGHEST_PROTOCOL)
 
         try:
             print('Solving for mount model parameters...', end='')

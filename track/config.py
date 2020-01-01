@@ -6,6 +6,7 @@ import configargparse
 
 
 CONFIG_PATH = appdirs.user_config_dir('track')
+DATA_PATH = appdirs.user_data_dir('track')
 
 DEFAULT_CONFIG_FILES = [
     os.path.join(CONFIG_PATH, 'track.cfg'),
