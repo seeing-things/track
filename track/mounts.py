@@ -174,6 +174,10 @@ class NexStarMount(TelescopeMount):
         AZIMUTH = 0
         ALTITUDE = 1
 
+        def short_name(self):
+            """Abbreviated axis name"""
+            return 'az' if self.value == self.AZIMUTH else 'alt'
+
 
     # pylint: disable=too-many-arguments
     def __init__(
