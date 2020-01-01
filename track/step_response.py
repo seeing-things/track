@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 
-import config
-import configargparse
-import mounts
+"""program for plotting step response of the mount"""
+
+import sys
 import time
-from errorsources import wrap_error
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from astropy.coordinates import Longitude
+import astropy.units as u
+import track
 
 def main():
+    """Apply step functions of varying magnitudes to a mount axis and plot the responses."""
 
-    parser = configargparse.ArgParser(default_config_files=config.DEFAULT_FILES)
+    parser = track.ArgParser()
     parser.add_argument(
         '--mount-type',
         help='select mount type (nexstar or gemini)',
@@ -26,6 +30,12 @@ def main():
         help='bypass mount altitude limits',
         action='store_true'
     )
+    parser.add_argument(
+        '--axis',
+        help='axis number (0 or 1)',
+        default=0,
+        type=int,
+    )
     args = parser.parse_args()
 
 
@@ -39,47 +49,31 @@ def main():
         print('mount-type not supported: ' + args.mount_type)
         sys.exit(1)
 
-    t = []
-    p = []
+    step_responses = {}
+    direction = +1.0
     try:
-        for axis in mount.get_axis_names():
-            position_start = mount.get_position()[axis]
+        for step_magnitude in np.arange(0.5, 4.5, 0.5):
+            positions = []
+            position_start = mount.get_position()[args.axis]
             time_start = time.time()
-            time_elapsed = 0
-            while time_elapsed < 1.0:
+            direction = -direction
+            rate = 0.0
+            while True:
+                delta_position = abs(Longitude(
+                    mount.get_position()[args.axis] - position_start,
+                    wrap_angle=180*u.deg
+                ))
                 time_elapsed = time.time() - time_start
-                t.append(time_elapsed)
-                p.append(wrap_error(mount.get_position()[axis] - position_start))
-            mount.slew(axis, -4.0)
-            while time_elapsed < 10.0:
-                time_elapsed = time.time() - time_start
-                t.append(time_elapsed)
-                p.append(wrap_error(mount.get_position()[axis] - position_start))
-            mount.slew(axis, 0.0)
+                positions.append({'time': time_elapsed, 'position': delta_position.deg})
+                mount.slew(args.axis, rate)
+                if time_elapsed >= 1.0:
+                    rate = step_magnitude * direction
+                if time_elapsed >= 4.0:
+                    mount.safe()
+                    break
+                time.sleep(0.01)
 
-            t = np.asarray(t, dtype='float')
-            p = np.asarray(p, dtype='float')
-
-            plt.plot(t, p)
-            plt.show()
-
-            tdiff = np.diff(t)
-            pdiff = np.diff(p)
-
-            # estimate slew rate as a function of time by taking first difference of
-            # position samples
-            sr = pdiff / tdiff
-            # sr2 = pdiff / np.mean(tdiff)
-
-            # differentiate slew rate to get estimate of impulse response
-            h = np.diff(sr)
-
-            # plt.plot(t[:-1], sr, '.-', t[:-1], sr2, '.-')
-            plt.plot(t[:-1], sr, '.-')
-            plt.show()
-
-            plt.plot(t[:-2], h, '.-')
-            plt.show()
+            step_responses[step_magnitude] = pd.DataFrame(positions)
 
     except KeyboardInterrupt:
         print('Got CTRL-C, shutting down...')
@@ -91,4 +85,26 @@ def main():
         else:
             print('Warning: Mount may be in an unsafe state!')
 
+    # plot step responses
+    for step_magnitude, response in step_responses.items():
+        step_response = np.diff(response.position) / np.diff(response.time)
+        plt.plot(
+            response.time[:-1] - 1.0,
+            step_response,
+            label=f'{step_magnitude:.1f} deg/s'
+        )
+
+    # plot acceleration limit line
+    t = np.linspace(0, 0.5, 1e3)
+    a = 10*t  # 10 degrees per second squared -- the default for G11 mount when this was written
+    plt.plot(t, a, 'r', label='accel limit')
+
+    plt.title(f'Step Response for Axis {args.axis}')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Slew Rate [deg/s]')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
 if __name__ == "__main__":
+    main()
