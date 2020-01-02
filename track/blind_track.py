@@ -19,9 +19,9 @@ These adjustments are relative to the motion vector of the object across the sky
 import sys
 import ephem
 import numpy as np
-import track
 import astropy.units as u
 from astropy.coordinates import Angle
+import track
 from track.control import Tracker
 from track.gamepad import Gamepad
 from track.laser import LaserPointer
@@ -72,6 +72,7 @@ def make_target(args):
 
 
 def main():
+    """See module docstring"""
 
     parser = track.ArgParser()
 
@@ -169,6 +170,7 @@ def main():
         Returns:
             False to indicate that the control loop should continue execution as normal.
         """
+        #pylint: disable=unused-argument
         x, y = game_pad.get_integrator()
         gamepad_polar = x + 1j*y
         error_source.target_position_offset = BlindErrorSource.PositionOffset(
@@ -188,6 +190,14 @@ def main():
     )
     telem_sources = {'error_blind': error_source}
 
+    tracker = Tracker(
+        mount=mount,
+        error_source=error_source,
+        loop_bandwidth=args.loop_bw,
+        damping_factor=args.loop_damping
+    )
+    telem_sources['tracker'] = tracker
+
     try:
         laser = LaserPointer(serial_num=args.laser_ftdi_serial)
     except OSError:
@@ -205,18 +215,10 @@ def main():
         if laser is not None:
             game_pad.register_callback('BTN_SOUTH', laser.set)
         telem_sources['gamepad'] = game_pad
+        tracker.register_callback(target_offset_callback)
         print('Gamepad found and registered.')
     except RuntimeError:
         print('No gamepads found.')
-
-    tracker = Tracker(
-        mount=mount,
-        error_source=error_source,
-        loop_bandwidth=args.loop_bw,
-        damping_factor=args.loop_damping
-    )
-    tracker.register_callback(target_offset_callback)
-    telem_sources['tracker'] = tracker
 
     if args.telem_enable:
         telem_logger = TelemLogger(

@@ -62,7 +62,7 @@ class ModelParameters(NamedTuple):
     pole_rot_angle: Angle
 
     @staticmethod
-    def from_ndarray(param_array: np.ndarray) -> ModelParameters:
+    def from_ndarray(param_array: np.ndarray) -> "ModelParameters":
         """Factory method to generate an instance of this class with values given in an ndarray.
 
         Args:

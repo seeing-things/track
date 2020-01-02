@@ -29,8 +29,6 @@ class TelescopeMount(ABC):
     This class provides some abstract methods to provide a common interface for telescope mounts.
     """
 
-    AxisName: IntEnum
-
 
     @abstractmethod
     def get_position(self, max_cache_age=0.0):
@@ -179,7 +177,7 @@ class NexStarMount(TelescopeMount):
 
         def short_name(self):
             """Abbreviated axis name"""
-            return 'az' if self.value == self.AZIMUTH else 'alt'
+            return 'az' if self == self.AZIMUTH else 'alt'
 
 
     # pylint: disable=too-many-arguments
