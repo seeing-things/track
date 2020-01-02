@@ -386,22 +386,17 @@ class OpticalErrorSource(ErrorSource):
             A list of keypoints.
         """
 
-        # convert to grayscale
-        # TODO: For some cameras the frame may already be grayscale. Should probably do this in the
-        # camera object rather than here, and just expect to get a grayscale frame.
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
         # pick a threshold as the max of these two methods:
         # - 99th percentile of histogram
         # - peak of histogram plus a magic number
-        hist, _ = np.histogram(gray.ravel(), 256, [0, 256])
+        hist, _ = np.histogram(frame.ravel(), 256, [0, 256])
         cumsum = np.cumsum(hist)
         threshold_1 = np.argmax(cumsum >= 0.99*cumsum[-1])
         threshold_2 = np.argmax(hist) + 4
         threshold = max(threshold_1, threshold_2)
 
         _, thresh = cv2.threshold(
-            gray,
+            frame,
             threshold,
             255,
             cv2.THRESH_BINARY

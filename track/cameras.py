@@ -421,7 +421,10 @@ class WebCam(Camera):
             return None
 
         # decode the JPEG from the webcam into BGR for OpenCV's use
-        return cv2.imdecode(np.fromstring(frames[-1], dtype=np.uint8), cv2.IMREAD_COLOR)
+        color_frame = cv2.imdecode(np.fromstring(frames[-1], dtype=np.uint8), cv2.IMREAD_COLOR)
+
+        # convert to grayscale
+        return cv2.cvtColor(color_frame, cv2.COLOR_BGR2GRAY)
 
     def get_one_frame(self):
         """Get one frame from the webcam buffer.
