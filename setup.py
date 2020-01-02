@@ -74,7 +74,6 @@ setup(
             'hybrid_track = track.hybrid_track:main',
             'object_position = track.object_position:main',
             'optical_track = track.optical_track:main',
-            'set_when_and_where = track.set_when_and_where:main',
         ],
     },
 )
