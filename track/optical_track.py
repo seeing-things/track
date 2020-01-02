@@ -13,8 +13,10 @@ a target is acquired by the camera gamepad control is inhibited.
 
 import sys
 import track
+from track import cameras
 
 def main():
+    """See module docstring"""
 
     parser = track.ArgParser()
 
@@ -90,14 +92,14 @@ def main():
         """
         if game_pad.state.get('BTN_EAST', 0) == 1:
             gamepad_x, gamepad_y = game_pad.get_proportional()
-            slew_rate_x = mount.max_slew_rate * gamepad_x
-            slew_rate_y = mount.max_slew_rate * gamepad_y
-            tracker.slew_rate[x_axis_name], _ = mount.slew(x_axis_name, slew_rate_x)
-            tracker.slew_rate[y_axis_name], _ = mount.slew(y_axis_name, slew_rate_y)
+            slew_rate_0 = mount.max_slew_rate * gamepad_x
+            slew_rate_1 = mount.max_slew_rate * gamepad_y
+            tracker.slew_rate[mount.AxisName[0]], _ = mount.slew(mount.AxisName[0], slew_rate_0)
+            tracker.slew_rate[mount.AxisName[1]], _ = mount.slew(mount.AxisName[1], slew_rate_1)
             # Set loop filter integrators to match so that when gamepad control is released there
             # is a smooth handoff to optical tracking control.
-            tracker.loop_filter[x_axis_name].int = tracker.slew_rate[x_axis_name]
-            tracker.loop_filter[y_axis_name].int = tracker.slew_rate[y_axis_name]
+            tracker.loop_filter[mount.AxisName[0]].int = tracker.slew_rate[mount.AxisName[0]]
+            tracker.loop_filter[mount.AxisName[1]].int = tracker.slew_rate[mount.AxisName[1]]
             return True
         else:
             return False
@@ -107,22 +109,18 @@ def main():
         mount = track.NexStarMount(args.mount_path, bypass_alt_limits=args.bypass_alt_limits)
         if args.bypass_alt_limits:
             print('Warning: Altitude limits disabled! Be careful!')
-        x_axis_name = 'az'
-        y_axis_name = 'alt'
     elif args.mount_type == 'gemini':
         mount = track.LosmandyGeminiMount(args.mount_path)
-        x_axis_name = 'ra'
-        y_axis_name = 'dec'
     else:
         print('mount-type not supported: ' + args.mount_type)
         sys.exit(1)
 
     # Create object with base type ErrorSource
+    mount_model = track.model.load_default_model()
     error_source = track.OpticalErrorSource(
-        camera=cameras.make_from_program_args(args),
-        x_axis_name=x_axis_name,
-        y_axis_name=y_axis_name,
+        camera=cameras.make_camera_from_args(args),
         mount=mount,
+        mount_model=mount_model,
     )
     telem_sources = {'error_optical': error_source}
 
