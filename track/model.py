@@ -7,6 +7,7 @@ from typing import NamedTuple, Optional, Tuple
 import numpy as np
 import pandas as pd
 import scipy.optimize
+from scipy.optimize import OptimizeResult
 import matplotlib.pyplot as plt
 from astropy.utils import iers
 from astropy import units as u
@@ -61,7 +62,7 @@ class ModelParameters(NamedTuple):
     pole_rot_angle: Angle
 
     @staticmethod
-    def from_ndarray(param_array):
+    def from_ndarray(param_array: np.ndarray) -> ModelParameters:
         """Factory method to generate an instance of this class with values given in an ndarray.
 
         Args:
@@ -75,7 +76,7 @@ class ModelParameters(NamedTuple):
             pole_rot_angle=Angle(param_array[3]*u.deg),
         )
 
-    def to_ndarray(self):
+    def to_ndarray(self) -> np.ndarray:
         """Return an ndarray containing the model parameters.
 
         The output format is suitable for use with scipy least_squares.
@@ -115,7 +116,7 @@ class ModelParamSet(NamedTuple):
     model_params: ModelParameters
     guide_cam_orientation: Longitude
     location: EarthLocation
-    timestamp: float
+    timestamp: Optional[float]
 
 
 def tip_axis(
@@ -369,7 +370,7 @@ def residual(
         Longitude(observation.encoder_0*u.deg),
         Longitude(observation.encoder_1*u.deg),
     )
-    mount_model = MountModel(model_params)
+    mount_model = MountModel(ModelParamSet(model_params, None, None, None))
     sc_mount = mount_model.mount_to_topocentric(encoder_positions)
     sc_cam = SkyCoord(observation.sky_az*u.deg, observation.sky_alt*u.deg, frame='altaz')
 
@@ -429,7 +430,7 @@ class NoSolutionException(Exception):
     """Raised when optimization algorithm to solve for mount model parameters fails."""
 
 
-def solve_model(observations: pd.DataFrame) -> ModelParameters:
+def solve_model(observations: pd.DataFrame) -> Tuple[ModelParameters, OptimizeResult]:
     """Solves for mount model parameters using a set of observations.
 
     Finds a least-squares solution to the mount model parameters. The solution can then be used

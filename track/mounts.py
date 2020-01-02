@@ -14,6 +14,7 @@ just roll our own solution that provides exactly what we need in a lightweight a
 
 from abc import ABC, abstractmethod
 import enum
+from enum import IntEnum
 from typing import NamedTuple
 import time
 import numpy as np
@@ -27,6 +28,8 @@ class TelescopeMount(ABC):
 
     This class provides some abstract methods to provide a common interface for telescope mounts.
     """
+
+    AxisName: IntEnum
 
 
     @abstractmethod
@@ -115,7 +118,7 @@ class TelescopeMount(ABC):
         """
 
 
-class MeridianSide(enum.Enum):
+class MeridianSide(IntEnum):
     """Indicates side of mount meridian. This is significant for equatorial mounts."""
     EAST = enum.auto()
     WEST = enum.auto()
@@ -169,7 +172,7 @@ class NexStarMount(TelescopeMount):
     """
 
 
-    class AxisName(enum.IntEnum):
+    class AxisName(IntEnum):
         """Mapping from axis index to/from names"""
         AZIMUTH = 0
         ALTITUDE = 1
@@ -347,7 +350,7 @@ class LosmandyGeminiMount(TelescopeMount):
     """
 
 
-    class AxisName(enum.IntEnum):
+    class AxisName(IntEnum):
         """Mapping from axis index to/from names"""
         RIGHT_ASCENSION = 0
         DECLINATION = 1
