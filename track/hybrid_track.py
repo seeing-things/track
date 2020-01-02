@@ -8,42 +8,64 @@ a union of the features in optical_track and blind_track. Transitions between bl
 tracking mode are handled automatically.
 """
 
-from __future__ import print_function
 import sys
 import ephem
+import numpy as np
+import astropy.units as u
+from astropy.coordinates import Angle
 import track
+from track.control import Tracker
+from track.errorsources import BlindErrorSource, HybridErrorSource
+from track.gamepad import Gamepad
+from track.laser import LaserPointer
+from track.mounts import MeridianSide
+from track.targets import PyEphemTarget
+from track import cameras
+
+def make_target(args):
+    """Create a PyEphem object to use as a target"""
+
+    # Create a PyEphem Body object corresonding to the TLE file
+    if args.mode == 'tle':
+        print('In TLE file mode: \'{}\'.'.format(args.file))
+        tle = []
+        with open(args.file) as tlefile:
+            for line in tlefile:
+                tle.append(line)
+        target = ephem.readtle(tle[0], tle[1], tle[2])
+
+    # Create a PyEphem Body object corresonding to the given fixed coordinates
+    elif args.mode == 'coord':
+        print('In fixed-body coordinate mode: (RA {}, dec {}).'.format(args.ra, args.dec))
+        target = ephem.FixedBody(_ra=np.radians(args.ra), _dec=np.radians(args.dec))
+
+    # Get the PyEphem Body object corresonding to the given named star
+    elif args.mode == 'star':
+        print('In named star mode: \'{}\''.format(args.name))
+        target = ephem.star(args.name)
+
+    # Get the PyEphem Body object corresonding to the given named solar system body
+    elif args.mode == 'solarsystem':
+        print('In named solar system body mode: \'{}\''.format(args.name))
+        ss_objs = [name for _, _, name in ephem._libastro.builtin_planets()]
+        if args.name in ss_objs:
+            body_type = getattr(ephem, args.name)
+            target = body_type()
+        else:
+            raise Exception(
+                'The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name)
+            )
+    else:
+        print('No target specified!')
+        sys.exit(1)
+
+    return target
 
 
 def main():
+    """See module docstring"""
 
     parser = track.ArgParser()
-    parser.add_argument(
-        '--camera',
-        help='device node path for tracking webcam',
-        default='/dev/video0'
-    )
-    parser.add_argument(
-        '--camera-res',
-        help='webcam resolution in arcseconds per pixel',
-        required=True,
-        type=float
-    )
-    parser.add_argument(
-        '--camera-bufs',
-        help='number of webcam capture buffers',
-        required=True,
-        type=int
-    )
-    parser.add_argument(
-        '--camera-exposure',
-        help='webcam exposure level',
-        default=3200,
-        type=int
-    )
-    parser.add_argument(
-        '--frame-dump-dir',
-        help='directory to save webcam frames as jpeg files on disk',
-    )
     parser.add_argument(
         '--mount-type',
         help='select mount type (nexstar or gemini)',
@@ -57,7 +79,8 @@ def main():
     parser.add_argument(
         '--meridian-side',
         help='side of meridian for equatorial mounts to prefer',
-        default='west'
+        default=MeridianSide.WEST.name.lower(),
+        choices=tuple(m.name.lower() for m in MeridianSide),
     )
     parser.add_argument(
         '--lat',
@@ -147,6 +170,7 @@ def main():
         'name',
         help='name of planet or moon')
 
+    cameras.add_program_arguments(parser)
     args = parser.parse_args()
 
     # Create object with base type TelescopeMount
@@ -158,94 +182,70 @@ def main():
         print('mount-type not supported: ' + args.mount_type)
         sys.exit(1)
 
-    # Create a PyEphem Observer object
-    observer = ephem.Observer()
-    observer.lat = args.lat
-    observer.lon = args.lon
-    observer.elevation = args.elevation
+    def target_offset_callback(tracker: Tracker) -> False:
+        """Use gamepad integrator to adjust the target predicted position
 
-    # Create a PyEphem Body object corresonding to the TLE file
-    if args.mode == 'tle':
-        print('In TLE file mode: \'{}\'.'.format(args.file))
-        tle = []
-        with open(args.file) as tlefile:
-            for line in tlefile:
-                tle.append(line)
-        target = ephem.readtle(tle[0], tle[1], tle[2])
+        This is registered as a callback for the Tracker object.
 
-    # Create a PyEphem Body object corresonding to the given fixed coordinates
-    elif args.mode == 'coord':
-        print('In fixed-body coordinate mode: (RA {}, dec {}).'.format(args.ra, args.dec))
-        target = ephem.FixedBody(_ra=args.ra, _dec=args.dec)
+        Args:
+            tracker: The instance of Tracker that called this function.
 
-    # Get the PyEphem Body object corresonding to the given named star
-    elif args.mode == 'star':
-        print('In named star mode: \'{}\''.format(args.name))
-        target = ephem.star(args.name)
-
-    # Get the PyEphem Body object corresonding to the given named solar system body
-    elif args.mode == 'solarsystem':
-        print('In named solar system body mode: \'{}\''.format(args.name))
-        ss_objs = [name for _, _, name in ephem._libastro.builtin_planets()]
-        if args.name in ss_objs:
-            body_type = getattr(ephem, args.name)
-            target = body_type()
-        else:
-            raise Exception(
-                'The solar system body \'{}\' isn\'t present in PyEphem.'.format(
-                    args.name))
-
-    else:
-        print('No target specified!')
-        sys.exit(1)
+        Returns:
+            False to indicate that the control loop should continue execution as normal.
+        """
+        #pylint: disable=unused-argument
+        x, y = game_pad.get_integrator()
+        gamepad_polar = x + 1j*y
+        error_source.blind.target_position_offset = BlindErrorSource.PositionOffset(
+            direction=Angle(np.angle(gamepad_polar)*u.rad),
+            separation=Angle(np.abs(gamepad_polar)*u.deg),
+        )
+        return False
 
     # Create object with base type ErrorSource
-    error_source = track.HybridErrorSource(
+    mount_model = track.model.load_default_model()
+    error_source = HybridErrorSource(
         mount=mount,
-        observer=observer,
-        target=target,
-        cam_dev_path=args.camera,
-        arcsecs_per_pixel=args.camera_res,
-        cam_num_buffers=args.camera_bufs,
-        cam_ctlval_exposure=args.camera_exposure,
-        max_divergence=args.max_divergence,
-        meridian_side=args.meridian_side,
-        frame_dump_dir=args.frame_dump_dir,
+        mount_model=mount_model,
+        target=PyEphemTarget(make_target(args), mount_model.location),
+        camera=cameras.make_camera_from_args(args),
+        max_divergence=Angle(args.max_divergence * u.deg),
+        meridian_side=MeridianSide[args.meridian_side.upper()],
     )
     telem_sources = {}
     telem_sources['error_hybrid'] = error_source
     telem_sources['error_blind'] = error_source.blind
     telem_sources['error_optical'] = error_source.optical
 
-    try:
-        laser = track.LaserPointer(serial_num=args.laser_ftdi_serial)
-    except OSError:
-        print('Could not connect to laser pointer FTDI device.')
-        laser = None
-
-    try:
-        # Create gamepad object and register callback
-        game_pad = track.Gamepad(
-            left_gain=2.0,  # left stick degrees per second
-            right_gain=0.5,  # right stick degrees per second
-            int_limit=5.0,  # max correction in degrees for either axis
-        )
-        game_pad.integrator_mode = True
-        error_source.register_blind_offset_callback(game_pad.get_integrator)
-        if laser is not None:
-            game_pad.register_callback('BTN_SOUTH', laser.set)
-        telem_sources['gamepad'] = game_pad
-        print('Gamepad found and registered.')
-    except RuntimeError:
-        print('No gamepads found.')
-
-    tracker = track.Tracker(
+    tracker = Tracker(
         mount=mount,
         error_source=error_source,
         loop_bandwidth=args.loop_bw,
         damping_factor=args.loop_damping
     )
     telem_sources['tracker'] = tracker
+
+    try:
+        laser = LaserPointer(serial_num=args.laser_ftdi_serial)
+    except OSError:
+        print('Could not connect to laser pointer FTDI device.')
+        laser = None
+
+    try:
+        # Create gamepad object and register callback
+        game_pad = Gamepad(
+            left_gain=2.0,  # left stick degrees per second
+            right_gain=0.5,  # right stick degrees per second
+            int_limit=5.0,  # max correction in degrees for either axis
+        )
+        game_pad.integrator_mode = True
+        if laser is not None:
+            game_pad.register_callback('BTN_SOUTH', laser.set)
+        telem_sources['gamepad'] = game_pad
+        tracker.register_callback(target_offset_callback)
+        print('Gamepad found and registered.')
+    except RuntimeError:
+        print('No gamepads found.')
 
     if args.telem_enable:
         telem_logger = track.TelemLogger(
