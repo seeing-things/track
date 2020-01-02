@@ -6,13 +6,14 @@ loop.
 
 import time
 import threading
+import numpy as np
 import astropy.units as u
 from astropy.coordinates import Angle
 from track.errorsources import ErrorSource, PointingError
 from track.telem import TelemSource
 
 
-class LoopFilter(object):
+class LoopFilter:
     """Proportional plus integral (PI) loop filter.
 
     This class implements a standard proportional plus integral loop filter. The proportional and
@@ -208,7 +209,7 @@ class Tracker(TelemSource):
         self.converge_max_error_mag = Angle(50.0 / 3600.0 * u.deg)
         self.converge_min_iterations = 50
         self.converge_error_state = None
-        self.telem_mutex = threading.Lock()
+        self._telem_mutex = threading.Lock()
         self._set_telem_channels()
 
 
@@ -229,7 +230,7 @@ class Tracker(TelemSource):
         self.callback = callback
 
 
-    def run(self, axes=None):
+    def run(self):
         """Run the control loop.
 
         Call this method to start the control loop. This function is blocking and will not return
@@ -302,21 +303,19 @@ class Tracker(TelemSource):
 
 
     def _set_telem_channels(self):
-        self.telem_mutex.acquire()
-        self.telem_chans = {}
-        # TODO: Fix this
-        # self.telem_chans['num_iterations'] = self.num_iterations
-        # for axis in self.axes:
-        #     axis_name = axis.short_name()
-        #     self.telem_chans['rate_' + axis_name] = self.slew_rate[axis]
-        #     self.telem_chans['error_' + axis_name] = self.error[axis.value]
-        #     self.telem_chans['loop_filt_int_' + axis_name] = self.loop_filter[axis].int
-        #     self.telem_chans['loop_filt_out_' + axis_name] = self.loop_filter_output[axis]
-        self.telem_mutex.release()
+        self._telem_mutex.acquire()
+        self._telem_chans = {}
+        self._telem_chans['num_iterations'] = self.num_iterations
+        for axis in self.axes:
+            self._telem_chans[f'rate_{axis}'] = self.slew_rate[axis]
+            self._telem_chans[f'error_{axis}'] = self.error[axis].deg
+            self._telem_chans[f'loop_filt_int_{axis}'] = self.loop_filter[axis].int
+            self._telem_chans[f'loop_filt_out_{axis}'] = self.loop_filter_output[axis]
+        self._telem_mutex.release()
 
 
     def get_telem_channels(self):
-        self.telem_mutex.acquire()
-        chans = self.telem_chans.copy()
-        self.telem_mutex.release()
+        self._telem_mutex.acquire()
+        chans = self._telem_chans.copy()
+        self._telem_mutex.release()
         return chans
