@@ -10,7 +10,6 @@ import astropy.units as u
 from astropy.coordinates import Angle
 from track.errorsources import ErrorSource, PointingError
 from track.telem import TelemSource
-from track.mathutils import clamp
 
 
 class LoopFilter(object):
@@ -62,7 +61,7 @@ class LoopFilter(object):
             rate (float): The integrator will be clamped such that it does not exceed the magnitude
                 of this value.
         """
-        self.int = clamp(self.int, abs(rate))
+        self.int = np.clip(self.int, -abs(rate), abs(rate))
 
 
     def _compute_update_period(self):

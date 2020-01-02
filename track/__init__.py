@@ -3,7 +3,6 @@ from .gamepad import *
 from .mounts import *
 from .control import *
 from .errorsources import *
-from .mathutils import *
 from .telem import *
 from .laser import *
 from .plate_solve import *
