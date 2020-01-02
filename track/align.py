@@ -24,7 +24,7 @@ import pandas as pd
 from astropy_healpix import HEALPix
 from astropy import units as u
 from astropy.time import Time
-from astropy.coordinates import SkyCoord, EarthLocation, Angle
+from astropy.coordinates import SkyCoord, EarthLocation, Angle, Longitude
 import track
 from track import cameras
 from track.config import DATA_PATH
@@ -340,6 +340,7 @@ def main():
             model_params, result = track.model.solve_model(observations)
             model_param_set = ModelParamSet(
                 model_params=model_params,
+                guide_cam_orientation=Longitude(0*u.deg),  # TODO: solve for this!
                 location=location,
                 timestamp=time.time(),
             )
