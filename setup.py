@@ -15,7 +15,7 @@ setup(
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version='0.1.0',
+    version='0.2.0',
 
     description='A mess of code for tracking moving objects with a telescope',
     long_description=long_description,
@@ -50,7 +50,6 @@ setup(
         'ephem>=3.7',
         'inputs>=0.1',
         'numpy',
-        'v4l2 @ https://github.com/seeing-things/python-v4l2/tarball/master#egg=v4l2-0.2.2',
         'requests',
         'MonthDelta>=1.0b',
     ],
@@ -61,6 +60,9 @@ setup(
         ],
         'laser': [
             'pyftdi>=0.29',
+        ],
+        'webcam': [
+            'v4l2 @ https://github.com/seeing-things/python-v4l2/tarball/master#egg=v4l2-0.2.2',
         ],
     },
 
