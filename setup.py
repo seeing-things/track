@@ -49,6 +49,7 @@ setup(
         'ConfigArgParse==0.12.0',
         'ephem>=3.7',
         'inputs>=0.1',
+        'lxml',  # parser for bs4
         'numpy',
         'requests',
         'MonthDelta>=1.0b',
