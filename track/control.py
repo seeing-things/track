@@ -308,7 +308,10 @@ class Tracker(TelemSource):
         self._telem_chans['num_iterations'] = self.num_iterations
         for axis in self.axes:
             self._telem_chans[f'rate_{axis}'] = self.slew_rate[axis]
-            self._telem_chans[f'error_{axis}'] = self.error[axis].deg
+            try:
+                self._telem_chans[f'error_{axis}'] = self.error[axis].deg
+            except AttributeError:
+                pass
             self._telem_chans[f'loop_filt_int_{axis}'] = self.loop_filter[axis].int
             self._telem_chans[f'loop_filt_out_{axis}'] = self.loop_filter_output[axis]
         self._telem_mutex.release()
