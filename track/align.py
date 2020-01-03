@@ -234,7 +234,7 @@ def main():
     # target and meridian_side will be populated later
     error_source = track.BlindErrorSource(
         mount=mount,
-        mount_model=MountModel(model_params),
+        mount_model=MountModel(ModelParamSet(model_params, None, location, time.time())),
         target=None,
         meridian_side=None
     )
@@ -280,7 +280,7 @@ def main():
         for idx, position in enumerate(positions):
 
             print(f'Moving to position {idx} of {len(positions)}: '
-                  f'Az: {position.position.az.deg}, Alt: {position.position.alt.deg}')
+                  f'Az: {position.position.az.deg:.2f}, Alt: {position.position.alt.deg:.2f}')
 
             error_source.target = FixedTopocentricTarget(position.position)
             error_source.meridian_side = position.meridian_side
@@ -331,7 +331,7 @@ def main():
             sys.exit(1)
         elif num_solutions < args.min_positions:
             print(f'WARNING: You asked for at least {args.min_positions} positions but only '
-                  f'{num_solutions} can be used.\nPointing accuracy may be affected.')
+                  f'{num_solutions} can be used. Pointing accuracy may be affected.')
 
         observations = pd.DataFrame(observations)
 
