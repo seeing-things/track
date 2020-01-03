@@ -280,7 +280,7 @@ def main():
         for idx, position in enumerate(positions):
 
             print(f'Moving to position {idx} of {len(positions)}: '
-                f'Az: {position.position.az.deg}, Alt: {position.position.alt.deg}')
+                  f'Az: {position.position.az.deg}, Alt: {position.position.alt.deg}')
 
             error_source.target = FixedTopocentricTarget(position.position)
             error_source.meridian_side = position.meridian_side
@@ -325,6 +325,14 @@ def main():
             num_solutions,
             len(positions)
         ))
+
+        if num_solutions == 0:
+            print("Can't solve mount model without any usable observations. Aborting.")
+            sys.exit(1)
+        elif num_solutions < args.min_positions:
+            print(f'WARNING: You asked for at least {args.min_positions} positions but only '
+                  f'{num_solutions} can be used.\nPointing accuracy may be affected.')
+
         observations = pd.DataFrame(observations)
 
         observations_filename = os.path.join(
