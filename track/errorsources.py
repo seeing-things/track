@@ -128,7 +128,7 @@ class ErrorSource(TelemSource):
 
         # shortest path
         prelim_error = Angle(
-            Longitude(mount_enc_position - target_enc_position, wrap_angle=180*u.deg)
+            Longitude(target_enc_position - mount_enc_position, wrap_angle=180*u.deg)
         )
 
         # No limit, no problem! In this case always take the shortest distance path.
@@ -137,7 +137,7 @@ class ErrorSource(TelemSource):
 
         # error term as if the no-cross point were the target position
         no_cross_error = Angle(
-            Longitude(mount_enc_position - no_cross_position, wrap_angle=180*u.deg)
+            Longitude(no_cross_position - mount_enc_position, wrap_angle=180*u.deg)
         )
 
         # actual target is closer than the no-cross point so can't possibly be crossing it
