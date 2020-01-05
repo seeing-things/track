@@ -6,48 +6,118 @@ loop.
 
 import time
 import threading
+from collections import deque
+from typing import NamedTuple
 import numpy as np
 import astropy.units as u
+from astropy.units import Quantity
 from astropy.coordinates import Angle
 from track.errorsources import ErrorSource, PointingError
+from track.mounts import TelescopeMount
 from track.telem import TelemSource
 
 
-class LoopFilter:
-    """Proportional plus integral (PI) loop filter.
+class MovingAverageFilter:
+    """Moving average filter supporting variable sample rates.
 
-    This class implements a standard proportional plus integral loop filter. The proportional and
-    integral coefficients are computed on the fly in order to support a dynamic loop period.
+    This is a moving average filter that maintains a consistent depth even when the sample period
+    is not constant. The samples in the delay line that have a cumulative time less than or equal
+    to the maximum allowed depth are averaged we equal weighting.
+    """
+
+    def __init__(self, max_depth: float = 0.2):
+        """Construct a MovingAverage Filter.
+
+        Args:
+            max_depth: The maximum depth of the moving average filter in seconds. The filter will
+                be applied over the last N samples where the total time duration of this set of
+                samples is less than or equal to max_depth seconds.
+        """
+        self.delay_line: deque = deque()
+        self.sample_periods: deque = deque()
+        self.max_depth = max_depth
+
+    def reset(self) -> None:
+        """Reset filter state"""
+        self.delay_line.clear()
+        self.sample_periods.clear()
+
+    def advance(self, value: float, sample_period: float) -> float:
+        """Add a new sample to the filter and compute a new filter output.
+
+        Args:
+            value: New sample value to add to the filter.
+            sample_period: The sample period of this sample in seconds. If this is greater than
+                max_depth it can't be used and the return value will be 0.
+
+        Returns:
+            The new output of the filter.
+        """
+        self.delay_line.appendleft(value)
+        self.sample_periods.appendleft(sample_period)
+
+        if np.sum(self.sample_periods) > self.max_depth:
+            # trim away samples that are too far in the past (which may include the new sample)
+            discard_start_index = np.argmax(np.cumsum(self.sample_periods) > self.max_depth)
+            for _ in range(len(self.delay_line) - discard_start_index):
+                self.delay_line.pop()
+                self.sample_periods.pop()
+
+        return np.mean(self.delay_line) if len(self.delay_line) > 0 else 0.0
+
+
+class PIDController:
+    """PID loop controller
+
+    This class implements a standard PID controller. The exact coefficients are adapted on the fly
+    to support a dynamic loop period.
 
     Attributes:
-        bandwidth: Loop bandwidth in Hz.
-        damping_factor: Loop damping factor.
         max_update_period: Maximum tolerated loop update period in seconds.
-        int: Integrator value.
+        integrator: Integrator value.
         last_iteration_time: Unix time of last call to update().
     """
+
+    class PIDGains(NamedTuple):
+        """Gains for PIDController
+
+        Attributes:
+            proportional: Proportional term gain.
+            integral: Integral term gain.
+            derivative: Derivative term gain.
+            derivative_filter_depth: Max depth of the derivative moving average filter in seconds.
+        """
+        proportional: float = 11.5
+        integral: float = 43.0
+        derivative: float = 1.5
+        derivative_filter_depth: float = 0.2
+
+
     def __init__(
             self,
-            bandwidth,
-            damping_factor,
-            max_update_period=0.1
+            gains: PIDGains = PIDGains(),
+            max_update_period: float = 0.1
         ):
         """Inits a Loop Filter object.
 
         Args:
-            bandwidth (float): Loop bandwidth in Hz.
-            damping_factor (float): Loop damping factor.
-            max_update_period (float): Maximum tolerated loop update period in seconds.
+            gains: Set of PID gains.
+            max_update_period: Maximum allowed loop update period in seconds.
         """
-        self.bandwidth = bandwidth
-        self.damping_factor = damping_factor
+        self.gains = gains
+        self.derivative_filter = MovingAverageFilter(gains.derivative_filter_depth)
         self.max_update_period = max_update_period
+        self.integrator = 0.0
+        self.error_prev = None
+        self.last_iteration_time = None
         self.reset()
 
 
     def reset(self):
         """Reset to initial state."""
-        self.int = 0.0
+        self.integrator = 0.0
+        self.error_prev = None
+        self.derivative_filter.reset()
         self.last_iteration_time = None
 
 
@@ -62,7 +132,7 @@ class LoopFilter:
             rate (float): The integrator will be clamped such that it does not exceed the magnitude
                 of this value.
         """
-        self.int = np.clip(self.int, -abs(rate), abs(rate))
+        self.integrator = np.clip(self.integrator, -abs(rate), abs(rate))
 
 
     def _compute_update_period(self):
@@ -83,13 +153,13 @@ class LoopFilter:
         return update_period
 
 
-    def update(self, error):
-        """Update the loop filter using new error signal input.
+    def update(self, error: Angle) -> Quantity:
+        """Update the controller using new error measurement.
 
-        Updates the loop filter using new error signal information. The loop filter proportional
-        and integral coefficients are calculated on each call based on the time elapsed since the
-        previous call. This allows the loop response to remain consistent even if the loop period
-        is changing dynamically or can't be predicted in advance.
+        Updates the controller using new error signal information. The loop filter coefficients are
+        adjusted on each call based on the time elapsed since the previous call. This allows the
+        system response to remain consistent even if the loop period is changing dynamically or
+        can't be predicted in advance.
 
         If this method was last called more than max_update_period seconds ago a warning will be
         printed and the stored integrator value will be returned without any further calculation or
@@ -97,86 +167,94 @@ class LoopFilter:
         long periods between calls to update() could cause huge disturbances to the loop behavior.
 
         Args:
-            error (float): The error in phase units (typically degrees).
+            error: The mount axis error value.
 
         Returns:
-            float: The slew rate to be applied in the same units as the error signal.
+            The slew rate to be applied to the mount axis. Note that the mount may enforce slew
+            rate or acceleration limits such that the actual rate achieved is different from this
+            rate. When this is the case, the control loop should ensure that this controller's
+            integrator value is also saturated using the `clamp_integrator()` method to prevent it
+            from growing in an unbounded manner (a phenomenon known as "integrator windup").
         """
 
         update_period = self._compute_update_period()
 
-        # can't reliably compute loop filter coefficients if period is not known
+        # can't reliably update integrator or compute derivative term if update period is unknown
         if update_period is None:
-            return self.int
-
-        if update_period > self.max_update_period:
-            print('Warning: loop filter update period was {:.4f} s, limit is {:.4f} s.'.format(
-                update_period,
-                self.max_update_period,
-            ))
-            return self.int
-
-        # compute loop filter gains based on loop period
-        bt = self.bandwidth * update_period
-        k0 = update_period
-        denom = self.damping_factor + 1.0 / (4.0 * self.damping_factor)
-        prop_gain = 4.0 * self.damping_factor / denom * bt / k0
-        int_gain = 4.0 / denom**2.0 * bt**2.0 / k0
+            self.error_prev = error
+            return self.gains.proportional * error + self.integrator
 
         # proportional term
-        prop = prop_gain * -error
+        prop_term = self.gains.proportional * error
 
-        # integral term
-        self.int = self.int + int_gain * -error
+        # integrator update
+        if update_period > self.max_update_period:
+            print(f'Warning: {1e3 * update_period:.0f} ms since last iteration, '
+                  f'limit is {1e3 * self.max_update_period:.0f} ms. Integrator not updated.')
+        else:
+            self.integrator += self.gains.integral * error * update_period
 
-        # New candidate slew rate is the sum of P and I terms. Note that the mount may enforce
-        # rate or acceleration limits such that the actual rate achieved is different from this
-        # rate. When this is the case, the control loop should ensure that the loop filter
-        # integrator value is also saturated to prevent it from growing in an unbounded manner.
-        return prop + self.int
+        # derivative term
+        if self.error_prev is not None:
+            # apply low-pass filter to derivative to reduce high-frequency noise emphasis
+            diff = (error - self.error_prev) / update_period
+            derivative_filter_output = self.derivative_filter.advance(diff, update_period)
+            derivative_term = self.gains.derivative * derivative_filter_output
+        else:
+            derivative_term = 0.0
+        self.error_prev = error
+
+        return prop_term + self.integrator + derivative_term
 
 
 class Tracker(TelemSource):
     """Main tracking loop class.
 
-    This class is the core of the track package. A tracking loop or control
-    loop is a system that uses feedback for control. In this case, the thing
-    under control is a telescope mount. Slew commands are sent to the mount
-    at regular intervals to keep it pointed in the direction of some object.
-    In order to know which direction the mount should slew, the tracking loop
-    needs feedback which comes in the form of an error signal. The error signal
-    is a measure of the difference between where the telescope is pointed now
-    compared to where the object is. The control loop tries to drive the error
-    signal magnitude to zero. The final component in the loop is a loop filter
-    ("loop controller" might be a better name, but "loop filter" is the name
-    everyone uses). The loop filter controls the response characteristics of
-    the system including the bandwidth (responsiveness to changes in input)
-    and the damping factor.
+    This class is the core of the track package. It forms a closed-loop control system. The thing
+    under control is a telescope mount. Slew commands are sent to the mount at regular intervals to
+    keep it pointed in the direction of some target object. In order to know which direction and
+    speed the mount should slew, the system needs feedback which comes in the form of an error
+    signal. The error signal is a measure of the difference between where the target object is and
+    where the telescope is pointed now. The control loop tries to drive the error signal magnitude
+    to zero. The final component in the loop is a PID controller which has adjustable gains that
+    are tuned to optimize the response characteristics of the system such as steady-state error,
+    tracking noise, and how long it takes for the mount to reach small pointing error when slewing
+    to a new target.
+
+    Since there are two axes in the telescope mount this class really contains two control systems,
+    one for each mount axis. For each axis, the error terms, controller, and mount actuation are
+    in terms of the encoder and slew rate associated with that mount axis. In some cases it is
+    most natural to think of pointing error and positions in terms of celestial coordiante systems
+    such as topocentric (azimuth and altitude) or equatorial (right ascension and declination), but
+    these coordinates must be transformed to axis encoder positions for use in this control system.
 
     Attributes:
-        loop_filter: A dict with keys for each axis where the values are
-            LoopFilter objects. Each axis has its own independent loop filter.
-        mount: An object of type TelescopeMount. This represents the interface
-            to the mount.
-        error_source: An object of type ErrorSource. The error can be computed
-            in many ways so an abstract class with a generic interface is used.
-        error: Cached error value returned by the error_source object's
-            compute_error() method. This is cached so that callback methods
-            can make use of it if needed. A dict with keys for each axis.
-        slew_rate: Cached slew rates from the most recent loop filter output.
-            Cached to make it available to callbacks. A dict with keys for each
-            axis.
+        controller: A dict with keys for each axis where the values are LoopController objects.
+            Each mount axis has its own independent controller.
+        mount: An object of type TelescopeMount. This represents the interface to the mount.
+        error_source: An object of type ErrorSource. The error can be computed in many ways so an
+            abstract class with a generic interface is used.
+        error: Cached error value returned by the error_source object's compute_error() method.
+            This is cached so that callback methods can make use of it if needed. A dict with keys
+            for each axis.
+        slew_rate: Cached slew rates from the most recent loop filter output. Cached to make it
+            available to callbacks. A dict with keys for each axis.
         num_iterations: A running count of the number of iterations.
-        callback: A callback function. The callback will be called once at the
-            end of every control loop iteration. Set to None if no callback is
-            registered.
-        stop: Boolean value. The control loop checks this on every iteration
-            and stops if the value is True.
+        callback: A callback function. The callback will be called during every control loop
+            iteration. None if no callback is registered.
+        stop: Boolean value. The control loop checks this on every iteration and stops if the
+            value is True.
     """
 
 
-    def __init__(self, mount, error_source, loop_bandwidth, damping_factor):
-        """Inits a Tracker object.
+    def __init__(
+            self,
+            mount: TelescopeMount,
+            error_source: ErrorSource,
+            pid_gains: PIDController.PIDGains,
+            max_update_period: float = 0.1,
+        ):
+        """Constructs a Tracker object.
 
         Initializes a Tracker object by constructing loop filters and
         initializing state information.
@@ -194,8 +272,10 @@ class Tracker(TelemSource):
                 too small to prevent oscillations.
         """
         self.axes = list(mount.AxisName)
-        self.loop_filter = dict.fromkeys(self.axes, LoopFilter(loop_bandwidth, damping_factor))
-        self.loop_filter_output = dict.fromkeys(self.axes, 0.0)
+        self.controllers = dict.fromkeys(
+            self.axes,
+            PIDController(pid_gains, max_update_period))
+        self.controller_outputs = dict.fromkeys(self.axes, 0.0)
         self.error = PointingError(None, None, None)
         self.slew_rate = dict.fromkeys(self.axes, 0.0)
         self.mount = mount
@@ -230,19 +310,21 @@ class Tracker(TelemSource):
         self.callback = callback
 
 
-    def run(self):
+    def run(self) -> str:
         """Run the control loop.
 
-        Call this method to start the control loop. This function is blocking and will not return
-        until an error occurs or until the stop attribute has been set to True. Immediately after
-        invocation this function will set the stop attribute to False.
+        Starts the control loop. This function is blocking and will not return until an error
+        occurs or until one of the various stopping conditions is satisfied.
+
+        Returns:
+            A string giving the reason the control loop stopped.
         """
         self.stop = False
         low_error_iterations = 0
         start_time = time.time()
 
         for axis in self.axes:
-            self.loop_filter[axis].reset()
+            self.controllers[axis].reset()
 
         while True:
 
@@ -276,22 +358,22 @@ class Tracker(TelemSource):
                 if self.converge_error_state is None:
                     low_error_iterations += 1
                 elif self.error_source.state == self.converge_error_state:
-                    low_error_iterations +=1
+                    low_error_iterations += 1
                 else:
                     low_error_iterations = 0
 
-            # update loop filters
+            # update loop controllers
             for axis in self.axes:
-                self.loop_filter_output[axis] = self.loop_filter[axis].update(self.error[axis.value].deg)
+                self.controller_outputs[axis] = self.controllers[axis].update(self.error[axis].deg)
 
             # set mount slew rates
             for axis in self.axes:
                 (
                     self.slew_rate[axis],
                     limit_exceeded
-                ) = self.mount.slew(axis, self.loop_filter_output[axis])
+                ) = self.mount.slew(axis, self.controller_outputs[axis])
                 if limit_exceeded:
-                    self.loop_filter[axis].clamp_integrator(self.slew_rate[axis])
+                    self.controllers[axis].clamp_integrator(self.slew_rate[axis])
 
             self._finish_control_cycle()
 
@@ -312,8 +394,8 @@ class Tracker(TelemSource):
                 self._telem_chans[f'error_{axis}'] = self.error[axis].deg
             except AttributeError:
                 pass
-            self._telem_chans[f'loop_filt_int_{axis}'] = self.loop_filter[axis].int
-            self._telem_chans[f'loop_filt_out_{axis}'] = self.loop_filter_output[axis]
+            self._telem_chans[f'controller_int_{axis}'] = self.controllers[axis].integrator
+            self._telem_chans[f'controller_out_{axis}'] = self.controller_outputs[axis]
         self._telem_mutex.release()
 
 
