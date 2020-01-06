@@ -82,18 +82,19 @@ class TelemLogger(object):
     def _post_point(self, name, channels):
         """Write a sample of telemetry channels to the database.
 
-        Writes one sample from one or more telemetry channels to the database.
-        A single timestamp generated from the current system time is applied to
-        all channels. The channels are added as fields of a single point in the
-        named measurement.
+        Writes one sample from one or more telemetry channels to the database. A single timestamp
+        generated from the current system time is applied to all channels. The channels are added
+        as fields of a single point in the named measurement.
 
         Args:
-            name: Name of this collection of channels. This corresponds to the
-                measurement name in the InfluxDB database.
-            channels: A dict containing the telemetry samples. The keys give
-                the channel names, which become field names in the InfluxDB
-                measurement.
+            name: Name of this collection of channels. This corresponds to the measurement name in
+                the InfluxDB database.
+            channels: A dict containing the telemetry samples. The keys give the channel names,
+                which become field names in the InfluxDB measurement. If empty nothing is written
+                to the database.
         """
+        if not channels:
+            return
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
         json_body = [
             {
