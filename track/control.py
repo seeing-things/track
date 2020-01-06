@@ -251,7 +251,7 @@ class Tracker(TelemSource):
             self,
             mount: TelescopeMount,
             error_source: ErrorSource,
-            pid_gains: PIDController.PIDGains,
+            pid_gains: PIDController.PIDGains = PIDController.PIDGains(),
             max_update_period: float = 0.1,
         ):
         """Constructs a Tracker object.
