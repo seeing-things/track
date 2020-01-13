@@ -204,11 +204,13 @@ def main():
 
     # Create object with base type ErrorSource
     mount_model = track.model.load_default_model()
+    camera = cameras.make_camera_from_args(args)
+    camera.video_mode = True
     error_source = HybridErrorSource(
         mount=mount,
         mount_model=mount_model,
         target=PyEphemTarget(make_target(args), mount_model.location),
-        camera=cameras.make_camera_from_args(args),
+        camera=camera,
         max_divergence=Angle(args.max_divergence * u.deg),
         meridian_side=MeridianSide[args.meridian_side.upper()],
     )

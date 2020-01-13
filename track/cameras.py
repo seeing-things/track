@@ -68,6 +68,25 @@ class Camera(ABC):
             Resolution as a tuple of (height, width) in pixels.
         """
 
+    @property
+    @abstractmethod
+    def video_mode(self) -> bool:
+        """Indicate if camera is in video mode.
+
+        Returns:
+            True if the camera is in video mode. False otherwise.
+        """
+
+    @video_mode.setter
+    @abstractmethod
+    def video_mode(self, enabled) -> None:
+        """Enable or disable video mode if camera supports this.
+
+        Raises:
+            ValueError if the camera does not support the requested mode.
+        """
+
+
     @abstractmethod
     def get_frame(self, timeout: float = inf) -> np.ndarray:
         """Get a frame from the camera.
@@ -404,6 +423,17 @@ class WebCam(Camera):
     @property
     def pixel_scale(self):
         return self._pixel_scale
+
+    @property
+    def video_mode(self) -> bool:
+        """Always returns True because this camera can only be in video mode"""
+        return True
+
+    @video_mode.setter
+    def video_mode(self, enabled: bool) -> None:
+        """Video mode is always enabled for this camera"""
+        if enabled == False:
+            raise ValueError("Can't disable video mode for Webcam")
 
     def get_frame(self, timeout: float = inf) -> np.ndarray:
         """Get the most recent frame from the webcam.

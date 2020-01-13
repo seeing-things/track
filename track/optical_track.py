@@ -117,8 +117,10 @@ def main():
 
     # Create object with base type ErrorSource
     mount_model = track.model.load_default_model()
+    camera = cameras.make_camera_from_args(args)
+    camera.video_mode = True
     error_source = track.OpticalErrorSource(
-        camera=cameras.make_camera_from_args(args),
+        camera=camera,
         mount=mount,
         mount_model=mount_model,
     )
