@@ -15,105 +15,12 @@ just roll our own solution that provides exactly what we need in a lightweight a
 from abc import ABC, abstractmethod
 import enum
 from enum import IntEnum
-from typing import NamedTuple
+from typing import NamedTuple, Tuple
 import time
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import Longitude
 import point
-
-
-class TelescopeMount(ABC):
-    """Abstract base class for telescope mounts.
-
-    This class provides some abstract methods to provide a common interface for telescope mounts.
-    """
-
-
-    @abstractmethod
-    def get_position(self, max_cache_age=0.0):
-        """Gets the current position of the mount.
-
-        Args:
-            max_cache_age: If the position has been read from the mount less than this many seconds
-                ago the function may return a cached position value in lieu of reading the position
-                from the mount. In cases where reading from the mount is relatively slow this may
-                allow the function to return much more quickly. The default value is set to 0
-                seconds, in which case the function will never return a cached value.
-
-        Returns:
-            An instance of MountEncoderPositions where the attributes are set to the current values
-            of the encoders. The mapping of encoder values to attribute indices in this object
-            should match the mapping used in the slew() method.
-        """
-
-
-    @abstractmethod
-    def slew(self, axis, rate):
-        """Command the mount to slew on one axis.
-
-        Commands the mount to slew at a paritcular rate in one axis. A mount may enforce limits
-        on the slew rate such as a maximum rate limit, acceleration limit, or max change in
-        rate since the last command. Enforcement of such limits may result in the mount moving at
-        a rate that is different than requested. The return values indicate whether a limit was
-        exceeded and what slew rate was actually achieved.
-
-        Args:
-            axis (int): The index of the axis to which this operation applies. For typical mounts
-                having two axes the allowed values would be 0 and 1. The axes should be numbered
-                such that the axis closes to the pedestal or tripod is axis 0, the next-closest
-                axis is 1, and so on. This mapping should match what is used in get_position.
-            rate (float): The requested slew rate in degrees per second. The sign of the value
-                indicates the direction of the slew.
-
-        Returns:
-            A two-element tuple where the first element is a float giving the actual slew rate
-                achieved by the mount. The actual rate could differ from the requested rate due
-                to quantization or due to enforcement of slew rate, acceleration, or axis position
-                limits. The second element is a boolean that is set to True if any of the limits
-                enforced by the mount were exceeded by the requested slew rate.
-
-        Raises:
-            ValueError if the axis is out of range for the specific mount.
-        """
-
-
-    @abstractmethod
-    def safe(self):
-        """Bring mount into a safe state.
-
-        This method will do whatever is necessary to bring the mount into a safe state, such that
-        there is no risk to hardware if the program terminates immediately afterward and
-        communication with the mount stops. At minimum this method will stop all motion.
-
-        Returns:
-            True if the mount was safed successfully. False otherwise.
-        """
-
-
-    @abstractmethod
-    def no_cross_encoder_positions(self):
-        """Indicate encoder positions that should not be crossed.
-
-        For most mounts cord wrap or other physical limitations make it infeasible to slew all the
-        way around in either axis. For some mounts there exists a set of positions on each axis
-        that should never be crossed. For example, on a German Equatorial mount the declination
-        axis should never cross the position where the optical tube is 180 degrees away from the
-        celesitial pole (since this is always at or below the horizon) and the right ascension axis
-        should never need to be positioned such that the counter weight is facing directly up since
-        for most mounts the optical tube would collide with the tripod or pier before reaching this
-        position.
-
-        The return value of this method can be used in control software to ensure that when moving
-        towards a particular position that the direction is chosen such that it does not cross
-        throught these positions. This may force the control software to take a longer path than
-        it otherwise would.
-
-        Returns:
-            MountEncoderPositions: The encoder positions that should not be crossed. If there is
-            no reasonable choice (such as for the azimuth axis of an alt-az mount) the attribute of
-            the object can be set to None.
-        """
 
 
 class MeridianSide(IntEnum):
@@ -147,6 +54,99 @@ class MountEncoderPositions(NamedTuple):
     encoder_1: Longitude
 
 
+class TelescopeMount(ABC):
+    """Abstract base class for telescope mounts.
+
+    This class provides some abstract methods to provide a common interface for telescope mounts.
+    """
+
+
+    @abstractmethod
+    def get_position(self, max_cache_age: float = 0.0) -> MountEncoderPositions:
+        """Gets the current position of the mount.
+
+        Args:
+            max_cache_age: If the position has been read from the mount less than this many seconds
+                ago the function may return a cached position value in lieu of reading the position
+                from the mount. In cases where reading from the mount is relatively slow this may
+                allow the function to return much more quickly. The default value is set to 0
+                seconds, in which case the function will never return a cached value.
+
+        Returns:
+            An instance of MountEncoderPositions where the attributes are set to the current values
+            of the encoders. The mapping of encoder values to attribute indices in this object
+            should match the mapping used in the slew() method.
+        """
+
+
+    @abstractmethod
+    def slew(self, axis: int, rate: float) -> Tuple[float, bool]:
+        """Command the mount to slew on one axis.
+
+        Commands the mount to slew at a paritcular rate in one axis. A mount may enforce limits
+        on the slew rate such as a maximum rate limit, acceleration limit, or max change in
+        rate since the last command. Enforcement of such limits may result in the mount moving at
+        a rate that is different than requested. The return values indicate whether a limit was
+        exceeded and what slew rate was actually achieved.
+
+        Args:
+            axis: The index of the axis to which this operation applies. For typical mounts having
+                two axes the allowed values would be 0 and 1. The axes should be numbered such that
+                the axis closes to the pedestal or tripod is axis 0, the next-closest axis is 1,
+                and so on. This mapping should match what is used in get_position.
+            rate: The requested slew rate in degrees per second. The sign of the value indicates
+                the direction of the slew.
+
+        Returns:
+            A two-element tuple where the first element is a float giving the actual slew rate
+                achieved by the mount. The actual rate could differ from the requested rate due
+                to quantization or due to enforcement of slew rate, acceleration, or axis position
+                limits. The second element is a boolean that is set to True if any of the limits
+                enforced by the mount were exceeded by the requested slew rate.
+
+        Raises:
+            ValueError if the axis is out of range for the specific mount.
+        """
+
+
+    @abstractmethod
+    def safe(self) -> bool:
+        """Bring mount into a safe state.
+
+        This method will do whatever is necessary to bring the mount into a safe state, such that
+        there is no risk to hardware if the program terminates immediately afterward and
+        communication with the mount stops. At minimum this method will stop all motion.
+
+        Returns:
+            True if the mount was safed successfully. False otherwise.
+        """
+
+
+    @abstractmethod
+    def no_cross_encoder_positions(self) -> MountEncoderPositions:
+        """Indicate encoder positions that should not be crossed.
+
+        For most mounts cord wrap or other physical limitations make it infeasible to slew all the
+        way around in either axis. For some mounts there exists a set of positions on each axis
+        that should never be crossed. For example, on a German Equatorial mount the declination
+        axis should never cross the position where the optical tube is 180 degrees away from the
+        celesitial pole (since this is always at or below the horizon) and the right ascension axis
+        should never need to be positioned such that the counter weight is facing directly up since
+        for most mounts the optical tube would collide with the tripod or pier before reaching this
+        position.
+
+        The return value of this method can be used in control software to ensure that when moving
+        towards a particular position that the direction is chosen such that it does not cross
+        throught these positions. This may force the control software to take a longer path than
+        it otherwise would.
+
+        Returns:
+            The encoder positions that should not be crossed. If there is no reasonable choice
+            (such as for the azimuth axis of an alt-az mount) the attribute of the object can be
+            set to None.
+        """
+
+
 class NexStarMount(TelescopeMount):
     """Interface class to facilitate tracking with NexStar telescopes.
 
@@ -175,7 +175,7 @@ class NexStarMount(TelescopeMount):
         AZIMUTH = 0
         ALTITUDE = 1
 
-        def short_name(self):
+        def short_name(self) -> str:
             """Abbreviated axis name"""
             return 'az' if self == self.AZIMUTH else 'alt'
 
@@ -183,11 +183,11 @@ class NexStarMount(TelescopeMount):
     # pylint: disable=too-many-arguments
     def __init__(
             self,
-            device_name,
-            alt_min_limit=0.0,
-            alt_max_limit=65.0,
-            bypass_alt_limits=False,
-            max_slew_rate=16319.0/3600.0,
+            device_name: str,
+            alt_min_limit: float = 0.0,
+            alt_max_limit: float = 65.0,
+            bypass_alt_limits: bool = False,
+            max_slew_rate: float = 16319.0/3600.0,
         ):
         """Inits NexStarMount object.
 
@@ -215,7 +215,7 @@ class NexStarMount(TelescopeMount):
         self.cached_position_time = None
 
 
-    def get_position(self, max_cache_age=0.0):
+    def get_position(self, max_cache_age: float = 0.0) -> MountEncoderPositions:
         """Gets the current position of the mount.
 
         Gets the current position coordinates of the mount. The positions returned are as reported
@@ -247,7 +247,7 @@ class NexStarMount(TelescopeMount):
         return self.cached_position
 
 
-    def slew(self, axis, rate):
+    def slew(self, axis: int, rate: float) -> Tuple[float, bool]:
         """Command the mount to slew on one axis.
 
         Commands the mount to slew at a paritcular rate in one axis. Each axis is controlled
@@ -299,7 +299,7 @@ class NexStarMount(TelescopeMount):
         return (rate, limits_exceeded)
 
 
-    def safe(self):
+    def safe(self) -> bool:
         """Bring mount into a safe state.
 
         For this mount the only action necessary is to command the slew rate to zero on both axes.
@@ -316,7 +316,7 @@ class NexStarMount(TelescopeMount):
         return success
 
 
-    def no_cross_encoder_positions(self):
+    def no_cross_encoder_positions(self) -> MountEncoderPositions:
         """Indicate encoder positions that should not be crossed.
 
         Since this is an alt-az mount, only the altitude axis has a range of values that cannot
@@ -353,7 +353,7 @@ class LosmandyGeminiMount(TelescopeMount):
         RIGHT_ASCENSION = 0
         DECLINATION = 1
 
-        def short_name(self):
+        def short_name(self) -> str:
             """Axis names as used by the point package API for this mount"""
             return 'ra' if self == self.RIGHT_ASCENSION else 'dec'
 
@@ -361,13 +361,13 @@ class LosmandyGeminiMount(TelescopeMount):
     # pylint: disable=too-many-arguments
     def __init__(
             self,
-            device_name,
-            ra_west_limit=110.0,
-            ra_east_limit=110.0,
-            bypass_ra_limits=False,
-            max_slew_rate=4.0,
-            max_slew_accel=10.0,
-            max_slew_step=1.0,
+            device_name: str,
+            ra_west_limit: float = 110.0,
+            ra_east_limit: float = 110.0,
+            bypass_ra_limits: bool = False,
+            max_slew_rate: float = 4.0,
+            max_slew_accel: float = 10.0,
+            max_slew_step: float = 1.0,
         ):
         """Inits LosmandyGeminiMount object.
 
@@ -409,7 +409,7 @@ class LosmandyGeminiMount(TelescopeMount):
         self.cached_position_time = None
 
 
-    def get_position(self, max_cache_age=0.0):
+    def get_position(self, max_cache_age: float = 0.0) -> MountEncoderPositions:
         """Gets the current position of the mount.
 
         Gets the current position coordinates of the mount. The positions returned are as reported
@@ -439,7 +439,7 @@ class LosmandyGeminiMount(TelescopeMount):
         return self.cached_position
 
 
-    def slew(self, axis, rate):
+    def slew(self, axis: int, rate: float) -> Tuple[float, bool]:
         """Command the mount to slew on one axis.
 
         Commands the mount to slew at a particular rate in one axis. Each axis is controlled
@@ -479,7 +479,7 @@ class LosmandyGeminiMount(TelescopeMount):
         return (actual_rate, limits_exceeded)
 
 
-    def safe(self):
+    def safe(self) -> bool:
         """Bring mount into a safe state by stopping motion.
 
         This method blocks until motion has ceased.
@@ -492,7 +492,7 @@ class LosmandyGeminiMount(TelescopeMount):
         return True
 
 
-    def no_cross_encoder_positions(self):
+    def no_cross_encoder_positions(self) -> MountEncoderPositions:
         """Indicate encoder positions that should not be crossed.
 
         At startup in the counterweight down position both encoders have a value of 180 degrees.

@@ -8,6 +8,7 @@ a union of the features in optical_track and blind_track. Transitions between bl
 tracking mode are handled automatically.
 """
 
+from configargparse import Namespace
 import sys
 import ephem
 import numpy as np
@@ -22,7 +23,7 @@ from track.mounts import MeridianSide
 from track.targets import PyEphemTarget
 from track import cameras
 
-def make_target(args):
+def make_target(args: Namespace) -> PyEphemTarget:
     """Create a PyEphem object to use as a target"""
 
     # Create a PyEphem Body object corresonding to the TLE file

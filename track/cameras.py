@@ -79,7 +79,7 @@ class Camera(ABC):
 
     @video_mode.setter
     @abstractmethod
-    def video_mode(self, enabled) -> None:
+    def video_mode(self, enabled: bool) -> None:
         """Enable or disable video mode if camera supports this.
 
         Raises:
@@ -128,7 +128,7 @@ class ASICamera(Camera):
         RAW8 = asi.ASI_IMG_RAW8
         RAW16 = asi.ASI_IMG_RAW16
 
-        def bytes_per_pixel(self):
+        def bytes_per_pixel(self) -> int:
             """Number of bytes per pixel in raw array of frame data retrieved from ASI driver"""
             return 1 if self == self.RAW8 else 2
 
@@ -413,15 +413,15 @@ class WebCam(Camera):
             os.close(self.dev_fd)
 
     @property
-    def frame_shape(self):
+    def frame_shape(self) -> Tuple[int, int]:
         return self._frame_shape
 
     @property
-    def field_of_view(self):
+    def field_of_view(self) -> Tuple[float, float]:
         return tuple([self._pixel_scale * side for side in self._frame_shape])
 
     @property
-    def pixel_scale(self):
+    def pixel_scale(self) -> float:
         return self._pixel_scale
 
     @property
@@ -490,12 +490,12 @@ class WebCam(Camera):
             dev_fd_ready, _, _ = select.select((self.dev_fd,), (), ())
         return len(dev_fd_ready) > 0
 
-    def has_frames_available(self):
+    def has_frames_available(self) -> bool:
         """query whether the webcam has at least one frame ready for us to read (non-blocking)"""
         readable, _, _ = select.select((self.dev_fd,), (), (), 0.0)
         return len(readable) != 0
 
-    def start(self):
+    def start(self) -> None:
         """tell the camera to start capturing"""
         if not self.started:
             self._v4l2_ioctl(
@@ -504,7 +504,7 @@ class WebCam(Camera):
             )
             self.started = True
 
-    def stop(self):
+    def stop(self) -> None:
         """tell the camera to stop capturing"""
         if self.started:
             self._v4l2_ioctl(
@@ -577,10 +577,10 @@ class WebCam(Camera):
         # return supported resolution
         return (fmt.fmt.win.w.top, fmt.fmt.win.w.left)
 
-    def _set_exposure(self, level):
+    def _set_exposure(self, level: int) -> None:
         self._set_ctrl(v4l2.V4L2_CID_EXPOSURE, int(level), 'exposure level')
 
-    def _set_autogain(self, enable):
+    def _set_autogain(self, enable: bool) -> None:
         self._set_ctrl(v4l2.V4L2_CID_AUTOGAIN, bool(enable), 'automatic gain')
 
     def _set_ctrl(self, ctrl_id, value, desc):
@@ -623,7 +623,7 @@ class WebCam(Camera):
         # return actual resolution
         return (fmt.fmt.pix.height, fmt.fmt.pix.width)
 
-    def _setup_buffers(self, buf_count):
+    def _setup_buffers(self, buf_count: int) -> None:
         """roughly equivalent to v4l2capture's create_buffers"""
         assert not self.started
         assert len(self.bufmaps) == 0
@@ -650,7 +650,7 @@ class WebCam(Camera):
                           offset=buf.m.offset)
             ]
 
-    def _queue_all_buffers(self):
+    def _queue_all_buffers(self) -> None:
         """roughly equivalent to v4l2capture's queue_all_buffers"""
         assert not self.started
         assert len(self.bufmaps) != 0
@@ -686,7 +686,7 @@ class WebCam(Camera):
     def _v4l2_ioctl(self, req, arg):
         assert fcntl.ioctl(self.dev_fd, req, arg) == 0
 
-    def _dump_init(self, frame_dump_dir):
+    def _dump_init(self, frame_dump_dir: str) -> None:
         self.dump_idx = 0
 
         # find and create a not-yet-existent 'webcam_dump_####' directory

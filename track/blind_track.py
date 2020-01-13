@@ -16,6 +16,7 @@ An optional gamepad can be used to provide adjustments to the pointing in real t
 These adjustments are relative to the motion vector of the object across the sky.
 """
 
+from configargparse import Namespace
 import sys
 import ephem
 import numpy as np
@@ -31,7 +32,7 @@ from track.targets import PyEphemTarget
 from track.telem import TelemLogger
 
 
-def make_target(args):
+def make_target(args: Namespace) -> PyEphemTarget:
     """Create a PyEphem object to use as a target"""
 
     # Create a PyEphem Body object corresonding to the TLE file

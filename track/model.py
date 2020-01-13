@@ -405,7 +405,7 @@ def residuals(
 def plot_residuals(
         model_params: ModelParameters,
         observations: pd.DataFrame,
-    ):
+    ) -> None:
     """Plot the residuals on a polar plot.
 
     Args:
@@ -492,27 +492,27 @@ class StaleParametersException(Exception):
     """Raised when model parameters are stale and potentially invalid"""
 
 
-def save_default_param_set(model_param_set):
+def save_default_param_set(model_param_set: ModelParamSet) -> None:
     """Saves the model parameter set to disk at the default location.
 
     This overwrites any model parameters already saved at this location.
 
     Args:
-        model_param_set (ModelParamSet): Parameters to save.
+        model_param_set: Parameter set to save.
     """
     with open(DEFAULT_MODEL_FILENAME, 'wb') as f:
         pickle.dump(model_param_set, f, pickle.HIGHEST_PROTOCOL)
 
 
-def load_default_param_set(max_age=12*3600):
+def load_default_param_set(max_age: Optional[float] = 12*3600) -> ModelParamSet:
     """Loads the model parameter set from disk at the default location.
 
     Args:
-        max_age (float): Max allowed age of the model parameters in seconds. If the parameter set
-            is older than this an exception is raised. If None no check is performed.
+        max_age: Max allowed age of the model parameters in seconds. If the parameter set is older
+            than this an exception is raised. If None no check is performed.
 
     Returns:
-        ModelParamSet: Parameter set loaded from disk.
+        Parameter set loaded from disk.
 
     Raises:
         StaleParametersException: When the timestamp of the ModelParamSet loaded from disk exceeds
@@ -531,13 +531,13 @@ def load_default_param_set(max_age=12*3600):
 
 
 def load_default_model(
-        max_param_age: Optional[float] = 12*3600
+        max_age: Optional[float] = 12*3600
     ) -> MountModel:
     """Loads the model parameter set from disk and returns a MountModel instance.
 
     Args:
-        max_param_age (float): Max allowed age of the model parameters in seconds. If the parameter
-            set is older than this an exception is raised. If None no check is performed.
+        max_age: Max allowed age of the model parameters in seconds. If the parameter set is older
+            than this an exception is raised. If None no check is performed.
 
     Returns:
         A MountModel instantiated with the parameters loaded from disk.
@@ -546,4 +546,4 @@ def load_default_model(
         StaleParametersException: When the timestamp of the ModelParamSet loaded from disk exceeds
         max_age.
     """
-    return MountModel(load_default_param_set(max_param_age))
+    return MountModel(load_default_param_set(max_age))
