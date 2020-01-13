@@ -279,7 +279,7 @@ def main():
         num_solutions = 0
         for idx, position in enumerate(positions):
 
-            print(f'Moving to position {idx} of {len(positions)}: '
+            print(f'Moving to position {idx + 1} of {len(positions)}: '
                   f'Az: {position.position.az.deg:.2f}, Alt: {position.position.alt.deg:.2f}')
 
             error_source.target = FixedTopocentricTarget(position.position)
