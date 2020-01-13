@@ -296,12 +296,15 @@ class ASICamera(Camera):
 
         if self.video_mode:
             timeout_ms = int(timeout * 1000) if timeout < inf else -1
-            frame = ASICheck(
-                asi.ASIGetVideoData(self.info.CameraID,
-                                    self._frame_size_bytes,
-                                    timeout_ms)
-            )
-            frame = self._reshape_frame_data(frame)
+            try:
+                frame = ASICheck(
+                    asi.ASIGetVideoData(self.info.CameraID,
+                                        self._frame_size_bytes,
+                                        timeout_ms)
+                )
+                frame = self._reshape_frame_data(frame)
+            except asi.ASIError:
+                return None
         else:
             frame = self.take_exposure(timeout)
 
