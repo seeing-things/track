@@ -139,14 +139,14 @@ class ASICamera(Camera):
             self,
             pixel_scale: float,
             binning: int = 1,
-            bit_depth: BitDepth = BitDepth.RAW8,
+            video_mode: bool = False,
         ):
         """Initialize and configure ZWO ASI camera.
 
         Args:
-            binning: Camera binning.
-            bit_depth: Bit depth per photosite.
             pixel_scale: Scale of a pixel in degrees per pixel before binning.
+            binning: Camera binning.
+            video_mode: False for one-shot mode, True for video mode.
 
         Raises:
             RuntimeError for any camera related problems.
@@ -156,7 +156,6 @@ class ASICamera(Camera):
         self.info = ASICheck(asi.ASIGetCameraProperty(0))
         self._pixel_scale = pixel_scale
         self._binning = binning
-        self._bit_depth = bit_depth
         width = self.info.MaxWidth // binning
         height = self.info.MaxHeight // binning
         self._frame_shape = (height, width)
@@ -171,7 +170,7 @@ class ASICamera(Camera):
                 asi.ASI_FALSE
             )
         )
-        self.video_mode = False
+        self.video_mode = video_mode
 
     def __del__(self):
         ASICheck(asi.ASICloseCamera(self.info.CameraID))
