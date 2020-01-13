@@ -435,7 +435,7 @@ class WebCam(Camera):
     @video_mode.setter
     def video_mode(self, enabled: bool) -> None:
         """Video mode is always enabled for this camera"""
-        if enabled == False:
+        if not enabled:
             raise ValueError("Can't disable video mode for Webcam")
 
     def get_frame(self, timeout: float = inf) -> np.ndarray:
