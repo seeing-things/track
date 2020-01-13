@@ -371,7 +371,8 @@ class OpticalErrorSource(ErrorSource):
         self.consec_detect_frames = 0
         self.consec_no_detect_frames = 0
 
-        cv2.namedWindow('frame')
+        cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('frame', frame_width, frame_height)
 
         super().__init__()
 
@@ -580,6 +581,7 @@ class OpticalErrorSource(ErrorSource):
         if not keypoints:
             self.consec_detect_frames = 0
             self.consec_no_detect_frames += 1
+            self.show_annotated_frame(frame)
             self._set_telem_channels()
             raise self.NoSignalException('No target identified')
 
