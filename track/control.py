@@ -259,7 +259,7 @@ class Tracker(TelemSource):
             try:
                 self.error = self.error_source.compute_error()
             except ErrorSource.NoSignalException:
-                self.error = PointingError(None, None)
+                self.error = PointingError(None, None, None)
 
             if self.callback is not None:
                 if self.callback(self):
