@@ -121,8 +121,18 @@ class ASICamera(Camera):
             default=0.5,
             type=float
         )
-        parser.add_argument('--zwo-gain', help='ZWO camera gain', default=400, type=int)
-        parser.add_argument('--zwo-binning', help='ZWO camera binning', default=4, type=int)
+        parser.add_argument(
+            '--zwo-gain',
+            help='ZWO camera gain',
+            default=400,
+            type=int
+        )
+        parser.add_argument(
+            '--zwo-binning',
+            help='ZWO camera binning',
+            default=4,
+            type=int
+        )
 
     @staticmethod
     def from_program_args(args: Namespace) -> 'ASICamera':
