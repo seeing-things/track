@@ -1,152 +1,30 @@
 """tracking loop for telescope control.
 
-Track provides the classes required to point a telescope with software using a
-feedback control loop.
-
+Track provides the classes required to point a telescope with software using a feedback control
+loop.
 """
 
-from __future__ import print_function
 import time
-import abc
 import threading
+import numpy as np
+import astropy.units as u
+from astropy.coordinates import Angle
+from track.errorsources import ErrorSource, PointingError
 from track.telem import TelemSource
-from track.mathutils import clamp
 
 
-class ErrorSource(object):
-    """Abstract parent class for error sources.
-
-    This class provides some abstract methods to provide a common interface
-    for error sources to be used in the tracking loop. All error sources must
-    inheret from this class and implement the methods defined.
-    """
-    __metaclass__ = abc.ABCMeta
-
-    class NoSignalException(Exception):
-        """Raised when no signal is available for error calculation."""
-        pass
-
-    @abc.abstractmethod
-    def get_axis_names(self):
-        """Get axis names
-
-        Returns:
-            A list of strings giving abbreviated names of each axis. These must
-            be the keys of the dict returned by the compute_error method.
-        """
-        pass
-
-    @abc.abstractmethod
-    def compute_error(self):
-        """Computes the error signal.
-
-        Returns:
-            The pointing error as a dict with entries for each axis. The units
-            should be degrees.
-
-        Raises:
-            NoSignalException: If the error cannot be computed.
-        """
-        pass
-
-
-class TelescopeMount(object):
-    """Abstract parent class for telescope mounts.
-
-    This class provides some abstract methods to provide a common interface
-    for telescope mounts to be used in the tracking loop. All mounts must
-    inheret from this class and implement the methods defined. Only Az-Alt
-    mounts are currently supported.
-    """
-    __metaclass__ = abc.ABCMeta
-
-    @abc.abstractmethod
-    def get_axis_names(self):
-        """Get axis names
-
-        Returns:
-            A list of strings giving abbreviated names of each axis. These must
-            be the keys of the dicts used by the get_position,
-            get_aligned_slew_dir, remove_backlash, and get_max_slew_rates
-            methods and the names accepted for the axis argument of the slew
-            method.
-        """
-
-    @abc.abstractmethod
-    def get_position(self, max_cache_age=0.0):
-        """Gets the current position of the mount.
-
-        Args:
-            max_cache_age: If the position has been read from the mount less
-                than this many seconds ago, the function may return a cached
-                position value in lieu of reading the position from the mount.
-                In cases where reading from the mount is relatively slow this
-                may allow the function to return much more quickly. The default
-                value is set to 0 seconds, in which case the function will
-                never return a cached value.
-
-        Returns:
-            A dict with keys for each axis where the values are the positions
-            in degrees.
-        """
-        pass
-
-    @abc.abstractmethod
-    def slew(self, axis, rate):
-        """Command the mount to slew on one axis.
-
-        Commands the mount to slew at a paritcular rate in one axis. A mount may enforce limits
-        on the slew rate such as a maximum rate limit, acceleration limit, or max change in
-        rate since the last command. Enforcement of such limits may result in the mount moving at
-        a rate that is different than requested. The return values indicate whether a limit was
-        exceeded and what slew rate was actually achieved.
-
-        Args:
-            axis: A string indicating the axis.
-            rate: A float giving the requested slew rate in degrees per second. The sign of the
-                value indicates the direction of the slew.
-
-        Returns:
-            A two-element tuple where the first element is a float giving the actual slew rate
-                achieved by the mount. The actual rate could differ from the requested rate due
-                to quantization or due to enforcement of slew rate, acceleration, or axis position
-                limits. The second element is a boolean that is set to True if any of the limits
-                enforced by the mount were exceeded by the requested slew rate.
-        """
-        pass
-
-    @abc.abstractmethod
-    def safe(self):
-        """Bring mount into a safe state.
-
-        This method will do whatever is necessary to bring the mount into a safe state, such that
-        there is no risk to hardware if the program terminates immediately afterward and
-        communication with the mount stops. At minimum this method will stop all motion.
-
-        Returns:
-            True if the mount was safed successfully. False otherwise.
-        """
-        pass
-
-
-class LoopFilter(object):
+class LoopFilter:
     """Proportional plus integral (PI) loop filter.
 
-    This class implements a standard proportional plus integral loop filter.
-    The proportional and integral coefficients are computed on the fly in order
-    to support a dynamic loop period.
+    This class implements a standard proportional plus integral loop filter. The proportional and
+    integral coefficients are computed on the fly in order to support a dynamic loop period.
 
     Attributes:
         bandwidth: Loop bandwidth in Hz.
         damping_factor: Loop damping factor.
         max_update_period: Maximum tolerated loop update period in seconds.
-        rate_limit: Maximum allowed slew rate in degrees per second.
-        accel_limit: Maximum allowed slew acceleration in degrees per second
-            squared.
-        step_limit: Maximum allowed change in slew rate per update in degrees per second.
         int: Integrator value.
         last_iteration_time: Unix time of last call to update().
-        last_rate: Output value returned on last call to update().
     """
     def __init__(
             self,
@@ -157,21 +35,21 @@ class LoopFilter(object):
         """Inits a Loop Filter object.
 
         Args:
-            bandwidth: Loop bandwidth in Hz.
-            damping_factor: Loop damping factor.
-            rate_limit: Slew rate limit in degrees per second. Set to None to remove limit.
-            accel_limit: Slew acceleration limit in degrees per second squared. Set to None to
-                remove limit.
-            step_limit: Maximum change in slew rate allowed per update in degrees per second. Set
-                to None to remove limit.
-            max_update_period: Maximum tolerated loop update period in seconds.
+            bandwidth (float): Loop bandwidth in Hz.
+            damping_factor (float): Loop damping factor.
+            max_update_period (float): Maximum tolerated loop update period in seconds.
         """
         self.bandwidth = bandwidth
         self.damping_factor = damping_factor
         self.max_update_period = max_update_period
+        self.reset()
+
+
+    def reset(self):
+        """Reset to initial state."""
         self.int = 0.0
         self.last_iteration_time = None
-        self.last_rate = 0.0
+
 
     def clamp_integrator(self, rate):
         """Clamps the integrator magnitude to not exceed a particular rate.
@@ -181,41 +59,56 @@ class LoopFilter(object):
         grow in an unbounded fashion and the system will not respond appropriately.
 
         Args:
-            rate: The actual rate achieved by the mount after the most recent call to update(), in
-                degrees per second.
+            rate (float): The integrator will be clamped such that it does not exceed the magnitude
+                of this value.
         """
-        self.int = clamp(self.int, abs(rate))
+        self.int = np.clip(self.int, -abs(rate), abs(rate))
+
+
+    def _compute_update_period(self):
+        """Determine the time elapsed since last call to update()
+
+        Returns:
+            float: Seconds since last call to update() or None if the time of the previous call to
+                update() is not known, which will be the case before the first call to update() or
+                if reset() has been called since the last call to update().
+        """
+        if self.last_iteration_time is None:
+            self.last_iteration_time = time.perf_counter()
+            return None
+
+        now = time.perf_counter()
+        update_period = now - self.last_iteration_time
+        self.last_iteration_time = now
+        return update_period
+
 
     def update(self, error):
         """Update the loop filter using new error signal input.
 
-        Updates the loop filter using new error signal information. The loop
-        filter proportional and integral coefficients are calculated on each
-        call based on the time elapsed since the previous call. This allows
-        the loop response to remain consistent even if the loop period is
-        changing dynamically or can't be predicted in advance.
+        Updates the loop filter using new error signal information. The loop filter proportional
+        and integral coefficients are calculated on each call based on the time elapsed since the
+        previous call. This allows the loop response to remain consistent even if the loop period
+        is changing dynamically or can't be predicted in advance.
 
-        If this method was last called more than max_update_period seconds ago
-        a warning will be printed and the stored integrator value will be
-        returned. The error signal will be ignored. This is meant to protect
-        against edge cases where long periods between calls to update() could
-        cause huge disturbances to the loop behavior.
+        If this method was last called more than max_update_period seconds ago a warning will be
+        printed and the stored integrator value will be returned without any further calculation or
+        change to the integrator's stored value. This is meant to protect against edge cases where
+        long periods between calls to update() could cause huge disturbances to the loop behavior.
 
         Args:
-            error: The error in phase units (typically degrees).
+            error (float): The error in phase units (typically degrees).
 
         Returns:
-            The slew rate to be applied in the same units as the error signal
-                (typically degrees).
+            float: The slew rate to be applied in the same units as the error signal.
         """
 
-        # can't measure loop period on first update
-        if self.last_iteration_time is None:
-            self.last_iteration_time = time.time()
-            return 0.0
+        update_period = self._compute_update_period()
 
-        update_period = time.time() - self.last_iteration_time
-        self.last_iteration_time = time.time()
+        # can't reliably compute loop filter coefficients if period is not known
+        if update_period is None:
+            return self.int
+
         if update_period > self.max_update_period:
             print('Warning: loop filter update period was {:.4f} s, limit is {:.4f} s.'.format(
                 update_period,
@@ -281,6 +174,7 @@ class Tracker(TelemSource):
             and stops if the value is True.
     """
 
+
     def __init__(self, mount, error_source, loop_bandwidth, damping_factor):
         """Inits a Tracker object.
 
@@ -299,20 +193,11 @@ class Tracker(TelemSource):
                 ideal system would suggest. Common values like sqrt(2)/2 may be
                 too small to prevent oscillations.
         """
-        if set(mount.get_axis_names()) != set(error_source.get_axis_names()):
-            raise ValueError('error_source and mount must use same set of axes')
-        self.loop_filter = {}
-        self.loop_filter_output = {}
-        self.error = {}
-        self.slew_rate = {}
-        for axis in mount.get_axis_names():
-            self.loop_filter[axis] = LoopFilter(
-                bandwidth=loop_bandwidth,
-                damping_factor=damping_factor,
-            )
-            self.loop_filter_output[axis] = 0.0
-            self.error[axis] = None
-            self.slew_rate[axis] = 0.0
+        self.axes = list(mount.AxisName)
+        self.loop_filter = dict.fromkeys(self.axes, LoopFilter(loop_bandwidth, damping_factor))
+        self.loop_filter_output = dict.fromkeys(self.axes, 0.0)
+        self.error = PointingError(None, None, None)
+        self.slew_rate = dict.fromkeys(self.axes, 0.0)
         self.mount = mount
         self.error_source = error_source
         self.num_iterations = 0
@@ -321,11 +206,12 @@ class Tracker(TelemSource):
         self.stop_on_timer = False
         self.max_run_time = 0.0
         self.stop_when_converged = False
-        self.converge_max_error_mag = 50.0 / 3600.0
+        self.converge_max_error_mag = Angle(50.0 / 3600.0 * u.deg)
         self.converge_min_iterations = 50
         self.converge_error_state = None
-        self.telem_mutex = threading.Lock()
-        self.set_telem_channels()
+        self._telem_mutex = threading.Lock()
+        self._set_telem_channels()
+
 
     def register_callback(self, callback):
         """Register a callback function.
@@ -343,30 +229,20 @@ class Tracker(TelemSource):
         """
         self.callback = callback
 
-    def run(self, axes=None):
+
+    def run(self):
         """Run the control loop.
 
-        Call this method to start the control loop. This function is blocking
-        and will not return until an error occurs or until the stop attribute
-        has been set to True. Immediately after invocation this function will
-        set the stop attribute to False.
-
-        Args:
-            axes: A list of strings indicating which axes should be under
-                active tracking control. The slew rate on any axis not included
-                in the list will not be commanded by the control loop. If an
-                empty list is passed the function returns immediately. If None
-                is passed all axes will be active.
+        Call this method to start the control loop. This function is blocking and will not return
+        until an error occurs or until the stop attribute has been set to True. Immediately after
+        invocation this function will set the stop attribute to False.
         """
         self.stop = False
         low_error_iterations = 0
         start_time = time.time()
 
-        if axes is None:
-            axes = self.mount.get_axis_names()
-
-        if len(axes) == 0:
-            return 'no axes selected'
+        for axis in self.axes:
+            self.loop_filter[axis].reset()
 
         while True:
 
@@ -383,18 +259,18 @@ class Tracker(TelemSource):
             try:
                 self.error = self.error_source.compute_error()
             except ErrorSource.NoSignalException:
-                self.error = self.error.fromkeys(self.error, None)
+                self.error = PointingError(None, None, None)
 
             if self.callback is not None:
                 if self.callback(self):
-                    self.finish_control_cycle()
+                    self._finish_control_cycle()
                     continue
 
-            if not any(self.error.values()):
-                self.finish_control_cycle()
+            if not any(self.error):
+                self._finish_control_cycle()
                 continue
 
-            if self.error['mag'] > self.converge_max_error_mag:
+            if self.error.magnitude > self.converge_max_error_mag:
                 low_error_iterations = 0
             else:
                 if self.converge_error_state is None:
@@ -405,11 +281,11 @@ class Tracker(TelemSource):
                     low_error_iterations = 0
 
             # update loop filters
-            for axis in axes:
-                self.loop_filter_output[axis] = self.loop_filter[axis].update(self.error[axis])
+            for axis in self.axes:
+                self.loop_filter_output[axis] = self.loop_filter[axis].update(self.error[axis.value].deg)
 
             # set mount slew rates
-            for axis in axes:
+            for axis in self.axes:
                 (
                     self.slew_rate[axis],
                     limit_exceeded
@@ -417,26 +293,32 @@ class Tracker(TelemSource):
                 if limit_exceeded:
                     self.loop_filter[axis].clamp_integrator(self.slew_rate[axis])
 
-            self.finish_control_cycle()
+            self._finish_control_cycle()
 
-    def finish_control_cycle(self):
+
+    def _finish_control_cycle(self):
         """Final tasks to perform at the end of each control cycle."""
-        self.set_telem_channels()
+        self._set_telem_channels()
         self.num_iterations += 1
 
-    def set_telem_channels(self):
-        self.telem_mutex.acquire()
-        self.telem_chans = {}
-        self.telem_chans['num_iterations'] = self.num_iterations
-        for axis in self.mount.get_axis_names():
-            self.telem_chans['rate_' + axis] = self.slew_rate[axis]
-            self.telem_chans['error_' + axis] = self.error[axis]
-            self.telem_chans['loop_filt_int_' + axis] = self.loop_filter[axis].int
-            self.telem_chans['loop_filt_out_' + axis] = self.loop_filter_output[axis]
-        self.telem_mutex.release()
+
+    def _set_telem_channels(self):
+        self._telem_mutex.acquire()
+        self._telem_chans = {}
+        self._telem_chans['num_iterations'] = self.num_iterations
+        for axis in self.axes:
+            self._telem_chans[f'rate_{axis}'] = self.slew_rate[axis]
+            try:
+                self._telem_chans[f'error_{axis}'] = self.error[axis].deg
+            except AttributeError:
+                pass
+            self._telem_chans[f'loop_filt_int_{axis}'] = self.loop_filter[axis].int
+            self._telem_chans[f'loop_filt_out_{axis}'] = self.loop_filter_output[axis]
+        self._telem_mutex.release()
+
 
     def get_telem_channels(self):
-        self.telem_mutex.acquire()
-        chans = self.telem_chans.copy()
-        self.telem_mutex.release()
+        self._telem_mutex.acquire()
+        chans = self._telem_chans.copy()
+        self._telem_mutex.release()
         return chans

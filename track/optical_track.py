@@ -11,40 +11,15 @@ An optional gamepad can be used to manually control the mount when no targets ar
 a target is acquired by the camera gamepad control is inhibited.
 """
 
-from __future__ import print_function
 import sys
 import track
+from track import cameras
 
 def main():
+    """See module docstring"""
 
     parser = track.ArgParser()
-    parser.add_argument(
-        '--camera',
-        help='device node path for tracking webcam',
-        default='/dev/video0'
-    )
-    parser.add_argument(
-        '--camera-res',
-        help='webcam resolution in arcseconds per pixel',
-        required=True,
-        type=float
-    )
-    parser.add_argument(
-        '--camera-bufs',
-        help='number of webcam capture buffers',
-        required=True,
-        type=int
-    )
-    parser.add_argument(
-        '--camera-exposure',
-        help='webcam exposure level',
-        default=3200,
-        type=int
-    )
-    parser.add_argument(
-        '--frame-dump-dir',
-        help='directory to save webcam frames as jpeg files on disk',
-    )
+
     parser.add_argument(
         '--mount-type',
         help='select mount type (nexstar or gemini)',
@@ -98,9 +73,11 @@ def main():
         '--laser-ftdi-serial',
         help='serial number of laser pointer FTDI device',
     )
+    cameras.add_program_arguments(parser)
     args = parser.parse_args()
 
-    def gamepad_callback(tracker):
+
+    def gamepad_callback(tracker: track.Tracker) -> bool:
         """Callback for gamepad control.
 
         Allows manual control of the slew rate via a gamepad when the 'B' button is held down,
@@ -115,14 +92,14 @@ def main():
         """
         if game_pad.state.get('BTN_EAST', 0) == 1:
             gamepad_x, gamepad_y = game_pad.get_proportional()
-            slew_rate_x = mount.max_slew_rate * gamepad_x
-            slew_rate_y = mount.max_slew_rate * gamepad_y
-            tracker.slew_rate[x_axis_name], _ = mount.slew(x_axis_name, slew_rate_x)
-            tracker.slew_rate[y_axis_name], _ = mount.slew(y_axis_name, slew_rate_y)
+            slew_rate_0 = mount.max_slew_rate * gamepad_x
+            slew_rate_1 = mount.max_slew_rate * gamepad_y
+            tracker.slew_rate[mount.AxisName[0]], _ = mount.slew(mount.AxisName[0], slew_rate_0)
+            tracker.slew_rate[mount.AxisName[1]], _ = mount.slew(mount.AxisName[1], slew_rate_1)
             # Set loop filter integrators to match so that when gamepad control is released there
             # is a smooth handoff to optical tracking control.
-            tracker.loop_filter[x_axis_name].int = tracker.slew_rate[x_axis_name]
-            tracker.loop_filter[y_axis_name].int = tracker.slew_rate[y_axis_name]
+            tracker.loop_filter[mount.AxisName[0]].int = tracker.slew_rate[mount.AxisName[0]]
+            tracker.loop_filter[mount.AxisName[1]].int = tracker.slew_rate[mount.AxisName[1]]
             return True
         else:
             return False
@@ -132,26 +109,20 @@ def main():
         mount = track.NexStarMount(args.mount_path, bypass_alt_limits=args.bypass_alt_limits)
         if args.bypass_alt_limits:
             print('Warning: Altitude limits disabled! Be careful!')
-        x_axis_name = 'az'
-        y_axis_name = 'alt'
     elif args.mount_type == 'gemini':
         mount = track.LosmandyGeminiMount(args.mount_path)
-        x_axis_name = 'ra'
-        y_axis_name = 'dec'
     else:
         print('mount-type not supported: ' + args.mount_type)
         sys.exit(1)
 
     # Create object with base type ErrorSource
+    mount_model = track.model.load_default_model()
+    camera = cameras.make_camera_from_args(args)
+    camera.video_mode = True
     error_source = track.OpticalErrorSource(
-        cam_dev_path=args.camera,
-        arcsecs_per_pixel=args.camera_res,
-        cam_num_buffers=args.camera_bufs,
-        cam_ctlval_exposure=args.camera_exposure,
-        x_axis_name=x_axis_name,
-        y_axis_name=y_axis_name,
+        camera=camera,
         mount=mount,
-        frame_dump_dir=args.frame_dump_dir,
+        mount_model=mount_model,
     )
     telem_sources = {'error_optical': error_source}
 

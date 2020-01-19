@@ -8,252 +8,376 @@ classes can also be designed to compute an error vector by combining data from m
 or by intelligently switching between sources.
 """
 
-from __future__ import print_function
-import datetime
-import math
-import ephem
+import threading
+from abc import abstractmethod
+from enum import IntEnum
+from typing import NamedTuple, Optional, Tuple, List, Dict
+from math import inf
 import numpy as np
+from astropy import units as u
+from astropy.coordinates import SkyCoord, Angle, Longitude, UnitSphericalRepresentation
+from astropy.time import Time, TimeDelta
 try:
     import cv2
-    from . import webcam
 except ImportError as e:
-    if 'cv2' in e.message:
+    if 'cv2' in str(e):
         print('Failed to import cv2. Optical tracking requires OpenCV.')
     raise
-from .control import ErrorSource
-from .mathutils import wrap_error, adjust_position, angle_between, camera_eq_error
+from track.cameras import Camera
+from track.model import MountModel
+from track.mounts import TelescopeMount, MeridianSide
+from track.targets import Target
 from track.telem import TelemSource
 
 
+class PointingError(NamedTuple):
+    """Set of pointing error terms.
 
-class BlindErrorSource(ErrorSource, TelemSource):
+    This contains error terms for telescope mounts having two motorized axes, which should cover
+    the vast majority of amateur mounts. This code is intended for use with equatorial mounts,
+    altitude-azimuth mounts, and equatorial mounts where the polar axis is intentionally not
+    aligned with the celesital pole. Therefore the members of this tuple do not use the
+    conventional axis names such as "ra" for "right-ascension" or "dec" for "declination" since
+    these names are not appropriate in all scenarios.
+
+    Attributes:
+        encoder_0: The axis closer to the base of the mount. For an equatorial mount this is
+            usually the right ascension axis. For az-alt mounts this is usually the azimuth axis.
+             Range is [-360, +360] degrees.
+        encoder_1: The axis further from the base of the mount but closer to the optical tube. For
+            an equatorial mount this is usually the declination axis. For az-alt mounts this is
+            usually the altitude axis. Range is [-360, +360] degrees.
+        magnitude: The separation angle between the target and the mount's current position on the
+            sky. The individual encoder error terms could be significantly larger than this value
+            when the target is near the mount's pole. Range is [0, +180] degrees.
+    """
+    encoder_0: Angle
+    encoder_1: Angle
+    magnitude: Angle
+
+
+class ErrorSource(TelemSource):
+    """Abstract base class for error sources.
+
+    This class provides some abstract methods to provide a common interface for error sources to be
+    used in the tracking loop. All error sources must inheret from this class and implement the
+    methods defined.
+
+    Attributes:
+        _telem_channels (dict): A collection of telemetry channel values cached such that they can
+            be read by the telemetry polling thread in get_telem_channels(). This should be updated
+            on each call to compute_error(). All channels should be updated at once while holding
+            _telem_mutex.
+        _telem_mutex: Accesses to _telem_channels should always be protected by holding this mutex
+            since telemetry polling occurs in a separate thread.
+    """
+
+    class NoSignalException(Exception):
+        """Raised when no signal is available for error calculation."""
+
+
+    def __init__(self):
+        """Super class constructor"""
+        self._telem_chans = {}
+        self._telem_mutex = threading.Lock()
+
+
+    @abstractmethod
+    def compute_error(self) -> PointingError:
+        """Computes the error signal.
+
+        Returns:
+            PointingError: This contains error terms for each mount axis.
+
+        Raises:
+            NoSignalException: If the error cannot be computed for any reason.
+        """
+
+    def get_telem_channels(self):
+        """Called by telemetry polling thread -- see TelemSource abstract base class"""
+        # Protect dict copy with mutex since this method is called from another thread
+        self._telem_mutex.acquire()
+        chans = self._telem_chans.copy()
+        self._telem_mutex.release()
+        return chans
+
+    @staticmethod
+    def _smallest_allowed_error(
+            mount_enc_position: Longitude,
+            target_enc_position: Longitude,
+            no_cross_position: Optional[Longitude],
+        ) -> Angle:
+        """Compute error term for a single axis taking into account no-cross positions
+
+        The shortest path on an axis is just the difference between the target and mount encoder
+        positions wrapped to [-180, +180] degrees. However the shortest path is not always allowed
+        because it may result in cord wrap or send the mount moving towards its built-in axis
+        limits. This function contains the logic needed to account for this, resulting in error
+        terms that are either the shortest distance if allowed or the longer distance if
+        constraints prevent taking the short path.
+
+        Args:
+            mount_enc_position: The mount encoder position.
+            target_enc_position: The target encoder position.
+            no_cross_position: Encoder position that this axis is not allowed to cross or None if
+                no such position exists.
+
+        Returns:
+            The error term for this axis, with wrap_angle set to 180 degrees.
+        """
+
+        # shortest path
+        prelim_error = Angle(
+            Longitude(mount_enc_position - target_enc_position, wrap_angle=180*u.deg)
+        )
+
+        # No limit, no problem! In this case always take the shortest distance path.
+        if no_cross_position is None:
+            return prelim_error
+
+        # error term as if the no-cross point were the target position
+        no_cross_error = Angle(
+            Longitude(mount_enc_position - no_cross_position, wrap_angle=180*u.deg)
+        )
+
+        # actual target is closer than the no-cross point so can't possibly be crossing it
+        if abs(prelim_error) <= abs(no_cross_error):
+            return prelim_error
+
+        # actual target is in opposite direction from the no-cross point
+        if np.sign(prelim_error) != np.sign(no_cross_error):
+            return prelim_error
+
+        # switch direction since prelim_error would have crossed the no-cross point
+        return prelim_error + 360*u.deg if prelim_error < 0 else prelim_error - 360*u.deg
+
+
+class BlindErrorSource(ErrorSource):
     """Ephemeris based error source.
 
     This class implements an error source based on computed ephemeris information. It is dubbed
     a "blind" error source in the sense that no physical sensing of the target position is
-    involved (such as by use of a camera). The error vector is computed by taking the difference
-    of the mount's current position and the position of the target as predicted by the PyEphem
-    package.
+    involved (such as by use of a camera).
 
     Attributes:
-        observer: PyEphem Observer object.
-        target: PyEphem Target object.
-        mount: TelescopeMount object.
-        meridian_side: Selected side of meridian (equatorial only): 'east' or 'west'.
-        offset_callback: A function that can make adjustments to the target position.
-        mount_position_cached: Cached position of the mount from last call to compute_error().
-        target_position_cached: Cached position of the target from last call to compute_error().
+        meridian_side (MeridianSide): Allows selection of a meridian side for equatorial mounts.
+        mount (TelescopeMount): Provides a generic interface to a telescope mount.
+        mount_model (MountModel): Transforms from sky coordinates to mount encoder positions.
+        target (Target): Represents the target object of interest.
+        target_position_offset (PositionOffset): Offset to be applied to the target's position each
+            time it is calculated from the ephemeris. Set to None by default, in which case the
+            position is not adjusted.
+        target_position (SkyCoord): Predicted topocentric position of the target.
     """
+
+
+    class PositionOffset(NamedTuple):
+        """Specifies an offset to be applied to a raw target position predicted from ephemeris.
+
+        Attributes:
+            direction: An angle that specifies the direction in which to apply the offset. A
+                direction angle of 0 is the direction of the target's current motion, and thus a
+                positive separation will move the target position further ahead in the trajectory.
+            separation: An angle that specifies the magnitude of the offset to apply. This is the
+                on-sky separation between the raw target and the offset target.
+        """
+        direction: Angle
+        separation: Angle
+
 
     def __init__(
             self,
-            mount,
-            observer,
-            target,
-            meridian_side='west'
+            mount: TelescopeMount,
+            mount_model: MountModel,
+            target: Target,
+            meridian_side: MeridianSide = MeridianSide.WEST
         ):
         """Inits BlindErrorSource object.
 
         Args:
-            mount: A TelescopeMount object.
-            observer: A PyEphem Observer object for the observer's location.
-            target: A PyEphem Target object for the thing to point to.
-            meridian_side: A string with values 'east' or 'west' that indicates
-                which side of the meridian the mount should favor. Only applies
-                to equatorial mounts.
-
-        Raises:
-            ValueError: For invalid argument values.
+            mount: Error terms will be computed relative to the encoder positions reported by this
+                mount.
+            mount_model: A model that transforms celestial coordinates to mount encoder positions.
+            target: Object that identifies the target to be tracked.
+            meridian_side: For equatorial mounts indicates which side of the meridian is desired.
         """
-        if meridian_side not in ['east', 'west']:
-            raise ValueError("meridian_side must be 'east' or 'west'")
-        self.observer = observer
         self.target = target
         self.mount = mount
+        self.mount_model = mount_model
         self.meridian_side = meridian_side
-        self.offset_callback = None
-        self.mount_position_cached = {}
-        self.target_position_cached = {}
-        self.adjusted_position_cached = {}
-        self.error_cached = {}
-        self.axes = mount.get_axis_names()
+        self.target_position_offset = None
+        self.target_position = None
+        super().__init__()
 
-    def register_offset_callback(self, callback):
-        """Register a callback function for position adjustments.
 
-        When a callback is registered it will be called each time compute_error is invoked. The
-        return value of the callback contains values that are then used to adjust the predicted
-        position of the object.
+    def _offset_target_position(self, position: SkyCoord, offset: PositionOffset) -> SkyCoord:
+        """Offset the target position by a specified amount in a trajectory-relative direction.
+
+        This shifts the position of the target. This could be used to adjust for pointing errors
+        based on real-time observations of the target. The adjustments are made relative to the
+        current apparent motion vector of the target such that it is easier to move it forward,
+        backward, or side-to-side along its current trajectory. This is much more intuitive than
+        trying to figure out the same adjustment in some coordinate system.
 
         Args:
-            callback: A function that returns a two-element list or numpy array giving the offset
-            adjustments in degrees. The first element is the x-axis offset and the second element
-            is the y-axis offset. The +y axis is in the direction of the object's motion. The
-            x-axis is perpendicular to the object's motion. To un-register pass None.
+            position: The target position to be adjusted.
+            offset: Offset to be applied.
+
+        Returns:
+            Target position with offset applied.
         """
-        self.offset_callback = callback
 
-    def get_axis_names(self):
-        """Returns a list of strings containing the axis names."""
-        return self.axes
+        # estimate direction vector of the target using positions now and several seconds later
+        now = Time.now()
+        position_now = self.target.get_position(now)
+        position_later = self.target.get_position(now + TimeDelta(10.0, format='sec'))
 
-    def meridian_flip(self):
-        """Cause an equatorial mount to perform a meridian flip."""
-        self.meridian_side = 'east' if self.meridian_side == 'west' else 'west'
+        # position angle pointing in direction of target motion
+        trajectory_position_angle = position_now.position_angle(position_later)
 
-    def compute_error(self):
+        # position angle in direction of offset to be applied
+        offset_position_angle = trajectory_position_angle + offset.direction
 
-        # Get coordinates of the target from a past time for use in determining direction of
-        # motion. This needs to be far enough in the past that this position and the current
-        # position are separated enough to compute an accurate motion vector.
-        a_while_ago = datetime.datetime.utcnow() - datetime.timedelta(seconds=10)
-        self.observer.date = ephem.Date(a_while_ago)
-        self.target.compute(self.observer)
-        target_position_prev = {}
-        for axis in self.axes:
-            target_position_prev[axis] = eval('self.target.' + axis) * 180.0 / math.pi
+        return position.directional_offset_by(offset_position_angle, offset.separation)
+
+
+    def compute_error(self) -> PointingError:
+        """Compute encoder error terms based on target ephemeris.
+
+        The error terms for each mount axis are found by the following procedure (some details
+        are omitted from this outline for simplicity):
+
+        1) Calculate the position of the target in topocentric coordinates for the observer's
+           location and for the current time.
+        2) Use the mount model to transform the target coordinates to mount encoder positions.
+        3) Subtract the current encoder positions from the target encoder positions.
+
+        Returns:
+            Error terms for each mount axis.
+        """
 
         # get coordinates of target for current time
-        self.observer.date = ephem.Date(datetime.datetime.utcnow())
-        self.target.compute(self.observer)
-        target_position = {}
-        for axis in self.axes:
-            target_position[axis] = eval('self.target.' + axis) * 180.0 / math.pi
-        self.target_position_cached = target_position
+        target_position_raw = self.target.get_position(Time.now())
 
-        # get current position of telescope (degrees)
-        mount_position = self.mount.get_position()
-        self.mount_position_cached = mount_position
-
-        # make any corrections to predicted position
-        if self.offset_callback is not None:
-            adjusted_position = adjust_position(
-                target_position_prev,
-                target_position,
-                self.offset_callback()
+        if self.target_position_offset is not None:
+            target_position = self._offset_target_position(
+                target_position_raw,
+                self.target_position_offset
             )
-            self.adjusted_position_cached = adjusted_position
         else:
-            adjusted_position = target_position
+            target_position = target_position_raw
 
-        # compute pointing errors in degrees
-        error = {}
-        for axis in self.axes:
-            if axis == 'dec':
-                # error depends on which side of meridian is selected and which
-                # side of meridian the mount is on currently
-                if self.meridian_side == 'east':
-                    if mount_position['pdec'] < 180.0:
-                        error[axis] = mount_position[axis] - adjusted_position[axis]
-                    else:
-                        error[axis] = 180.0 - mount_position[axis] - adjusted_position[axis]
-                else:
-                    if mount_position['pdec'] < 180.0:
-                        error[axis] = adjusted_position[axis] + mount_position[axis] - 180.0
-                    else:
-                        error[axis] = adjusted_position[axis] - mount_position[axis]
-            elif axis == 'ra':
-                # error depends on which side of meridian is selected
-                mount_side = 'east' if mount_position['pdec'] < 180.0 else 'west'
-                if self.meridian_side == mount_side:
-                    error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis])
-                else:
-                    error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis] + 180.0)
+        # transform from astrometric coordinate system to mount encoder positions
+        target_enc_positions = self.mount_model.topocentric_to_mount(
+            target_position,
+            self.meridian_side,
+        )
 
-                # avoid crossing through axis limit region (path to target
-                # should not require counter weight to ever point up)
-                if mount_position['pra'] - error[axis] > 360.0:
-                    error[axis] = error[axis] + 360.0
-                elif mount_position['pra'] - error[axis] < 0.0:
-                    error[axis] = error[axis] - 360.0
+        # get current position of telescope encoders
+        mount_enc_positions = self.mount.get_position()
 
-            else:
-                error[axis] = wrap_error(mount_position[axis] - adjusted_position[axis])
+        # required for error magnitude calcaulation
+        mount_topocentric = self.mount_model.mount_to_topocentric(mount_enc_positions)
+        error_magnitude = mount_topocentric.separation(target_position)
 
-        # compute angular separation between target and mount positions
-        error['mag'] = angle_between(mount_position, adjusted_position)
+        pointing_error = PointingError(
+            *[self._smallest_allowed_error(
+                mount_enc_positions[axis],
+                target_enc_positions[axis],
+                self.mount.no_cross_encoder_positions()[axis],
+            ) for axis in self.mount.AxisName],
+            error_magnitude
+        )
 
-        self.error_cached = error
-        return error
+        # update telemetry channels dict in one atomic operation
+        self._telem_mutex.acquire()
+        self._telem_chans = {}
+        self._telem_chans['target_raw_az'] = target_position_raw.az.deg
+        self._telem_chans['target_raw_alt'] = target_position_raw.alt.deg
+        self._telem_chans['target_az'] = target_position.az.deg
+        self._telem_chans['target_alt'] = target_position.alt.deg
+        if self.target_position_offset is not None:
+            self._telem_chans['target_offset_dir'] = self.target_position_offset.direction.deg
+            self._telem_chans['target_offset_sep'] = self.target_position_offset.separation.deg
+        self._telem_chans['mount_az'] = mount_topocentric.az.deg
+        self._telem_chans['mount_alt'] = mount_topocentric.alt.deg
+        self._telem_chans['error_mag'] = error_magnitude.deg
+        for axis in self.mount.AxisName:
+            self._telem_chans[f'target_enc_{axis}'] = target_enc_positions[axis].deg
+            self._telem_chans[f'mount_enc_{axis}'] = mount_enc_positions[axis].deg
+            self._telem_chans[f'error_enc_{axis}'] = pointing_error[axis].deg
+        self._telem_mutex.release()
 
-    def get_telem_channels(self):
-        chans = {}
-        chans['meridian_side'] = self.meridian_side
-        for key, val in self.target_position_cached.items():
-            chans['target_' + key] = val
-        for key, val in self.adjusted_position_cached.items():
-            chans['adjusted_target_' + key] = val
-        for key, val in self.mount_position_cached.items():
-            chans['mount_' + key] = val
-        for key, val in self.error_cached.items():
-            chans['error_' + key] = val
-        return chans
+        # for use by HybridErrorSource
+        self.target_position = target_position
+
+        return pointing_error
 
 
-class OpticalErrorSource(ErrorSource, TelemSource):
+class OpticalErrorSource(ErrorSource):
     """Computer vision based error source.
 
     This class implements an error source based on computer vision recognition of a target in an
     image from a camera. The error vector of the detected target from image center is transformed
-    to an error vector in the mount's coordinate system.
+    to error terms for each mount axis.
 
     Attributes:
-        degrees_per_pixel: Apparent size of a photosite in degrees.
-        webcam: A WebCam object instance.
-        x_axis_name: Name of mount axis parallel to the camera's x-axis.
-        y_axis_name: Name of mount axis parallel to the camera's y-axis.
-        frame_width_px: Width of the image in pixels.
-        frame_height_px: Height of the image in pixels.
+        camera: An instance of class Camera.
+        mount: An instance of class TelescopeMount.
+        mount_model: An instance of class MountModel.
+        target_position: SkyCoord with AltAz frame giving estimated topocentric position of target.
+            Updated on each call to `compute_error()`.
+        meridian_side: An instance of MeridianSide.
         frame_center_px: A tuple with the coordinates of the image center.
         concec_detect_frames: Number of consecutive frames where a target was detected.
         consec_no_detect_frames: Number of consecutive frames since a target was last detected.
-        detector: An OpenCV SimpleBlobDetector object.
     """
 
     def __init__(
             self,
-            cam_dev_path,
-            arcsecs_per_pixel,
-            cam_num_buffers,
-            cam_ctlval_exposure,
-            x_axis_name,
-            y_axis_name,
-            mount=None,
-            frame_dump_dir=None,
+            camera: Camera,
+            mount: TelescopeMount,
+            mount_model: MountModel,
+            meridian_side: Optional[MeridianSide] = None,
+            camera_timeout: float = inf,
         ):
+        """Construct an instance of OpticalErrorSource
 
-        self.degrees_per_pixel = arcsecs_per_pixel / 3600.0
-
-        self.webcam = webcam.WebCam(
-            cam_dev_path,
-            cam_num_buffers,
-            cam_ctlval_exposure,
-            frame_dump_dir
-        )
-
-        self.x_axis_name = x_axis_name
-        self.y_axis_name = y_axis_name
-
+        Args:
+            camera: Camera from which to capture imagery.
+            mount: Required so current position can be queried.
+            mount_model: Required to transform between camera and mount encoder coordinates.
+            meridian_side: Mount will stay on this side of the meridian. If None, the mount will
+                remain on the same side of the meridian that it is on when this constructor is
+                invoked.
+            camera_timeout: How long to wait for a frame from the camera in seconds on calls to
+                `compute_error()`. If `inf`, `compute_error()` will block indefinitely.
+        """
+        self.camera = camera
+        self.camera_timeout = camera_timeout
         self.mount = mount
+        self.mount_model = mount_model
+        self.target_position = None
 
-        self.frame_width_px = self.webcam.get_res_x()
-        self.frame_height_px = self.webcam.get_res_y()
+        if meridian_side is not None:
+            self.meridian_side = meridian_side
+        else:
+            _, self.meridian_side = mount_model.encoder_to_spherical(mount.get_position())
 
-        self.frame_center_px = (self.frame_width_px / 2.0, self.frame_height_px / 2.0)
-
-        # cached values from last error calculation (for telemetry)
-        self.error_cached = {}
+        frame_height, frame_width = camera.frame_shape
+        self.frame_center_px = (frame_width / 2.0, frame_height / 2.0)
 
         # counts of consecutive frames with detections or no detections
         self.consec_detect_frames = 0
         self.consec_no_detect_frames = 0
 
-        cv2.namedWindow('frame')
+        cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('frame', frame_width, frame_height)
 
-    def get_axis_names(self):
-        return [self.x_axis_name, self.y_axis_name]
+        super().__init__()
 
-    def find_features(self, frame):
+    @staticmethod
+    def find_features(frame: np.ndarray) -> List[cv2.KeyPoint]:
         """Find bright features in a camera frame.
 
         Args:
@@ -263,31 +387,32 @@ class OpticalErrorSource(ErrorSource, TelemSource):
             A list of keypoints.
         """
 
-        # convert to grayscale
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
         # pick a threshold as the max of these two methods:
         # - 99th percentile of histogram
         # - peak of histogram plus a magic number
-        hist, bins = np.histogram(gray.ravel(), 256, [0,256])
+        hist, _ = np.histogram(frame.ravel(), 256, [0, 256])
         cumsum = np.cumsum(hist)
         threshold_1 = np.argmax(cumsum >= 0.99*cumsum[-1])
         threshold_2 = np.argmax(hist) + 4
         threshold = max(threshold_1, threshold_2)
 
-        retval, thresh = cv2.threshold(
-            gray,
+        _, thresh = cv2.threshold(
+            frame,
             threshold,
             255,
             cv2.THRESH_BINARY
         )
 
         # outer contours only
-        im2, contours, hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        _, contours, _ = cv2.findContours(
+            thresh,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_NONE
+        )
 
         keypoints = []
         for contour in contours:
-            moms = cv2.moments(contour);
+            moms = cv2.moments(contour)
             if moms['m00'] == 0.0:
                 continue
 
@@ -304,7 +429,12 @@ class OpticalErrorSource(ErrorSource, TelemSource):
 
         return keypoints
 
-    def show_annotated_frame(self, frame, keypoints=[], target_keypoint=None):
+    def show_annotated_frame(
+            self,
+            frame: np.ndarray,
+            keypoints: Optional[List[cv2.KeyPoint]] = None,
+            target_keypoint: Optional[cv2.KeyPoint] = None
+        ) -> None:
         """Displays camera frame in a window with features circled and crosshairs.
 
         Args:
@@ -316,34 +446,36 @@ class OpticalErrorSource(ErrorSource, TelemSource):
         frame_annotated = frame.copy()
 
         # add grey crosshairs
+        frame_height, frame_width = self.camera.frame_shape
         cv2.line(
             frame_annotated,
             (int(self.frame_center_px[0]), 0),
-            (int(self.frame_center_px[0]), int(self.frame_height_px) - 1),
+            (int(self.frame_center_px[0]), frame_height - 1),
             (50, 50, 50),
             1
         )
         cv2.line(
             frame_annotated,
             (0, int(self.frame_center_px[1])),
-            (int(self.frame_width_px) - 1, int(self.frame_center_px[1])),
+            (frame_width - 1, int(self.frame_center_px[1])),
             (50, 50, 50),
             1
         )
 
-        # lower bound on keypoint size so the annotation is visible (okay to modify size because
-        # we only really care about the center)
-        for point in keypoints:
-            point.size = max(point.size, 10.0)
+        if keypoints is not None:
+            # lower bound on keypoint size so the annotation is visible (okay to modify size because
+            # we only really care about the center)
+            for point in keypoints:
+                point.size = max(point.size, 10.0)
 
-        # cicle non-target keypoints in blue
-        frame_annotated = cv2.drawKeypoints(
-            frame_annotated,
-            keypoints,
-            np.array([]),
-            (255, 0, 0),
-            cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
-        )
+            # cicle non-target keypoints in blue
+            frame_annotated = cv2.drawKeypoints(
+                frame_annotated,
+                keypoints,
+                np.array([]),
+                (255, 0, 0),
+                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+            )
 
         # circle target keypoint in red
         if target_keypoint is not None:
@@ -360,24 +492,103 @@ class OpticalErrorSource(ErrorSource, TelemSource):
         cv2.imshow('frame', frame_annotated)
         cv2.waitKey(1)
 
-    def compute_error(self, blocking=True):
 
-        frame = self.webcam.get_fresh_frame(blocking=blocking)
+    def _camera_to_mount_error(self, error_x: Angle, error_y: Angle) -> Tuple[PointingError, Dict]:
+        """Transform from error terms in camera frame to mount encoder error terms
+
+        Args:
+            error_x: Error term in camera's x-axis
+            error_y: Error term in camera's y-axis
+
+        Returns:
+            Pointing error and dict of telemetry channels.
+        """
+
+        # angular separation and direction from center of camera frame to target
+        error_complex = error_x.deg + 1j*error_y.deg
+        error_magnitude = Angle(np.abs(error_complex) * u.deg)
+        error_direction = Angle(np.angle(error_complex) * u.rad)
+
+        # Current position of mount is assumed to be the position of the center of the camera frame
+        mount_enc_positions = self.mount.get_position(max_cache_age=0.1)
+        mount_coord, mount_meridian_side = self.mount_model.encoder_to_spherical(
+            mount_enc_positions
+        )
+
+        # Find the position of the target relative to the mount position
+        target_position_angle = error_direction + self.mount_model.guide_cam_orientation
+        if mount_meridian_side == MeridianSide.EAST:
+            # camera orientation flips when crossing the pole
+            target_position_angle += 180*u.deg
+        target_coord = SkyCoord(mount_coord).directional_offset_by(
+            position_angle=target_position_angle,
+            separation=error_magnitude
+        ).represent_as(UnitSphericalRepresentation)
+
+        # convert target position back to mount encoder positions
+        target_enc_positions = self.mount_model.spherical_to_encoder(
+            mount_coord=target_coord,
+            meridian_side=self.meridian_side,
+        )
+
+        # find the resulting mount encoder error terms
+        pointing_error = PointingError(
+            *[self._smallest_allowed_error(
+                mount_enc_positions[axis],
+                target_enc_positions[axis],
+                self.mount.no_cross_encoder_positions()[axis],
+            ) for axis in self.mount.AxisName],
+            error_magnitude
+        )
+
+        # find target position in topocentric frame (used by HybridErrorSource)
+        self.target_position = self.mount_model.mount_to_topocentric(target_enc_positions)
+
+        telem_chans = {}
+        telem_chans['error_mag'] = error_magnitude.deg
+        telem_chans['error_cam_direction'] = error_direction.deg
+        telem_chans['target_position_angle'] = target_position_angle.deg
+        for axis in self.mount.AxisName:
+            telem_chans[f'target_enc_{axis}'] = target_enc_positions[axis].deg
+            telem_chans[f'mount_enc_{axis}'] = mount_enc_positions[axis].deg
+            telem_chans[f'error_enc_{axis}'] = pointing_error[axis].deg
+
+        return pointing_error, telem_chans
+
+
+    def compute_error(self) -> PointingError:
+        """Compute pointing error using computer vision and a camera.
+
+        The encoder error terms are computed using this rough procedure:
+        1) A frame is obtained from the camera
+        2) Computer vision algorithms are applied to identify bright objects
+        3) The bright object nearest the center of the camera frame is assumed to be the target
+        4) The error vector for the selected object is computed in the camera's frame
+        5) The error vector is transformed from camera frame to mount encoder error terms
+
+        Returns:
+            Error terms for each mount axis.
+        """
+
+        frame = self.camera.get_frame(timeout=self.camera_timeout)
 
         if frame is None:
-            self.error_cached = {}
+            self._set_telem_channels()
             raise self.NoSignalException('No frame was available')
 
         keypoints = self.find_features(frame)
 
         if not keypoints:
-            self.show_annotated_frame(frame)
             self.consec_detect_frames = 0
             self.consec_no_detect_frames += 1
-            self.error_cached = {}
+            self.show_annotated_frame(frame)
+            self._set_telem_channels()
             raise self.NoSignalException('No target identified')
 
-        # use the keypoint closest to the center of the frame
+        self.consec_detect_frames += 1
+        self.consec_no_detect_frames = 0
+
+        # find the keypoint closest to the center of the frame
         min_error = None
         target_keypoint = None
         for keypoint in keypoints:
@@ -392,43 +603,34 @@ class OpticalErrorSource(ErrorSource, TelemSource):
                 error_x_px = e_x
                 error_y_px = e_y
 
-        error_x_deg = error_x_px * self.degrees_per_pixel
-        error_y_deg = error_y_px * self.degrees_per_pixel
-
-        if self.mount is None:
-            # This is a crude approximation. It breaks down near the mount's pole.
-            error = {}
-            error[self.x_axis_name] = error_x_deg
-            error[self.y_axis_name] = error_y_deg
-        else:
-            # This is the "proper" way of doing things but it requires knowledge of the mount
-            # position.
-            error = camera_eq_error(
-                self.mount.get_position(max_cache_age=0.1),
-                [error_x_px, error_y_px],
-                self.degrees_per_pixel
-            )
-        # angular separation between detected target and center of camera frame in degrees
-        error['mag'] = np.abs(error_x_deg + 1j*error_y_deg)
-        self.error_cached = error
-
-        self.consec_detect_frames += 1
-        self.consec_no_detect_frames = 0
-
         self.show_annotated_frame(frame, keypoints, target_keypoint)
 
-        return error
+        # error terms in camera frame
+        error_x = Angle(error_x_px * self.camera.pixel_scale * u.deg)
+        error_y = Angle(error_y_px * self.camera.pixel_scale * u.deg)
 
-    def get_telem_channels(self):
-        chans = {}
-        chans['consec_detect_frames'] = self.consec_detect_frames
-        chans['consec_no_detect_frames'] = self.consec_no_detect_frames
-        for key, val in self.error_cached.items():
-            chans['error_' + key] = val
-        return chans
+        # transform to mount encoder error terms
+        pointing_error, telem = self._camera_to_mount_error(error_x, error_y)
+
+        telem['error_cam_x'] = error_x.deg
+        telem['error_cam_y'] = error_y.deg
+
+        self._set_telem_channels(telem)
+
+        return pointing_error
+
+    def _set_telem_channels(self, chans: Optional[Dict] = None) -> None:
+        """Set telemetry dict polled by telemetry thread"""
+        self._telem_mutex.acquire()
+        self._telem_chans = {}
+        self._telem_chans['consec_detect_frames'] = self.consec_detect_frames
+        self._telem_chans['consec_no_detect_frames'] = self.consec_no_detect_frames
+        if chans is not None:
+            self._telem_chans.update(chans)
+        self._telem_mutex.release()
 
 
-class HybridErrorSource(ErrorSource, TelemSource):
+class HybridErrorSource(ErrorSource):
     """Hybrid of blind and computer vision error sources.
 
     This class is a hybrid of the BlindErrorSource and the OpticalErrorSource classes. It computes
@@ -441,114 +643,116 @@ class HybridErrorSource(ErrorSource, TelemSource):
     accurate--for example, the computer vision algorithm can be tricked by false targets.
 
     Attributes:
-        axes: List of mount axis names.
-        blind: BlindErrorSource object instance.
-        optical: OpticalErrorSource object instance.
-        max_divergence: Max allowed divergence between error sources in degrees.
+        blind: BlindErrorSource instance.
+        optical: OpticalErrorSource instance.
+        max_divergence: Max allowed angular separation between the topocentric target positions
+            predicted by both targets.
         max_optical_no_signal_frames: Reverts to blind mode after this many frames with no target.
         state: String used as an enum to represent state: 'blind' or 'optical'.
     """
+
+    class State(IntEnum):
+        """Represents state of hybrid error source"""
+        BLIND = 0
+        OPTICAL = 1
+
     def __init__(
             self,
-            mount,
-            observer,
-            target,
-            cam_dev_path,
-            arcsecs_per_pixel,
-            cam_num_buffers,
-            cam_ctlval_exposure,
-            max_divergence=5.0,
-            max_optical_no_signal_frames=4,
-            meridian_side='west',
-            frame_dump_dir=None,
+            mount: TelescopeMount,
+            mount_model: MountModel,
+            target: Target,
+            camera: Camera,
+            max_divergence: Angle = Angle(5.0 * u.deg),
+            max_optical_no_signal_frames: int = 4,
+            meridian_side: MeridianSide = MeridianSide.WEST,
         ):
-        self.axes = mount.get_axis_names()
+        """Construct an instance of HybridErrorSource
+
+        Args:
+            mount: The mount under active control.
+            mount_model: Required to transform between different reference frames.
+            target: Represents the target to be tracked in BlindErrorSource.
+            camera: Camera from which to capture imagery in OpticalErrorSource.
+            max_divergence: Maximum allowed angular separation between target position estimated by
+                the optical and blind error sources when in optical mode. When this is exceeded
+                the state reverts to blind mode.
+            max_optical_no_signal_frames: Maximum number of consecutive camera frames with no
+                target detected before reverting to blind mode.
+            meridian_side: Mount will stay on this side of the meridian.
+        """
         self.blind = BlindErrorSource(
-            mount,
-            observer,
-            target,
+            mount=mount,
+            mount_model=mount_model,
+            target=target,
             meridian_side=meridian_side
         )
-        # FIXME: Have to do this because OpticalErrorSource has a crappy way of specifying how the
-        # camera is oriented with respect to the mount axes.
-        if set(self.axes) == set(['az', 'alt']):
-            self.optical = OpticalErrorSource(
-                cam_dev_path,
-                arcsecs_per_pixel,
-                cam_num_buffers,
-                cam_ctlval_exposure,
-                x_axis_name='az',
-                y_axis_name='alt',
-                frame_dump_dir=frame_dump_dir,
-            )
-        elif set(self.axes) == set(['ra', 'dec']):
-            self.optical = OpticalErrorSource(
-                cam_dev_path,
-                arcsecs_per_pixel,
-                cam_num_buffers,
-                cam_ctlval_exposure,
-                x_axis_name='ra',
-                y_axis_name='dec',
-                mount=mount,
-                frame_dump_dir=frame_dump_dir,
-            )
-        else:
-            raise ValueError('unrecognized axis names')
+        self.optical = OpticalErrorSource(
+            camera=camera,
+            mount=mount,
+            mount_model=mount_model,
+            meridian_side=meridian_side
+        )
         self.max_divergence = max_divergence
         self.max_optical_no_signal_frames = max_optical_no_signal_frames
-        self.state = 'blind'
-        self.divergence_angle = None
+        self.state = self.State.BLIND
         print('Hybrid error source starting in blind tracking state')
+        super().__init__()
 
-    def get_axis_names(self):
-        return self.axes
 
-    def register_blind_offset_callback(self, callback):
-        """See BlindErrorSource documentation."""
-        self.blind.register_offset_callback(callback)
+    def compute_error(self) -> PointingError:
+        """Compute encoder error terms using both blind and optical methods and pick one to return.
 
-    def compute_error(self):
+        Pointing error computation is attempted for both optical and blind error sources on each
+        invocation. The state is updated based on the presence of a target detected by the camera
+        and the separation angle between the target position as predicted from ephemeris and by the
+        camera. The pointing error terms corresponding to the state after all updates is returned.
+
+        Returns:
+            Error terms for each mount axis.
+        """
+
         blind_error = self.blind.compute_error()
 
         try:
-            optical_error = self.optical.compute_error(blocking=(self.state == 'optical'))
+            self.optical.camera_timeout = inf if self.state == self.State.OPTICAL else 0.0
+            optical_error = self.optical.compute_error()
         except ErrorSource.NoSignalException:
-            self.divergence_angle = None
-            if self.state == 'blind':
+            if self.state == self.State.BLIND:
+                self._set_telem_channels()
                 return blind_error
-            else:
-                if self.optical.consec_no_detect_frames >= self.max_optical_no_signal_frames:
-                    print('Lost target in camera, switching to blind tracking')
-                    self.state = 'blind'
-                    return blind_error
-                raise
-
-        # get optical target position, which is the mount's current position plus the optical
-        # error vector
-        mount_position = self.blind.mount_position_cached
-        target_position_optical = {}
-        for axis in self.axes:
-            target_position_optical[axis] = mount_position[axis] + optical_error[axis]
-
-        # get blind object position, which is what PyEphem says it is
-        target_position_blind = self.blind.target_position_cached
+            if self.optical.consec_no_detect_frames >= self.max_optical_no_signal_frames:
+                print('Lost target in camera, switching to blind tracking')
+                self.state = self.State.BLIND
+                self._set_telem_channels()
+                return blind_error
+            raise
 
         # Get angle between optical and blind target position solutions. This is a measure of how
         # far the two solutions have diverged. A large divergence angle could mean that the
         # computer vision algorithm is not tracking the correct object.
-        self.divergence_angle = angle_between(target_position_optical, target_position_blind)
+        divergence_angle = self.optical.target_position.separation(self.blind.target_position)
 
-        if self.state == 'blind' and self.divergence_angle < self.max_divergence:
+        if self.state == self.State.BLIND and divergence_angle < self.max_divergence:
             print('A target is in view, switching to optical tracking')
-            self.state = 'optical'
-        elif self.state == 'optical' and self.divergence_angle > self.max_divergence:
+            self.state = self.State.OPTICAL
+        elif self.state == self.State.OPTICAL and divergence_angle > self.max_divergence:
             print('Solutions diverged, switching to blind tracking')
-            self.state = 'blind'
+            self.state = self.State.BLIND
 
-        return blind_error if self.state == 'blind' else optical_error
+        telem = {}
+        telem['divergence_angle'] = divergence_angle.deg
+        self._set_telem_channels(telem)
 
-    def get_telem_channels(self):
-        chans = {}
-        chans['state'] = 0 if self.state == 'blind' else 1
-        chans['divergence_angle'] = self.divergence_angle
-        return chans
+        if self.state == self.State.BLIND:
+            return blind_error
+        else:
+            return optical_error
+
+    def _set_telem_channels(self, chans: Optional[Dict] = None) -> None:
+        """Set telemetry dict polled by telemetry thread"""
+        self._telem_mutex.acquire()
+        self._telem_chans = {}
+        self._telem_chans['state'] = self.state
+        if chans is not None:
+            self._telem_chans.update(chans)
+        self._telem_mutex.release()

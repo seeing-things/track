@@ -92,8 +92,8 @@ def main():
         else:
             while True:
                 x, y = game_pad.get_value()
-                mount.slew('ra', mount.max_slew_rate * x)
-                mount.slew('dec', mount.max_slew_rate * y)
+                mount.slew(0, mount.max_slew_rate * x)
+                mount.slew(1, mount.max_slew_rate * y)
 
     except KeyboardInterrupt:
         print('Got CTRL-C, shutting down...')

@@ -2,6 +2,8 @@
 
 import time
 import numpy as np
+import astropy.units as u
+from astropy.coordinates import Longitude
 import track
 
 def main():
@@ -37,7 +39,7 @@ def main():
         rates = [2**x for x in range(14)]
         rates.append(16319)
 
-        axes = mount.get_axis_names()
+        axes = [axis for axis in mount.AxisName]
 
         rate_est = {}
         for axis in axes:
@@ -46,36 +48,34 @@ def main():
         direction = +1
 
         for axis in axes:
-            print('Testing ' + axis + ' axis...')
-
-            if axis == 'ra':
-                print('Warning: RA axis results could be inaccurate! RA coordinates change as a'
-                    + ' function of time for a stationary mount!')
+            print('Testing ' + str(axis) + '...')
 
             for rate in rates:
 
                 print('Commanding slew at ' + str(rate) + ' arcseconds per second...')
 
-                mount.slew(axis, direction * rate / 3600.0)
+                time_start = time.time()
+                while time.time() - time_start < SLEW_CHANGE_TIME:
+                    mount.slew(axis, direction * rate / 3600.0)
+
                 direction *= -1
-                time.sleep(SLEW_CHANGE_SLEEP)
                 position_start = mount.get_position()
                 time_start = time.time()
                 while True:
                     position = mount.get_position()
                     time_elapsed = time.time() - time_start
-                    position_change = abs(track.wrap_error(position[axis] - position_start[axis]))
+                    position_change = abs(Longitude(position[axis] - position_start[axis], wrap_angle=180*u.deg)).deg
                     if position_change > SLEW_LIMIT or time_elapsed > TIME_LIMIT:
                         break
 
                 rate_est[axis].append(position_change / time_elapsed)
                 print('\tmeasured rate: ' + str(rate_est[axis][-1] * 3600.0))
 
-            mount.slew(axis, 0.0)
+            mount.safe()
 
         print('Results:')
-        for rate, rate_est_az, rate_est_alt in zip(rates, rate_est['az'], rate_est['alt']):
-            print(str(rate) + ', ' + str(3600 * rate_est_az) + ', ' + str(3600 * rate_est_alt))
+        for rate, rate_est_0, rate_est_1 in zip(rates, rate_est[axes[0]], rate_est[axes[1]]):
+            print(str(rate) + ', ' + str(3600 * rate_est_0) + ', ' + str(3600 * rate_est_1))
 
 
     except KeyboardInterrupt:
