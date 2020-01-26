@@ -38,9 +38,9 @@ iers.conf.auto_max_age = None  # Disable strict stale cache check
 class ModelParameters(NamedTuple):
     """Set of parameters for the mount model.
 
-    When paired with the equations in the topocentric_to_mount and mount_to_topocentric methods of
-    the MountModel class these parameters define a unique transformation between mount encoder
-    positions and coordinates in the topocentric coordinate system (azimuth and altitude).
+    When paired with the equations in the topocentric_to_encoders and encoders_to_topocentric
+    methods of the MountModel class these parameters define a unique transformation between mount
+    encoder positions and coordinates in the topocentric coordinate system (azimuth and altitude).
 
     Attributes:
         axis_0_offset: Encoder zero-point offset for the longitude mount axis. For equatorial
@@ -268,7 +268,7 @@ class MountModel:
         )
 
 
-    def mount_to_topocentric(self, encoder_positions: MountEncoderPositions) -> SkyCoord:
+    def encoders_to_topocentric(self, encoder_positions: MountEncoderPositions) -> SkyCoord:
         """Convert mount encoder positions to a topocentric coordinate.
 
         Args:
@@ -291,7 +291,7 @@ class MountModel:
         ), frame=AltAz)
 
 
-    def topocentric_to_mount(
+    def topocentric_to_encoders(
             self,
             sky_coord: SkyCoord,
             meridian_side: MeridianSide,
@@ -371,7 +371,7 @@ def residual(
         Longitude(observation.encoder_1*u.deg),
     )
     mount_model = MountModel(ModelParamSet(model_params, None, None, None))
-    sc_mount = mount_model.mount_to_topocentric(encoder_positions)
+    sc_mount = mount_model.encoders_to_topocentric(encoder_positions)
     sc_cam = SkyCoord(observation.sky_az*u.deg, observation.sky_alt*u.deg, frame='altaz')
 
     return pd.Series([sc_mount.separation(sc_cam), sc_mount.position_angle(sc_cam)],
@@ -434,8 +434,8 @@ def solve_model(observations: pd.DataFrame) -> Tuple[ModelParameters, OptimizeRe
     """Solves for mount model parameters using a set of observations.
 
     Finds a least-squares solution to the mount model parameters. The solution can then be used
-    with the topocentric_to_mount and mount_to_topocentric functions in this module to convert
-    between mount reference frame and celestial equatorial frame.
+    with the topocentric_to_encoders and encoders_to_topocentric functions in this module to
+    convert between mount reference frame and celestial equatorial frame.
 
     Args:
         observations: A set of observations where each contains a timestamp, mount encoder
