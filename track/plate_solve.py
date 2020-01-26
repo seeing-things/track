@@ -71,7 +71,8 @@ def plate_solve(frame: np.ndarray, camera_width: Optional[float] = None) -> SkyC
         center_coord = wcs_header.all_pix2world(
             (frame_width - 1) / 2.0,
             (frame_height - 1) / 2.0,
-            0
+            0,
+            ra_dec_order=True,
         )
 
         # making an assumption here that the coordinates reported by astrometry.net are actually in
