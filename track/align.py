@@ -296,8 +296,10 @@ def main():
 
                 print(f'\tPlate solver attempt {i + 1} of {args.max_tries}...', end='', flush=True)
 
+                # Make all physical measurements (clock, camera, mount encoders) near same time
                 timestamp = time.time()
                 frame = camera.get_frame()
+                mount_position = mount.get_position()
 
                 try:
                     sc_eq = track.plate_solve(
@@ -308,7 +310,6 @@ def main():
                     sc_eq.location = location
                     sc_topo = sc_eq.transform_to('altaz')
                     print('Solution found!')
-                    mount_position = mount.get_position()
                     observations.append({
                         'unix_timestamp': timestamp,
                         'encoder_0': mount_position.encoder_0.deg,
