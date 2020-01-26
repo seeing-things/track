@@ -268,7 +268,7 @@ class BlindErrorSource(ErrorSource):
             target_position = target_position_raw
 
         # transform from astrometric coordinate system to mount encoder positions
-        target_enc_positions = self.mount_model.topocentric_to_mount(
+        target_enc_positions = self.mount_model.topocentric_to_encoders(
             target_position,
             self.meridian_side,
         )
@@ -277,7 +277,7 @@ class BlindErrorSource(ErrorSource):
         mount_enc_positions = self.mount.get_position()
 
         # required for error magnitude calcaulation
-        mount_topocentric = self.mount_model.mount_to_topocentric(mount_enc_positions)
+        mount_topocentric = self.mount_model.encoders_to_topocentric(mount_enc_positions)
         error_magnitude = mount_topocentric.separation(target_position)
 
         pointing_error = PointingError(
@@ -542,7 +542,7 @@ class OpticalErrorSource(ErrorSource):
         )
 
         # find target position in topocentric frame (used by HybridErrorSource)
-        self.target_position = self.mount_model.mount_to_topocentric(target_enc_positions)
+        self.target_position = self.mount_model.encoders_to_topocentric(target_enc_positions)
 
         telem_chans = {}
         telem_chans['error_mag'] = error_magnitude.deg
