@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 from astropy_healpix import HEALPix
 from astropy import units as u
+from astropy.io import fits
 from astropy.time import Time
 from astropy.coordinates import SkyCoord, EarthLocation, Angle, Longitude
 import track
@@ -280,6 +281,13 @@ def main():
         meridian_side=meridian_side
     )
 
+    # directory in which to place observation data for debugging purposes
+    observations_dir = os.path.join(
+        DATA_PATH,
+        'alignment_' + datetime.utcnow().replace(microsecond=0).isoformat()
+    )
+    os.mkdir(observations_dir)
+
     # pylint: disable=broad-except
     try:
         observations = []
@@ -323,7 +331,14 @@ def main():
                         'encoder_1': mount_position.encoder_1.deg,
                         'sky_az': sc_topo.az.deg,
                         'sky_alt': sc_topo.alt.deg,
+                        'sky_ra': sc_eq.ra.deg,
+                        'sky_dec': sc_eq.dec.deg,
                     })
+                    hdu = fits.PrimaryHDU(frame)
+                    hdu.writeto(os.path.join(
+                        observations_dir,
+                        f'camera_frame_{num_solutions:03d}'
+                    ))
                     num_solutions += 1
                     break
                 except track.NoSolutionException:
@@ -344,8 +359,8 @@ def main():
         observations = pd.DataFrame(observations)
 
         observations_filename = os.path.join(
-            DATA_PATH,
-            f'alignment_observations_{datetime.utcnow().replace(microsecond=0).isoformat()}.pickle'
+            observations_dir,
+            'observations_dataframe.pickle'
         )
         print(f'Saving observations to {observations_filename}')
         with open(observations_filename, 'wb') as f:
