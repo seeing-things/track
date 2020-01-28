@@ -109,9 +109,11 @@ class ModelParamSet(NamedTuple):
             `MountModel.encoder_to_spherical()`). Specifically, this gives the position angle of
             the positive x-axis in the camera frame, where "position angle" is defined using the
             east-of-north convention.
-        location: Location of the mount corresponding to model_params.
+        location: Location of the mount for which model_params is applicable. Not used in any
+            MountModel calculations.
         timestamp: Unix timestamp giving the approximate time that this set of model parameters
-            was generated.
+            was generated. Used only to check if the model parameters are stale; not used in any
+            MountModel calculations.
     """
     model_params: ModelParameters
     guide_cam_orientation: Longitude
