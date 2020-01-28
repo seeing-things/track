@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import List, Optional, NamedTuple
 import numpy as np
 import pandas as pd
+import click
 from astropy_healpix import HEALPix
 from astropy import units as u
 from astropy.io import fits
@@ -353,8 +354,11 @@ def main():
             print("Can't solve mount model without any usable observations. Aborting.")
             sys.exit(1)
         elif num_solutions < args.min_positions:
-            print(f'WARNING: You asked for at least {args.min_positions} positions but only '
-                  f'{num_solutions} can be used. Pointing accuracy may be affected.')
+            if not click.confirm(f'WARNING: You asked for at least {args.min_positions} positions '
+                                 f'but only {num_solutions} can be used. Pointing accuracy may be '
+                                 f'affected. Continue to solve for model parameters anyway?',
+                                 default=True):
+                sys.exit(1)
 
         observations = pd.DataFrame(observations)
 
@@ -374,7 +378,10 @@ def main():
 
             rms_error = np.sqrt(2 * result.cost / len(observations))
             if rms_error > args.max_rms_error:
-                print(f'WARNING: RMS error {rms_error:.4f} > {args.max_rms_error:.4f} degrees')
+                if not click.confirm(f'WARNING: RMS error {rms_error:.4f} > '
+                                     f'{args.max_rms_error:.4f} degrees, save this solution '
+                                     f'anyway?', default=True):
+                    sys.exit(1)
             else:
                 print(f'RMS error: {rms_error:.4f} degrees')
 
