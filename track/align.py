@@ -20,6 +20,7 @@ import time
 import pickle
 from datetime import datetime
 from typing import List, Optional, NamedTuple
+import numpy as np
 import pandas as pd
 from astropy_healpix import HEALPix
 from astropy import units as u
@@ -208,6 +209,12 @@ def main():
         default=20.0,
         type=float
     )
+    parser.add_argument(
+        '--max-rms-error',
+        help='warning printed if RMS error in degrees is greater than this',
+        default=0.2,
+        type=float
+    )
     cameras.add_program_arguments(parser)
     args = parser.parse_args()
 
@@ -347,17 +354,26 @@ def main():
         try:
             print('Solving for mount model parameters...', end='', flush=True)
             model_params, result = track.model.solve_model(observations)
+            print('done.')
+            print(result)
+
+            rms_error = np.sqrt(2 * result.cost / len(observations))
+            if rms_error > args.max_rms_error:
+                print(f'WARNING: RMS error {rms_error:.4f} > {args.max_rms_error:.4f} degrees')
+            else:
+                print(f'RMS error: {rms_error:.4f} degrees')
+
             model_param_set = ModelParamSet(
                 model_params=model_params,
                 guide_cam_orientation=Longitude(0*u.deg),  # TODO: solve for this!
                 location=location,
                 timestamp=time.time(),
             )
-            print('success!')
-            print(result)
+
             filename = track.model.DEFAULT_MODEL_FILENAME
             print('Saving model parameters to {}'.format(filename))
             track.model.save_default_param_set(model_param_set)
+
         except track.model.NoSolutionException as e:
             print('failed: {}'.format(str(e)))
 
