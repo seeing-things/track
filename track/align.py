@@ -285,7 +285,7 @@ def main():
     # directory in which to place observation data for debugging purposes
     observations_dir = os.path.join(
         DATA_PATH,
-        'alignment_' + datetime.utcnow().replace(microsecond=0).isoformat()
+        'alignment_' + datetime.utcnow().isoformat(timespec='seconds').replace(':', '')
     )
     os.mkdir(observations_dir)
 
@@ -336,10 +336,13 @@ def main():
                         'sky_dec': sc_eq.dec.deg,
                     })
                     hdu = fits.PrimaryHDU(frame)
-                    hdu.writeto(os.path.join(
-                        observations_dir,
-                        f'camera_frame_{num_solutions:03d}'
-                    ))
+                    try:
+                        hdu.writeto(os.path.join(
+                            observations_dir,
+                            f'camera_frame_{num_solutions:03d}.fits'
+                        ))
+                    except OSError as e:
+                        print('Trouble saving image: ' + str(e))
                     num_solutions += 1
                     break
                 except track.NoSolutionException:
