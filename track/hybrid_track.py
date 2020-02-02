@@ -267,19 +267,19 @@ def main():
         print('Unhandled exception: ' + str(e))
     finally:
         # don't rely on destructors to safe mount!
-        print('Safing mount...')
+        print('Safing mount...', end='', flush=True)
         if mount.safe():
             print('Mount safed successfully!')
         else:
             print('Warning: Mount may be in an unsafe state!')
 
-    if args.telem_enable:
-        telem_logger.stop()
+        if args.telem_enable:
+            telem_logger.stop()
 
-    try:
-        game_pad.stop()
-    except:
-        pass
+        try:
+            game_pad.stop()
+        except:
+            pass
 
 if __name__ == "__main__":
     main()
