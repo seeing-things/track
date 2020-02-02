@@ -8,8 +8,8 @@ things:
 2) For each position:
    a) Point the mount at the position
    b) Capture an image with a camera
-   c) Use the astrometry.net plate solver to determine the sky coordinates of the image
-   d) Store a timestamp and the mount's encoder positions
+   c) Use the astrometry.net plate solver to determine the sky coordinates of the image center
+   d) Store a timestamp, the mount's encoder positions, and the image sky coordinates
 3) Use the set of observations to solve for mount model parameters
 4) Store the mount model parameters on disk for future use during the same observing session
 """
