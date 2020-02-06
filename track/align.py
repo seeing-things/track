@@ -396,8 +396,15 @@ def main():
                 timestamp=time.time(),
             )
 
-            filename = track.model.DEFAULT_MODEL_FILENAME
-            print('Saving model parameters to {}'.format(filename))
+            params_filename = os.path.join(
+                observations_dir,
+                'model_params.pickle'
+            )
+            print(f'Saving model parameters to {params_filename}')
+            with open(params_filename, 'wb') as f:
+                pickle.dump(model_param_set, f, pickle.HIGHEST_PROTOCOL)
+
+            print('Making this set of model parameters the default')
             track.model.save_default_param_set(model_param_set)
 
         except track.model.NoSolutionException as e:
