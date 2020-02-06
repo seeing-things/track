@@ -482,6 +482,7 @@ def solve_model(observations: pd.DataFrame) -> Tuple[ModelParameters, OptimizeRe
             max_values.to_ndarray(),
         ),
         args=(observations,),
+        ftol=1e-2,  # compromise between minimizing cost and execution time
     )
 
     if not result.success:
