@@ -304,6 +304,7 @@ def main():
             mount.safe()
             if stop_reason != 'converged':
                 raise RuntimeError('Unexpected tracker stop reason: "{}"'.format(stop_reason))
+            time.sleep(1.0)
 
             print('Converged on the target position. Attempting plate solving.')
 
