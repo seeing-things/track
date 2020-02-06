@@ -2,11 +2,20 @@
 
 """Unit tests for track.model"""
 
+import random
 import unittest
+import numpy as np
 from numpy.testing import assert_allclose
 from astropy import units as u
+from astropy.coordinates import Angle, UnitSphericalRepresentation, SkyCoord
 from track.mounts import MeridianSide, MountEncoderPositions
 from track.model import MountModel, ModelParamSet, ModelParameters
+
+
+def assertSphericalClose(us1, us2):
+    """Check that two UnitSphericalRepresentation objects are nearly equal"""
+    assert_allclose(us1.lon.deg, us2.lon.deg)
+    assert_allclose(us1.lat.deg, us2.lat.deg)
 
 
 class TestMountModel(unittest.TestCase):
@@ -18,13 +27,101 @@ class TestMountModel(unittest.TestCase):
     def tearDown(self):
         pass
 
+    def test_camera_tilt(self):
+        """Apply, then remove camera tilt and check that result is same as starting coordinate"""
+
+        param_set = ModelParamSet(None, None, None, None)
+        model = MountModel(param_set)
+
+        for _ in range(20):
+
+            params = ModelParameters(
+                axis_0_offset=Angle(0*u.deg),  # does not affect the method under test
+                axis_1_offset=Angle(0*u.deg),  # does not affect the method under test
+                pole_rot_axis_az=Angle(0*u.deg),  # does not affect the method under test
+                pole_rot_angle=Angle(0*u.deg),    # does not affect the method under test
+                camera_tilt=Angle(np.random.uniform(-90.0, 90.0)*u.deg),
+            )
+            model.model_params = params
+
+            coord = UnitSphericalRepresentation(
+                np.random.uniform(0.0, 360.0)*u.deg,
+                np.random.uniform(-90.0, 90.0)*u.deg
+            )
+            meridian_side = random.choice((MeridianSide.WEST, MeridianSide.EAST))
+            tilted_coord = model.apply_camera_tilt(coord, meridian_side)
+            final_coord = model.remove_camera_tilt(tilted_coord, meridian_side)
+            assertSphericalClose(coord, final_coord)
+
+    def test_camera_tilt_inverse(self):
+        """Remove, then apply camera tilt for reachable positions and check result"""
+
+        param_set = ModelParamSet(None, None, None, None)
+        model = MountModel(param_set)
+
+        for _ in range(20):
+
+            tilt = Angle(np.random.uniform(-90.0, 90.0)*u.deg)
+
+            params = ModelParameters(
+                axis_0_offset=Angle(0*u.deg),  # does not affect the method under test
+                axis_1_offset=Angle(0*u.deg),  # does not affect the method under test
+                pole_rot_axis_az=Angle(0*u.deg),  # does not affect the method under test
+                pole_rot_angle=Angle(0*u.deg),    # does not affect the method under test
+                camera_tilt=tilt,
+            )
+            model.model_params = params
+
+            coord = UnitSphericalRepresentation(
+                np.random.uniform(0.0, 360.0)*u.deg,
+                np.random.uniform(-90.0 + abs(tilt.deg), 90.0 - abs(tilt.deg))*u.deg
+            )
+            meridian_side = random.choice((MeridianSide.WEST, MeridianSide.EAST))
+            untilted_coord = model.remove_camera_tilt(coord, meridian_side)
+            final_coord = model.apply_camera_tilt(untilted_coord, meridian_side)
+            assertSphericalClose(coord, final_coord)
+
+
+    def test_camera_tilt_unreachable(self):
+        """Remove, then apply camera tilt for unreachable positions and check separation"""
+
+        param_set = ModelParamSet(None, None, None, None)
+        model = MountModel(param_set)
+
+        for _ in range(20):
+
+            tilt = Angle(np.random.uniform(-90.0, 90.0)*u.deg)
+
+            params = ModelParameters(
+                axis_0_offset=Angle(0*u.deg),  # does not affect the method under test
+                axis_1_offset=Angle(0*u.deg),  # does not affect the method under test
+                pole_rot_axis_az=Angle(0*u.deg),  # does not affect the method under test
+                pole_rot_angle=Angle(0*u.deg),    # does not affect the method under test
+                camera_tilt=tilt,
+            )
+            model.model_params = params
+
+            coord = UnitSphericalRepresentation(
+                np.random.uniform(0.0, 360.0)*u.deg,
+                random.choice((-1, +1)) * np.random.uniform(90.0 - abs(tilt.deg), 90.0)*u.deg
+            )
+            meridian_side = random.choice((MeridianSide.WEST, MeridianSide.EAST))
+            untilted_coord = model.remove_camera_tilt(coord, meridian_side)
+            final_coord = model.apply_camera_tilt(untilted_coord, meridian_side)
+
+            separation = SkyCoord(coord).separation(SkyCoord(final_coord))
+            expected_separation = np.abs(tilt) - (90*u.deg - np.abs(coord.lat))
+            assert_allclose(separation.deg, expected_separation.deg)
+
+
     def test_encoder_to_spherical(self):
 
         params = ModelParameters(
-            axis_0_offset=0*u.deg,
-            axis_1_offset=0*u.deg,
-            pole_rot_axis_az=0*u.deg,  # does not affect the method under test
-            pole_rot_angle=0*u.deg,    # does not affect the method under test
+            axis_0_offset=Angle(0*u.deg),
+            axis_1_offset=Angle(0*u.deg),
+            pole_rot_axis_az=Angle(0*u.deg),  # does not affect the method under test
+            pole_rot_angle=Angle(0*u.deg),    # does not affect the method under test
+            camera_tilt=Angle(0*u.deg),       # does not affect the method under test
         )
         param_set = ModelParamSet(params, None, None, None)
         model = MountModel(param_set)

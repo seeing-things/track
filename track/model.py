@@ -55,11 +55,13 @@ class ModelParameters(NamedTuple):
             altazimuth mounts this will be close to zero. For equatorial mounts oriented with the
             instrument pole aligned with the celestial pole this will be approximately 90 degrees
             minus the latitude of the observer.
+        camera_tilt: Tilt of the camera away from the plane that is perpendicular to axis 1.
     """
     axis_0_offset: Angle
     axis_1_offset: Angle
     pole_rot_axis_az: Angle
     pole_rot_angle: Angle
+    camera_tilt: Angle
 
     @staticmethod
     def from_ndarray(param_array: np.ndarray) -> "ModelParameters":
@@ -74,6 +76,7 @@ class ModelParameters(NamedTuple):
             axis_1_offset=Angle(param_array[1]*u.deg),
             pole_rot_axis_az=Angle(param_array[2]*u.deg),
             pole_rot_angle=Angle(param_array[3]*u.deg),
+            camera_tilt=Angle(param_array[4]*u.deg),
         )
 
     def to_ndarray(self) -> np.ndarray:
@@ -89,6 +92,7 @@ class ModelParameters(NamedTuple):
             self.axis_1_offset.deg,
             self.pole_rot_axis_az.deg,
             self.pole_rot_angle.deg,
+            self.camera_tilt.deg,
         ])
 
 
@@ -136,7 +140,7 @@ def tip_axis(
     Note that this is a true rotation, and the same rotation is applied to all coordinates in the
     originating coordinate system equally. It is not equivalent to using SkyCoord
     directional_offset_by() with a fixed position angle and separation since the direction and
-    magntidue of the offset depend on the value of coord.
+    magnitude of the offset depend on the value of coord.
 
     Args:
         coord: Coordinate to be transformed.
@@ -177,6 +181,101 @@ class MountModel:
         self.model_params = model_param_set.model_params
         self.guide_cam_orientation = model_param_set.guide_cam_orientation
         self.location = model_param_set.location
+
+
+    def apply_camera_tilt(
+            self,
+            coord: UnitSphericalRepresentation,
+            meridian_side: MeridianSide,
+        ) -> UnitSphericalRepresentation:
+        """Applies the effect of camera tilt.
+
+        This method takes a coordinate in the mount-relative spherical coordinate system
+        corresponding to where the camera would be pointed if it had no tilt and transforms it to
+        where the camera is actually pointed due to tilt. In the context of this method, tilt is
+        defined as rotation of the camera away from the plane that is perpendicular to axis 1.
+
+        The transformation is a directional offset in the direction of a reference position that
+        is on the equator of the spherical coordiante system and having a longitude that is 90
+        degrees offset from the input coordinate. For a given tilt and meridian side, all input
+        coordinates having the same longitude will be moved towards this reference position. In
+        other words, points that started out along the arc of a great circle will be shifted
+        such that if they are connected to the center of the sphere they would form a cone centered
+        on the reference position.
+
+        Args:
+            coord: Coordinate in the mount-relative spherical coordinate system to be transformed,
+                representing the direction the camera would be pointed if there were no tilt.
+            meridian_side: Side of mount meridian.
+
+        Returns:
+            Coordinate corresponding to the position the camera is actually pointed.
+        """
+        sc = SkyCoord(coord)
+        if abs(coord.lat.deg) < 90.0:
+            lon_offset = 90*u.deg if meridian_side == MeridianSide.WEST else -90*u.deg
+        else:
+            lon_offset = 0*u.deg
+        reference_coord = SkyCoord(coord.lon + lon_offset, 0*u.deg)
+        return sc.directional_offset_by(
+            position_angle=sc.position_angle(reference_coord),
+            separation=self.model_params.camera_tilt
+        ).represent_as(UnitSphericalRepresentation)
+
+
+    def remove_camera_tilt(
+            self,
+            coord: UnitSphericalRepresentation,
+            meridian_side: MeridianSide,
+        ) -> UnitSphericalRepresentation:
+        """Removes the effect of camera tilt.
+
+        This method takes a coordinate in the mount-relative spherical coordinate system and
+        transforms it to where the camera would be pointed in that coordinate system if the
+        camera had no tilt. This transformation is one of the steps towards determining what
+        encoder positions correspond to a particular camera position.
+
+        Note that camera tilt results in regions near the poles of the coordinate system that are
+        unreachable by the mount. Specifically, input coordinates with latitudes that are within
+        the camera tilt angle of either pole are unreachable. When such a coordinate is encountered
+        this method will return the pole location which is the nearest reachable position.
+
+        The formula for the longitude of the reference point was found by noting that the reference
+        point has latitude 0 and its separation from the input coordinate is equal to 90 degrees
+        minus the camera tilt angle. With this information and the equation for the great circle
+        distance between two points on a sphere, it is possible to solve for the difference in
+        longitude between the input coordinate and the reference point.
+
+        Args:
+            coord: Coordinate in the mount-relative spherical coordinate system to be transformed,
+                representing the direction the camera is pointed.
+            meridian_side: Side of mount meridian.
+
+        Returns:
+            Coordinate corresponding to the position the camera would be pointed if it had no tilt,
+            or the nearest position that is reachable.
+        """
+        tilt = self.model_params.camera_tilt
+
+        # Positions meeting these criteria are not reachable; return nearest reachable position
+        if coord.lat >= 90*u.deg - np.abs(tilt):
+            return UnitSphericalRepresentation(coord.lon, 90*u.deg)
+        if coord.lat <= -(90*u.deg - np.abs(tilt)):
+            return UnitSphericalRepresentation(coord.lon, -90*u.deg)
+
+        # difference in longitude of coord and reference position longitude
+        lon_diff = np.arccos(np.cos(90*u.deg - tilt) / np.cos(coord.lat))
+
+        # the tilt is in the direction of this reference position
+        reference_coord = SkyCoord(
+            coord.lon + lon_diff if meridian_side == MeridianSide.WEST else coord.lon - lon_diff,
+            0*u.deg,
+        )
+        sc = SkyCoord(coord)
+        return sc.directional_offset_by(
+            position_angle=sc.position_angle(reference_coord),
+            separation=-self.model_params.camera_tilt
+        ).represent_as(UnitSphericalRepresentation)
 
 
     def encoder_to_spherical(
@@ -223,45 +322,56 @@ class MountModel:
         # should be replaced with a more general transformation that can handle non-orthogonal axes.
         if encoder_positions[1] < 180*u.deg:
             meridian_side = MeridianSide.EAST
-            mount_lon = 270*u.deg - encoder_positions[0]
-            mount_lat = encoder_positions[1] - 90*u.deg
+            spherical_coord = UnitSphericalRepresentation(
+                lon=(270*u.deg - encoder_positions[0]),
+                lat=(encoder_positions[1] - 90*u.deg)
+            )
         else:
             meridian_side = MeridianSide.WEST
-            mount_lon = 90*u.deg - encoder_positions[0]
-            mount_lat = 270*u.deg - encoder_positions[1]
+            spherical_coord = UnitSphericalRepresentation(
+                lon=(90*u.deg - encoder_positions[0]),
+                lat=(270*u.deg - encoder_positions[1])
+            )
 
-        return UnitSphericalRepresentation(mount_lon, mount_lat), meridian_side
+        return self.apply_camera_tilt(spherical_coord, meridian_side), meridian_side
 
 
     def spherical_to_encoder(
             self,
-            mount_coord: UnitSphericalRepresentation,
+            coord: UnitSphericalRepresentation,
             meridian_side=MeridianSide.EAST,
         ) -> MountEncoderPositions:
         """Convert from mount-relative spherical coordinates to mount encoder positions
 
         See docstring of encoder_to_spherical, which is the inverse of this method.
 
+        Not all positions in the spherical coordinate system are necessarily reachable by the
+        mount. For example, camera tilt or mount axes that are not perfectly orthogonal may create
+        regions near the mount poles that are unreachable. In such cases this method will return
+        the encoder positions that correspond to the nearest reachable position.
+
         Args:
-            mount_coord (UnitSphericalRepresentation): Coordinate in the mount frame.
-            meridian_side (MeridianSide): Desired side of mount-relative meridian. If the pole of
-                the mount is not in the direction of the celestial pole this may not correspond to
-                true east and west directions.
+            coord: Coordinate in the mount frame.
+            meridian_side: Desired side of mount-relative meridian. If the pole of the mount is not
+                in the direction of the celestial pole this may not correspond to true east and
+                west directions.
 
         Returns:
-            An instance of MountEncoderPositions.
+            Mount encoder positions corresponding to coord.
         """
         if not isinstance(meridian_side, MeridianSide):
             raise TypeError('meridian_side should be a MeridianSide!!')
 
+        coord = self.remove_camera_tilt(coord, meridian_side)
+
         # TODO: This transformation is only correct if the mount axes are exactly orthogonal. This
         # should be replaced with a more general transformation that can handle non-orthogonal axes.
         if meridian_side == MeridianSide.EAST:
-            encoder_0 = Longitude(270*u.deg - mount_coord.lon)
-            encoder_1 = Longitude(90*u.deg + mount_coord.lat)
+            encoder_0 = Longitude(270*u.deg - coord.lon)
+            encoder_1 = Longitude(90*u.deg + coord.lat)
         else:
-            encoder_0 = Longitude(90*u.deg - mount_coord.lon)
-            encoder_1 = Longitude(270*u.deg - mount_coord.lat)
+            encoder_0 = Longitude(90*u.deg - coord.lon)
+            encoder_1 = Longitude(270*u.deg - coord.lat)
 
         # apply encoder offsets
         return MountEncoderPositions(
@@ -456,6 +566,7 @@ def solve_model(observations: pd.DataFrame) -> Tuple[ModelParameters, OptimizeRe
         axis_1_offset=Angle(0*u.deg),
         pole_rot_axis_az=Angle(0*u.deg),
         pole_rot_angle=Angle(0*u.deg),
+        camera_tilt=Angle(0*u.deg),
     )
 
     # lower bound on allowable values for each model parameter
@@ -464,6 +575,7 @@ def solve_model(observations: pd.DataFrame) -> Tuple[ModelParameters, OptimizeRe
         axis_1_offset=Angle(-180*u.deg),
         pole_rot_axis_az=Angle(-180*u.deg),
         pole_rot_angle=Angle(-180*u.deg),
+        camera_tilt=Angle(-10*u.deg),
     )
 
     # upper bound on allowable values for each model parameter
@@ -472,6 +584,7 @@ def solve_model(observations: pd.DataFrame) -> Tuple[ModelParameters, OptimizeRe
         axis_1_offset=Angle(180*u.deg),
         pole_rot_axis_az=Angle(180*u.deg),
         pole_rot_angle=Angle(180*u.deg),
+        camera_tilt=Angle(10*u.deg),
     )
 
     result = scipy.optimize.least_squares(
