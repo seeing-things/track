@@ -238,6 +238,7 @@ def main():
         axis_1_offset=Angle(0*u.deg),
         pole_rot_axis_az=Angle(90*u.deg),
         pole_rot_angle=Angle((90.0 - args.mount_pole_alt)*u.deg),
+        camera_tilt=Angle(0*u.deg),
     )
 
     # target and meridian_side will be populated later
