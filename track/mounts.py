@@ -375,8 +375,9 @@ class LosmandyGeminiMount(TelescopeMount):
         communicate with Gemini 2 and sets initial values for several class attributes.
 
         Args:
-            device_name: A string with the name of the serial device connected to Gemini 2. For
-                example, '/dev/ttyACM0'.
+            device_name: A string with the name of the serial device connected to Gemini 2 or the
+                host name or IP address of the Gemini network interface. For example,
+                '/dev/ttyACM0' for serial or '192.168.1.1' for network connection.
             ra_west_limit: Limit right ascension axis to less than this many degrees from the
                 meridian to the west.
             ra_east_limit: Limit right ascension axis to less than this many degrees from the
