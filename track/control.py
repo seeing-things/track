@@ -87,10 +87,10 @@ class PIDController:
             derivative: Derivative term gain.
             derivative_filter_depth: Max depth of the derivative moving average filter in seconds.
         """
-        proportional: float = 11.5
-        integral: float = 43.0
-        derivative: float = 1.5
-        derivative_filter_depth: float = 0.2
+        proportional: float = 8.0
+        integral: float = 20.0
+        derivative: float = 1.0
+        derivative_filter_depth: float = 0.1
 
 
     def __init__(
