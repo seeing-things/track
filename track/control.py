@@ -256,20 +256,11 @@ class Tracker(TelemSource):
         ):
         """Constructs a Tracker object.
 
-        Initializes a Tracker object by constructing loop filters and
-        initializing state information.
-
         Args:
-            mount: Object of type TelescopeMount. Must use the same set of axes
-                as error_source.
-            error_source: Object of type ErrorSource. Must use the same set of
-                axes as mount.
-            loop_bandwidth: The loop bandwidth in Hz.
-            damping_factor: The damping factor. Keep in mind that the motors in
-                the mount will not respond instantaneously to slew commands,
-                therefore the damping factor may need to be higher than an
-                ideal system would suggest. Common values like sqrt(2)/2 may be
-                too small to prevent oscillations.
+            mount: Provides interface to send slew rate commands to the mount.
+            error_source: Object that computes error terms for each mount axis.
+            pid_gains: Gains for the PID controller.
+            max_update_period: Passed on to the PIDController constructor.
         """
         self.axes = list(mount.AxisName)
         self.controllers = {}
