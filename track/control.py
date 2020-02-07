@@ -22,7 +22,7 @@ class MovingAverageFilter:
 
     This is a moving average filter that maintains a consistent depth even when the sample period
     is not constant. The samples in the delay line that have a cumulative time less than or equal
-    to the maximum allowed depth are averaged we equal weighting.
+    to the maximum allowed depth are averaged with equal weighting.
     """
 
     def __init__(self, max_depth: float = 0.2):
