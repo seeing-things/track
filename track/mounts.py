@@ -627,6 +627,189 @@ class LosmandyGeminiMount(TelescopeMount):
         return MountEncoderPositions(Longitude(0*u.deg), Longitude(0*u.deg))
 
 
+class MockMount(TelescopeMount):
+    """Software simulation of a telescope mount.
+
+    This class mimics the behavior of a telescope mount in software such that unit and system
+    testing can be performed in the absense of hardware.
+
+    Attributes:
+        max_slew_rate: Maximum slew rate supported in degrees per second.
+        max_slew_accel: Maximum slew acceleration in degrees per second squared.
+        max_slew_step: Maximum change in slew rate between calls to slew().
+        _slew_rates: Current slew rates of each axis in degrees per second.
+        _cached_position (MountEncoderPositions): Cached from last time position was read from the
+            mount or None if get_position() has not been called since this object was constructed.
+        _cached_position_time (float): Unix timestamp corresponding to the time when
+            cached_position was updated or None if it has never been set.
+    """
+
+
+    class AxisName(IntEnum):
+        """Mapping from axis index to/from names"""
+        AXIS_0 = 0
+        AXIS_1 = 1
+
+        def short_name(self) -> str:
+            """Short string names for each axis"""
+            return 'ax0' if self == self.AXIS_0 else 'ax1'
+
+
+    def __init__(
+            self,
+            max_slew_rate: float = 4.0,
+            max_slew_accel: float = 10.0,
+            max_slew_step: float = 1.0,
+        ):
+        """Construct a MockMount object.
+
+        Args:
+            max_slew_rate: The maximum allowed slew rate magnitude in degrees per second.
+            max_slew_accel: The maximum allowed slew acceleration in degrees per second squared.
+            max_slew_step: The maximum change in slew rate per slew command in degrees per second.
+        """
+        self.max_slew_rate = max_slew_rate
+        self.max_slew_accel = max_slew_accel
+        self.max_slew_step = max_slew_step
+        self._cached_position = None
+        self._cached_position_time = None
+
+        # for hardware simulation
+        now = time.perf_counter()
+        self._slew_rates = dict.fromkeys(self.AxisName, 0.0)
+        self._last_slew_rate_update_time = now
+        self._position = MountEncoderPositions(Longitude(180*u.deg), Longitude(180*u.deg))
+        self._last_position_update_time = now
+
+
+    def _update_internal_position(self):
+        """Updates the internal (hidden) position state information.
+
+        This method assumes that the slew rate as indicated by self.slew_rates has been constant
+        at that value since the last call to this method. Therefore this must be called before
+        any change to the slew rate is made, but it is okay to call it more often.
+        """
+        now = time.perf_counter()
+        elapsed_time = now - self._last_position_update_time
+        # TODO: not sure if the signs on these are correct
+        self._position = MountEncoderPositions(
+            Longitude(self._position[0] + elapsed_time * self._slew_rates[0]),
+            Longitude(self._position[1] + elapsed_time * self._slew_rates[1]),
+        )
+        self._last_position_update_time = now
+
+
+    def get_position(self, max_cache_age: float = 0.0) -> MountEncoderPositions:
+        """Gets the current position of the mount.
+
+        Gets the current simulated encoder positions of the mount.
+
+        Args:
+            max_cache_age: If the position has been read from the mount less than this many seconds
+                ago, the function may return a cached position value in lieu of reading the
+                position from the mount. In cases where reading from the mount is relatively slow
+                this may allow the function to return much more quickly. The default value is set
+                to 0 seconds, in which case the function will never return a cached value.
+
+        Returns:
+            An instance of MountEncoderPositions.
+        """
+        if self._cached_position is not None:
+            time_since_cached = time.time() - self._cached_position_time
+            if time_since_cached < max_cache_age:
+                return self._cached_position
+
+        self._update_internal_position()
+        time.sleep(0.002)  # TODO: measure actual hardware response time
+        self._cached_position = self._position
+        self._cached_position_time = time.time()
+        return self._cached_position
+
+
+    def slew(self, axis: AxisName, rate: float):
+        """Command the mount to slew on one axis.
+
+        Commands the mount to slew at a particular rate in one axis. Each axis is controlled
+        independently. To slew in both axes, call this function twice: once for each axis.
+
+        Args:
+            axis: The axis to affect.
+            rate: The desired slew rate in degrees per second. The sign of the value indicates the
+                direction of the slew.
+
+        Returns:
+            A two-element tuple where the first element is a float giving the actual slew rate
+                achieved by the mount. The actual rate could differ from the requested rate due
+                to quantization or due to enforcement of slew rate, acceleration, or axis position
+                limits. The second element is a boolean that is set to True if any of the limits
+                enforced by the mount were exceeded by the requested slew rate.
+
+        Raises:
+            ValueError: If an invalid axis is requested.
+        """
+        axis = self.AxisName(axis)
+        limits_exceeded = False
+
+        if axis == self.AxisName.RIGHT_ASCENSION and not self.bypass_ra_limits:
+            pra = self.get_position(0.25)[self.AxisName.RIGHT_ASCENSION.value]
+            # pylint: disable=bad-continuation
+            if ((pra.deg < 180 - self.ra_west_limit and rate < 0.0) or
+                (pra.deg > 180 + self.ra_east_limit and rate > 0.0)):
+                limits_exceeded = True
+                rate = 0.0
+
+        # enforce rate limit
+        if abs(rate) > self.max_slew_rate:
+            rate = np.clip(rate, -self.max_slew_rate, self.max_slew_rate)
+            limits_exceeded = True
+
+        # enforce acceleration limit
+        rate_change = rate - self._slew_rates[axis]
+        update_period = time.perf_counter() - self._last_slew_rate_update_time
+        if abs(rate_change) / update_period > self.max_slew_accel:
+            max_step = self.max_slew_accel * update_period
+            clamped_rate_change = np.clip(rate_change, -max_step, max_step)
+            rate = self._slew_rates[axis] + clamped_rate_change
+            limits_exceeded = True
+
+        self._update_internal_position()
+        self._slew_rates[axis] = rate
+        self._last_slew_rate_update_time = time.perf_counter()
+        self.sleep(0.001)  # TODO: measure actual hardware delay
+
+        return (rate, limits_exceeded)
+
+
+    def safe(self):
+        """Bring mount into a safe state by stopping motion.
+
+        This method blocks until motion has ceased.
+
+        Returns:
+            True when motion is stopped. Will not return otherwise.
+        """
+        while True:
+            actual_rate_0, _ = self.slew(0, 0.0)
+            actual_rate_1, _ = self.slew(1, 0.0)
+            if actual_rate_0 == 0.0 and actual_rate_1 == 0.0:
+                break
+
+        return True
+
+
+    def no_cross_encoder_positions(self):
+        """Indicate encoder positions that should not be crossed.
+
+        At startup in the counterweight down position both encoders have a value of 180 degrees.
+        The no-cross positions are exactly 180 degrees away from these startup values, at 0
+        degrees.
+
+        Returns:
+            MountEncoderPositions: Contains the encoder positions that should not be crossed.
+        """
+        return MountEncoderPositions(Longitude(0*u.deg), Longitude(0*u.deg))
+
+
 def add_program_arguments(parser: ArgParser, meridian_side_required=False) -> None:
     """Add program arguments for all mounts.
 
