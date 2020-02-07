@@ -272,9 +272,9 @@ class Tracker(TelemSource):
                 too small to prevent oscillations.
         """
         self.axes = list(mount.AxisName)
-        self.controllers = dict.fromkeys(
-            self.axes,
-            PIDController(pid_gains, max_update_period))
+        self.controllers = {}
+        for axis in self.axes:
+            self.controllers[axis] = PIDController(pid_gains, max_update_period)
         self.controller_outputs = dict.fromkeys(self.axes, 0.0)
         self.error = PointingError(None, None, None)
         self.slew_rate = dict.fromkeys(self.axes, 0.0)
