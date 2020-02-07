@@ -100,18 +100,6 @@ def main():
         type=float
     )
     parser.add_argument(
-        '--loop-bw',
-        help='control loop bandwidth (Hz)',
-        default=0.5,
-        type=float
-    )
-    parser.add_argument(
-        '--loop-damping',
-        help='control loop damping factor',
-        default=2.0,
-        type=float
-    )
-    parser.add_argument(
         '--max-divergence',
         help='max divergence of optical and blind sources (degrees)',
         default=2.0,
@@ -223,8 +211,6 @@ def main():
     tracker = Tracker(
         mount=mount,
         error_source=error_source,
-        loop_bandwidth=args.loop_bw,
-        damping_factor=args.loop_damping
     )
     telem_sources['tracker'] = tracker
 
