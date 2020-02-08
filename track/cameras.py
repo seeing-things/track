@@ -22,7 +22,7 @@ import v4l2
 from configargparse import Namespace
 import cv2
 import asi
-from asi import ASICheck
+from asi import ASICheck, ASIError
 from track.config import ArgParser
 
 
@@ -152,6 +152,11 @@ class ASICamera(Camera):
             default=4,
             type=int
         )
+        parser.add_argument(
+            '--zwo-name',
+            help='ZWO camera name (use to select between multiple connected cameras)',
+            type=str
+        )
 
     @staticmethod
     def from_program_args(args: Namespace) -> 'ASICamera':
@@ -159,6 +164,7 @@ class ASICamera(Camera):
         camera = ASICamera(
             pixel_scale=args.camera_pixel_scale / 3600.0,
             binning=args.zwo_binning,
+            name=args.zwo_name,
         )
         camera.exposure = args.zwo_exposure_time
         camera.gain = args.zwo_gain
@@ -169,6 +175,7 @@ class ASICamera(Camera):
             pixel_scale: float,
             binning: int = 1,
             video_mode: bool = False,
+            name: str = None,
         ):
         """Initialize and configure ZWO ASI camera.
 
@@ -176,13 +183,29 @@ class ASICamera(Camera):
             pixel_scale: Scale of a pixel in degrees per pixel before binning.
             binning: Camera binning.
             video_mode: False for one-shot mode, True for video mode.
+            name: Connect only to a camera where the Name member of the info struct matches this
+                string. If None the name is not checked and the first camera is used. Note that
+                multiple cameras could have the same Name; when this is the case, this constructor
+                will connect to the first camera having a Name that matches.
 
         Raises:
-            RuntimeError for any camera related problems.
+            ASIError for any camera related problems.
         """
-        if asi.ASIGetNumOfConnectedCameras() == 0:
-            raise RuntimeError('No cameras connected')
-        self.info = ASICheck(asi.ASIGetCameraProperty(0))
+        num_connected = asi.ASIGetNumOfConnectedCameras()
+        if num_connected == 0:
+            raise ASIError('No cameras connected')
+
+        # find the right camera
+        self.info = None
+        for idx in range(num_connected):
+            info = ASICheck(asi.ASIGetCameraProperty(idx))
+            if name is None or name == info.Name:
+                self.info = info
+                break
+
+        if self.info is None:
+            raise ASIError(f'Could not find a camera with name "{name}"')
+
         self._pixel_scale = pixel_scale
         self._binning = binning
         width = self.info.MaxWidth // binning
@@ -202,7 +225,8 @@ class ASICamera(Camera):
         self.video_mode = video_mode
 
     def __del__(self):
-        ASICheck(asi.ASICloseCamera(self.info.CameraID))
+        if hasattr(self, 'info') and self.info is not None:
+            ASICheck(asi.ASICloseCamera(self.info.CameraID))
 
     def _set_ctrl(self, ctrl, value: int):
         # auto mode always disabled since we generally don't trust it
