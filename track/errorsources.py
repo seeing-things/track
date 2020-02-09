@@ -527,7 +527,7 @@ class OpticalErrorSource(ErrorSource):
 
         # convert target position back to mount encoder positions
         target_enc_positions = self.mount_model.spherical_to_encoder(
-            mount_coord=target_coord,
+            coord=target_coord,
             meridian_side=self.meridian_side,
         )
 
