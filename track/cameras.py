@@ -722,7 +722,7 @@ class WebCam(Camera):
 def add_program_arguments(parser: ArgParser) -> None:
     """Add program arguments for all cameras"""
     parser.add_argument(
-        '--camera_type',
+        '--camera-type',
         help='type of camera',
         default='zwo',
         choices=['zwo',
