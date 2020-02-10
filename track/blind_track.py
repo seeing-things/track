@@ -17,6 +17,7 @@ These adjustments are relative to the motion vector of the object across the sky
 """
 
 from configargparse import Namespace
+import os
 import sys
 import ephem
 import numpy as np
@@ -137,6 +138,10 @@ def main():
 
     args = parser.parse_args()
 
+    # Set priority of this thread to realtime. Do this before constructing objects since priority
+    # is inherited and some critical threads are created by libraries we have no direct control
+    # over.
+    os.sched_setscheduler(0, os.SCHED_RR, os.sched_param(11))
 
     # Create object with base type TelescopeMount
     if args.mount_type == 'nexstar':

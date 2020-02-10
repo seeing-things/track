@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import os
 import time
 import threading
 import influxdb
@@ -104,6 +105,10 @@ class TelemLogger:
 
     def _worker_thread(self) -> None:
         """Gathers telemetry and posts to database once per sample period."""
+
+        # Make sure this thread does not have realtime priority
+        os.sched_setscheduler(0, os.SCHED_OTHER, os.sched_param(0))
+
         while True:
             if not self.running:
                 return

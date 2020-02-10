@@ -9,6 +9,7 @@ tracking mode are handled automatically.
 """
 
 from configargparse import Namespace
+import os
 import sys
 import ephem
 import numpy as np
@@ -161,6 +162,11 @@ def main():
 
     cameras.add_program_arguments(parser)
     args = parser.parse_args()
+
+    # Set priority of this thread to realtime. Do this before constructing objects since priority
+    # is inherited and some critical threads are created by libraries we have no direct control
+    # over.
+    os.sched_setscheduler(0, os.SCHED_RR, os.sched_param(11))
 
     # Create object with base type TelescopeMount
     if args.mount_type == 'nexstar':

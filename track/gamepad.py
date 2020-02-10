@@ -4,7 +4,7 @@ Defines a single class Gamepad that provide support for game controller interfac
 program the integrated x- and y- values are printed to the console.
 """
 
-from __future__ import print_function
+import os
 import threading
 import time
 import selectors
@@ -139,6 +139,10 @@ class Gamepad(TelemSource):
         to see if any events are ready. Therefore we must execute this loop
         in its own thread so it doesn't block other processing.
         """
+
+        # Make sure this thread does not have realtime priority
+        os.sched_setscheduler(0, os.SCHED_OTHER, os.sched_param(0))
+
         while True:
             if not self.running:
                 return
@@ -183,6 +187,10 @@ class Gamepad(TelemSource):
         integrators can continue running even when the input thread is blocked
         waiting for new events from the controller.
         """
+
+        # Make sure this thread does not have realtime priority
+        os.sched_setscheduler(0, os.SCHED_OTHER, os.sched_param(0))
+
         while True:
             if not self.running:
                 return
