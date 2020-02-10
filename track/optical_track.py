@@ -11,6 +11,7 @@ An optional gamepad can be used to manually control the mount when no targets ar
 a target is acquired by the camera gamepad control is inhibited.
 """
 
+import os
 import sys
 import track
 from track import cameras
@@ -64,6 +65,10 @@ def main():
     cameras.add_program_arguments(parser)
     args = parser.parse_args()
 
+    # Set priority of this thread to realtime. Do this before constructing objects since priority
+    # is inherited and some critical threads are created by libraries we have no direct control
+    # over.
+    os.sched_setscheduler(0, os.SCHED_RR, os.sched_param(11))
 
     def gamepad_callback(tracker: track.Tracker) -> bool:
         """Callback for gamepad control.
