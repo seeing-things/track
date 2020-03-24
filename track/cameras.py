@@ -316,6 +316,9 @@ class ASICamera(Camera):
             frame = frame.view(dtype=np.uint16)
         return np.reshape(frame, self._frame_shape)
 
+    def get_dropped_frames(self) -> int:
+        return ASICheck(asi.ASIGetDroppedFrames(self.info.CameraID))
+
     def get_frame(self, timeout: float = inf) -> np.ndarray:
 
         if self.video_mode:
