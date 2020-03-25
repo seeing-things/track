@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """GPS location determination via gpsd.
 
 Defines a single class GPS that encapsulates the procedures necessary to obtain the current
@@ -339,3 +341,37 @@ def _test_margin_time_fail(v_str: str, margin: float):
 
     dt = abs(t_val - t_sys).total_seconds()
     return dt > margin
+
+
+def main():
+    """Get a GPS reading and print to the console.
+
+    Note that the ERR_MAX and MARGINS values in this function are extremely lax, allowing almost
+    any 3D fix to pass muster. Adjust these to be more restrictive as desired.
+    """
+
+    TIMEOUT = 10.0
+    NEED_3D = True
+    ERR_MAX = GPSValues(
+        lat=100.0,
+        lon=100.0,
+        alt=inf,
+        track=inf,
+        speed=inf,
+        climb=inf,
+        time=100.0
+    )
+    MARGINS = GPSMargins(speed=inf, climb=inf, time=inf)
+
+    with GPS() as g:
+        try:
+            loc = g.get_location(TIMEOUT, NEED_3D, ERR_MAX, MARGINS)
+            print(loc)
+        finally:
+            print('fix_type: {}'.format(g.fix_type))
+            print('values:   {}'.format(g.values))
+            print('errors:   {}'.format(g.errors))
+
+
+if __name__ == '__main__':
+    main()
