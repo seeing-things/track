@@ -101,12 +101,15 @@ class GPS:
         ERR_CLIMB = auto()  # excessive error in parameter: climb
         ERR_TIME = auto()  # excessive error in parameter: time
 
+
     class GetLocationFailure(Exception):
-        """Raised by get_location() when success criteria are not met.
+        """Raised by get_location() when timeout expires before success criteria are met.
 
         When you get this exception:
-        - look at the flags set in the exception's reason field to see which things did not pass
-        - look at the GPS object's fix_type, values, and errors fields to get exact information
+        - Look at the flags set in the exception's reason field to see which things did not pass.
+            If no flags are set, this means no reports were received from gpsd before the timeout
+            expired.
+        - Look at the GPS object's fix_type, values, and errors fields to get exact information.
         """
 
         def __init__(self, reason: "GPS.FailureReason"):
@@ -173,7 +176,7 @@ class GPS:
 
         Raises:
             GetLocationFailure on failure with flags showing which requirements were not met.
-            RuntimeError if something screwy happens with gpsd.
+            RuntimeError if there is a bug in the logic allowing escape from the loop.
         """
         if timeout < 0.0 or isnan(timeout):
             raise ValueError()
@@ -191,8 +194,21 @@ class GPS:
 
         t_start = perf_counter()
 
-        # read reports until all criteria are satisfied or timeout
-        for report in self.client:
+        # read reports until all criteria are satisfied (return) or timeout (exception)
+        fail_reasons = self.FailureReason.NONE
+        while True:
+
+            if perf_counter() - t_start >= timeout:
+                raise self.GetLocationFailure(fail_reasons)
+
+            # check if reports are ready before calling read() to prevent blocking forever
+            if not self.client.waiting(timeout=0.01):
+                continue
+            if self.client.read() == -1:
+                continue
+
+            report = self.client.data
+
             if report['class'] != 'TPV':
                 continue
 
@@ -226,8 +242,8 @@ class GPS:
                 time=report.ept if 'ept' in report else self.INIT_ERR.time,
             )
 
-            fail = self._check_criteria(need_3d, err_max, margins)
-            if fail == self.FailureReason.NONE:
+            fail_reasons = self._check_criteria(need_3d, err_max, margins)
+            if fail_reasons == self.FailureReason.NONE:
                 return EarthLocation(
                     lat=self.values.lat * u.deg,
                     lon=self.values.lon * u.deg,
@@ -235,9 +251,9 @@ class GPS:
                 )
 
             if perf_counter() - t_start >= timeout:
-                raise self.GetLocationFailure(fail)
+                raise self.GetLocationFailure(fail_reasons)
 
-        raise RuntimeError('gpsd client unexpectedly stopped receiving reports somehow')
+        raise RuntimeError('GPS: unexpected code path')
 
 
     def _check_criteria(
