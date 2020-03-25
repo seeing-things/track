@@ -81,7 +81,7 @@ class GPS:
     """Class encapsulating code for interfacing with gpsd."""
 
     INIT_FIX = GPSFixType.NO_FIX
-    INIT_VAL = GPSValues(lat=nan, lon=nan, alt=0.0, track=nan, speed=nan, climb=nan, time=None)
+    INIT_VAL = GPSValues(lat=nan, lon=nan, alt=nan, track=nan, speed=nan, climb=nan, time=None)
     INIT_ERR = GPSValues(lat=inf, lon=inf, alt=inf, track=inf, speed=inf, climb=inf, time=inf)
 
     class FailureReason(Flag):
@@ -89,7 +89,7 @@ class GPS:
         BAD_FIX = auto()  # insufficient fix type
         NO_LAT = auto()  # no latitude
         NO_LON = auto()  # no longitude
-        NO_ALT = auto()  # no altitude (currently not actually enforced)
+        NO_ALT = auto()  # no altitude (only if 3D fix is required)
         BAD_SPEED = auto()  # horizontal speed != zero
         BAD_CLIMB = auto()  # vertical speed != zero
         BAD_TIME = auto()  # gps time != system time (suggests a ntpd<-->gpsd sync failure)
@@ -212,6 +212,10 @@ class GPS:
                 time=report.time if 'time' in report else self.INIT_VAL.time,
             )
 
+            if isnan(self.values.alt) and need_3d == False:
+                # since a 3D fix is not required, set alt to 0
+                self.values = self.values._replace(alt=0.0)
+
             self.errors = GPSValues(
                 lat=report.epy if 'epy' in report else self.INIT_ERR.lat,
                 lon=report.epx if 'epx' in report else self.INIT_ERR.lon,
@@ -266,7 +270,8 @@ class GPS:
             fail_reasons |= self.FailureReason.NO_LAT
         if isnan(self.values.lon):
             fail_reasons |= self.FailureReason.NO_LON
-        # TODO: possibly enforce altitude checks
+        if isnan(self.values.alt):
+            fail_reasons |= self.FailureReason.NO_ALT
 
         if _test_margin_zero_fail(self.values.speed, margins.speed):
             fail_reasons |= self.FailureReason.BAD_SPEED
@@ -287,16 +292,10 @@ class GPS:
         return fail_reasons
 
 
-# TODO: decide whether margin tests should succeed or fail when the speed/climb/time value is
-#       unset (nan/None)... perhaps only if the margin comparison value is not inf? ugh...
-
-_TEST_MARGIN_FAIL_IF_UNSET = False
-
-
 def _test_margin_zero_fail(v_float, margin):
-    """returns True if the given float value is NOT within margin of zero"""
-    if isnan(v_float):
-        return _TEST_MARGIN_FAIL_IF_UNSET
+    """Returns True if the given float value is NOT within margin of zero."""
+    if isnan(v_float) and not isinf(margin):
+        return True
     return v_float > margin
 
 
@@ -310,15 +309,15 @@ def _test_margin_time_fail(v_str: str, margin: float):
     Returns:
         True when the error between v_str and the system time exceeds `margin` seconds.
     """
-    if v_str is None:
-        return _TEST_MARGIN_FAIL_IF_UNSET
+    if v_str is None and not isinf(margin):
+        return True
     if isinf(margin):
         return False  # short-circuit the time-parsing code if we don't need it
 
     try:
         t_val = APTime(v_str, format='isot', scale='utc')
     except ValueError:
-        return _TEST_MARGIN_FAIL_IF_UNSET
+        return True
     t_val = t_val.to_datetime()
     t_sys = datetime.utcnow()
 
