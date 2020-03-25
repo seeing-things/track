@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
 import math
-
-#import track
 from gps_client import *
 
 # NOTE: The default ERR_MAX and MARGINS values in this file are INTENTIONALLY over-restrictive.
