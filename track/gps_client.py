@@ -366,7 +366,7 @@ def main():
     with GPS() as g:
         try:
             loc = g.get_location(TIMEOUT, NEED_3D, ERR_MAX, MARGINS)
-            print(loc)
+            print(f'lat: {loc.lat:.5f}, lon: {loc.lon:.5f}, altitude: {loc.height:.2f}')
         finally:
             print('fix_type: {}'.format(g.fix_type))
             print('values:   {}'.format(g.values))
