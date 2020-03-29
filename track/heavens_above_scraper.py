@@ -7,6 +7,8 @@ import track
 import datetime
 import monthdelta
 import os
+from math import inf
+from track.gps_client import GPSValues, GPSMargins, GPS
 
 def urlify(s):
 
@@ -35,17 +37,60 @@ def print_tz_help():
 
 def main():
     parser = track.ArgParser()
-    parser.add_argument('outdir', help='output directory')
-    parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
-    parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
-    parser.add_argument('--elevation', required=True, help='elevation of observer (m)', type=float)
-    parser.add_argument('--tz', required=True, help='time zone short code (use \'help\' for a list of codes)')
-    parser.add_argument('--year', required=False, help='observation year (default: now)', type=int)
-    parser.add_argument('--month', required=False, help='observation month (default: now)', type=int)
-    parser.add_argument('--day', required=False, help='observation day-of-month (default: now)', type=int)
-    parser.add_argument('--ampm', required=False, help='morning or evening (\'AM\' or \'PM\')', default='PM')
-    parser.add_argument('--mag-limit', required=True, help='magnitude cutoff for object passes', type=float)
-
+    parser.add_argument(
+        'outdir',
+        help='output directory'
+    )
+    parser.add_argument(
+        '--lat',
+        help='latitude of observer (+N) -- overrides GPS',
+        type=float,
+    )
+    parser.add_argument(
+        '--lon',
+        help='longitude of observer (+E) -- overrides GPS',
+        type=float,
+    )
+    parser.add_argument(
+        '--elevation',
+        help='elevation of observer (m) -- overrides GPS',
+        type=float
+    )
+    parser.add_argument(
+        '--tz',
+        required=True,
+        help='time zone short code (use \'help\' for a list of codes)'
+    )
+    parser.add_argument(
+        '--year',
+        required=False,
+        help='observation year (default: now)',
+        type=int
+    )
+    parser.add_argument(
+        '--month',
+        required=False,
+        help='observation month (default: now)',
+        type=int
+    )
+    parser.add_argument(
+        '--day',
+        required=False,
+        help='observation day-of-month (default: now)',
+        type=int
+    )
+    parser.add_argument(
+        '--ampm',
+        required=False,
+        help='morning or evening (\'AM\' or \'PM\')',
+        default='PM'
+    )
+    parser.add_argument(
+        '--mag-limit',
+        required=True,
+        help='magnitude cutoff for object passes',
+        type=float
+    )
     args = parser.parse_args()
 
     if args.tz == 'help':
@@ -62,9 +107,39 @@ def main():
     else:
         raise Exception('If an explicit observation date is given, then year, month, and day must all be specified.')
 
+    # Get location of observer from arguments or from GPS
+    if all(arg is not None for arg in [args.lat, args.lon, args.elevation]):
+        print('Location (lat, lon, elevation) specified by program args. This will override GPS.')
+        location = EarthLocation(lat=args.lat*u.deg, lon=args.lon*u.deg, height=args.elevation*u.m)
+    elif any(arg is not None for arg in [args.lat, args.lon, args.elevation]):
+        parser.error("Must give all of lat, lon, and elevation or none of them.")
+    else:
+        with GPS() as g:
+            location = g.get_location(
+                timeout=10.0,
+                need_3d=True,
+                err_max=GPSValues(
+                    lat=100.0,
+                    lon=100.0,
+                    alt=100.0,
+                    track=inf,
+                    speed=inf,
+                    climb=inf,
+                    time=0.01
+                ),
+                margins=GPSMargins(speed=inf, climb=inf, time=1.0)
+            )
+            print(
+                'Got location from GPS: '
+                f'lat: {location.lat:.5f}, '
+                f'lon: {location.lon:.5f}, '
+                f'altitude: {location.height:.2f}'
+            )
+
     base_url = 'http://www.heavens-above.com/'
 
-    bright_sats_url = base_url + 'AllSats.aspx?lat={}&lng={}&alt={}&tz={}'.format(args.lat, args.lon, args.elevation, args.tz)
+    bright_sats_url = (base_url + f'AllSats.aspx?lat={location.lat.deg}&lng={location.lon.deg}'
+        f'&alt={location.height.value}&tz={args.tz}')
 
     # do an initial page request so we can get the __VIEWSTATE and __VIEWSTATEGENERATOR values
     pre_soup = BeautifulSoup(requests.get(bright_sats_url).text, 'lxml')
