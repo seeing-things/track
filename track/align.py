@@ -34,6 +34,7 @@ from track.config import DATA_PATH
 from track.model import ModelParameters, ModelParamSet, MountModel
 from track.mounts import MeridianSide
 from track.targets import FixedTopocentricTarget
+from track.gps_client import GPSValues, GPSMargins, GPS
 
 
 class Position(NamedTuple):
@@ -131,20 +132,17 @@ def main():
     )
     parser.add_argument(
         '--lat',
-        required=True,
-        help='latitude of observer (+N)',
+        help='latitude of observer (+N) -- overrides GPS',
         type=float,
     )
     parser.add_argument(
         '--lon',
-        required=True,
-        help='longitude of observer (+E)',
+        help='longitude of observer (+E) -- overrides GPS',
         type=float,
     )
     parser.add_argument(
         '--elevation',
-        required=True,
-        help='elevation of observer (m)',
+        help='elevation of observer (m) -- overrides GPS',
         type=float
     )
     parser.add_argument(
@@ -216,7 +214,36 @@ def main():
         print('mount-type not supported: ' + args.mount_type)
         sys.exit(1)
 
-    location = EarthLocation(lat=args.lat*u.deg, lon=args.lon*u.deg, height=args.elevation*u.m)
+    # Get location of observer from arguments or from GPS
+    if all(arg is not None for arg in [args.lat, args.lon, args.elevation]):
+        print('Location (lat, lon, elevation) specified by program args. This will override GPS.')
+        if not click.confirm('Proceed without GPS location?', default=True):
+            sys.exit(1)
+        location = EarthLocation(lat=args.lat*u.deg, lon=args.lon*u.deg, height=args.elevation*u.m)
+    elif any(arg is not None for arg in [args.lat, args.lon, args.elevation]):
+        parser.error("Must give all of lat, lon, and elevation or none of them.")
+    else:
+        with GPS() as g:
+            location = g.get_location(
+                timeout=10.0,
+                need_3d=True,
+                err_max=GPSValues(
+                    lat=100.0,
+                    lon=100.0,
+                    alt=100.0,
+                    track=np.inf,
+                    speed=np.inf,
+                    climb=np.inf,
+                    time=0.01
+                ),
+                margins=GPSMargins(speed=np.inf, climb=np.inf, time=1.0)
+            )
+            print(
+                'Got location from GPS: '
+                f'lat: {location.lat:.5f}, '
+                f'lon: {location.lon:.5f}, '
+                f'altitude: {location.height:.2f}'
+            )
 
     # Parameters for use during alignment. This is meant to be just good enough that the model is
     # able to tell roughly which direction is up so that the positions used during alignment are
