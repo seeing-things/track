@@ -85,22 +85,6 @@ def main():
         choices=tuple(m.name.lower() for m in MeridianSide),
     )
     parser.add_argument(
-        '--lat',
-        required=True,
-        help='latitude of observer (+N)'
-    )
-    parser.add_argument(
-        '--lon',
-        required=True,
-        help='longitude of observer (+E)'
-    )
-    parser.add_argument(
-        '--elevation',
-        required=True,
-        help='elevation of observer (m)',
-        type=float
-    )
-    parser.add_argument(
         '--max-divergence',
         help='max divergence of optical and blind sources (degrees)',
         default=2.0,
