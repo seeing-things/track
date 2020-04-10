@@ -366,8 +366,8 @@ class LosmandyGeminiMount(TelescopeMount):
             ra_east_limit: float = 110.0,
             bypass_ra_limits: bool = False,
             max_slew_rate: float = 4.0,
-            max_slew_accel: float = 10.0,
-            max_slew_step: float = 1.0,
+            max_slew_accel: float = 40.0,
+            max_slew_step: float = 0.5,
         ):
         """Inits LosmandyGeminiMount object.
 
@@ -394,6 +394,7 @@ class LosmandyGeminiMount(TelescopeMount):
             rate_limit=max_slew_rate,
             rate_step_limit=max_slew_step,
             accel_limit=max_slew_accel,
+            use_multiprocessing=True,
         )
 
         # If Gemini startup is not complete the coordinates it reports will not correspond to its

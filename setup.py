@@ -52,7 +52,7 @@ setup(
         'lxml',  # parser for bs4
         'MonthDelta>=1.0b',
         'numpy',
-        'point @ https://github.com/seeing-things/point/tarball/master#egg=point-0.3',
+        'point @ https://github.com/seeing-things/point/tarball/master#egg=point-0.4',
         'requests',
     ],
 

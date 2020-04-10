@@ -17,6 +17,49 @@ from track.mounts import TelescopeMount
 from track.telem import TelemSource
 
 
+def ideal_pi_gains(bandwidth, damping_factor):
+    """Compute the gains for an ideal linear control system with a P+I controller.
+
+    Note that the formulas used here are approximations that apply when the bandwidth is much
+    smaller than the control loop rate.
+
+    Reference: Equation (C.59) in Michael Rice, "Digital Communications: A Discrete-Time Approach,"
+    Pearson Prentice Hall, Upper Saddle River, New Jersey, 2008.
+
+    Args:
+        bandwidth: Bandwidth of the system, typically in Hz.
+        damping_factor: Damping factor (unitless).
+
+    Returns:
+        A tuple with proportional and integral gain terms. The proportional term is unitless. The
+        integral gain is normalized to the loop period, i.e., it is I/T where T is the loop period,
+        since this meant to be used in a discrete-time control system.
+    """
+    denom = damping_factor + 1.0 / (4.0 * damping_factor)
+    prop_gain = 4.0 * damping_factor / denom * bandwidth
+    int_gain = 4.0 / denom**2.0 * bandwidth**2
+    return prop_gain, int_gain
+
+
+def proportional_from_integral_and_damping(integral_gain, damping_factor):
+    """Derive the proportional gain for a PI controller given the integral gain and damping factor.
+
+    In some cases rather than starting with a bandwidth it is more practical to start with an
+    integral gain, since for a second-order control system the steady-state error in response to a
+    quadratic input (acceleration) is proportional to the integral gain. In the case of this
+    telescope control system, the steady state error is equal to twice the target acceleration in
+    degrees per second squared divided by the integral gain I/T (normalized to the loop period T).
+
+    Args:
+        integral_gain: The integral gain (I) normalized to the loop period (T), i.e., I/T.
+        damping_factor: The damping factor (unitless).
+
+    Returns:
+        The proportional gain (unitless).
+    """
+    return 2*damping_factor*np.sqrt(integral_gain)
+
+
 class MovingAverageFilter:
     """Moving average filter supporting variable sample rates.
 
@@ -87,9 +130,9 @@ class PIDController:
             derivative: Derivative term gain.
             derivative_filter_depth: Max depth of the derivative moving average filter in seconds.
         """
-        proportional: float = 8.0
-        integral: float = 20.0
-        derivative: float = 1.0
+        proportional: float = proportional_from_integral_and_damping(40.0, np.sqrt(2)/2)
+        integral: float = 40.0  # allows steady state error of 0.01 deg for accel of 0.2 deg/s/s
+        derivative: float = 0.0
         derivative_filter_depth: float = 0.1
 
 
