@@ -256,7 +256,12 @@ class BlindErrorSource(ErrorSource):
             Error terms for each mount axis.
         """
 
-        # get coordinates of target for current time
+        # get current position of mount encoders
+        mount_enc_positions = self.mount.get_position()
+
+        # Get topocentric coordinates of target for current time. Critical that the time passed to
+        # get_position() is measured as close as possible to when the mount encoder positions were
+        # queried.
         target_position_raw = self.target.get_position(Time.now())
 
         if self.target_position_offset is not None:
@@ -267,14 +272,11 @@ class BlindErrorSource(ErrorSource):
         else:
             target_position = target_position_raw
 
-        # transform from astrometric coordinate system to mount encoder positions
+        # transform from topocentric coordinate system to mount encoder positions
         target_enc_positions = self.mount_model.topocentric_to_encoders(
             target_position,
             self.meridian_side,
         )
-
-        # get current position of telescope encoders
-        mount_enc_positions = self.mount.get_position()
 
         # required for error magnitude calcaulation
         mount_topocentric = self.mount_model.encoders_to_topocentric(mount_enc_positions)
