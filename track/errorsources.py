@@ -7,7 +7,7 @@ from ephemeris data for a celestial or man-made object, a camera, or even human 
 classes can also be designed to compute an error vector by combining data from multiple sources
 or by intelligently switching between sources.
 """
-
+import time
 import threading
 from abc import abstractmethod
 from enum import IntEnum
@@ -207,6 +207,8 @@ class BlindErrorSource(ErrorSource):
         self.meridian_side = meridian_side
         self.target_position_offset = None
         self.target_position = None
+        self.time_enc = []
+        self.time_err = []
         super().__init__()
 
 
@@ -257,20 +259,25 @@ class BlindErrorSource(ErrorSource):
         """
 
         # get current position of mount encoders
-        mount_enc_positions = self.mount.get_position()
+        mount_enc_positions, time_enc = self.mount.get_position()
 
         # Get topocentric coordinates of target for current time. Critical that the time passed to
         # get_position() is measured as close as possible to when the mount encoder positions were
         # queried.
-        target_position_raw = self.target.get_position(Time.now())
+        time_err = time.time()
+        target_position_raw = self.target.get_position(time_enc)#Time(time_enc, format='unix'))
 
-        if self.target_position_offset is not None:
-            target_position = self._offset_target_position(
-                target_position_raw,
-                self.target_position_offset
-            )
-        else:
-            target_position = target_position_raw
+
+        self.time_enc.append(time_enc)
+        self.time_err.append(time_err)
+
+        # if self.target_position_offset is not None:
+        #     target_position = self._offset_target_position(
+        #         target_position_raw,
+        #         self.target_position_offset
+        #     )
+        # else:
+        target_position = target_position_raw
 
         # transform from topocentric coordinate system to mount encoder positions
         target_enc_positions = self.mount_model.topocentric_to_encoders(

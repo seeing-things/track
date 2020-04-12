@@ -154,6 +154,10 @@ class PIDController:
         self.error_prev = None
         self.last_iteration_time = None
         self.reset()
+        self.time = []
+        self.slew_rates = []
+        self.errors = []
+        self.loop_periods = []
 
 
     def reset(self):
@@ -187,13 +191,13 @@ class PIDController:
                 if reset() has been called since the last call to update().
         """
         if self.last_iteration_time is None:
-            self.last_iteration_time = time.perf_counter()
-            return None
+            self.last_iteration_time = time.time() #time.perf_counter()
+            return None, None
 
-        now = time.perf_counter()
+        now = time.time() #time.perf_counter()
         update_period = now - self.last_iteration_time
         self.last_iteration_time = now
-        return update_period
+        return update_period, now
 
 
     def update(self, error: Angle) -> Quantity:
@@ -220,7 +224,8 @@ class PIDController:
             from growing in an unbounded manner (a phenomenon known as "integrator windup").
         """
 
-        update_period = self._compute_update_period()
+        update_period, now = self._compute_update_period()
+
 
         # can't reliably update integrator or compute derivative term if update period is unknown
         if update_period is None:
@@ -246,6 +251,11 @@ class PIDController:
         else:
             derivative_term = 0.0
         self.error_prev = error
+
+        self.time.append(now)
+        self.errors.append(error)
+        self.slew_rates.append(prop_term + self.integrator + derivative_term)
+        self.loop_periods.append(update_period)
 
         return prop_term + self.integrator + derivative_term
 

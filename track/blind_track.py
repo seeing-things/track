@@ -243,5 +243,32 @@ def main():
         except:
             pass
 
+        import matplotlib.pyplot as plt
+        from scipy.signal import detrend
+        num_samples = 200
+        time_controller = np.array(tracker.controllers[0].time)
+        t = time_controller - time_controller[0]
+        periods = np.array(tracker.controllers[0].loop_periods)
+        errors = np.array(tracker.controllers[0].errors)
+        rates = np.array(tracker.controllers[0].slew_rates)
+        t_smooth = np.linspace(0, t[num_samples-1], num_samples)
+        r_smooth = np.interp(t_smooth, t, rates)
+        r_detrend = detrend(r_smooth)
+        time_enc = np.array(tracker.error_source.time_enc)
+        time_err = np.array(tracker.error_source.time_err)
+        t_diff_x = time_enc - time_enc[0]
+        t_diff = time_err - time_enc
+        plt.plot(t[:num_samples], periods[:num_samples], label='loop period')
+        plt.plot(t[:num_samples], errors[:num_samples], label='RA error')
+        plt.plot(t_smooth, r_detrend, label='detrended RA slew rate')
+        plt.plot(t_diff_x, t_diff, label='time difference')
+        plt.legend()
+        plt.xlabel('Loop Iteration')
+        plt.grid(True)
+        plt.show()
+
+
+        import IPython; IPython.embed()
+
 if __name__ == "__main__":
     main()

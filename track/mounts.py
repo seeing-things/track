@@ -432,13 +432,13 @@ class LosmandyGeminiMount(TelescopeMount):
             if time_since_cached < max_cache_age:
                 return self.cached_position
 
-        enq = self.mount.enq_macro()
+        enq, time_resp = self.mount.enq_macro()
         self.cached_position = MountEncoderPositions(
             Longitude(enq['pra'] * 180.0 / 1152000 * u.deg),  # motor ticks to degrees
             Longitude(enq['pdec'] * 180.0 / 1152000 * u.deg),  # motor ticks to degrees
         )
         self.cached_position_time = time.time()
-        return self.cached_position
+        return self.cached_position, time_resp
 
 
     def slew(self, axis: int, rate: float) -> Tuple[float, bool]:
