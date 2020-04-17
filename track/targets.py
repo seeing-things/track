@@ -77,11 +77,17 @@ class AcceleratingMountAxisTarget(Target):
         """
         self.mount_model = mount_model
         self.accel = axis_accelerations
-        self.time_start = Time.now()
+        self.time_start = None
         self.initial_positions = initial_encoder_positions
 
     def get_position(self, t: Time):
         """Gets the position of the simulated target for a specific time."""
+
+        if self.time_start is None:
+            # Don't do this in constructor because it may be a couple seconds between when the
+            # constructor is called until the first call to this method.
+            self.time_start = t
+
         time_elapsed = (t - self.time_start).sec
         target_encoder_positions = MountEncoderPositions(
             Longitude((self.initial_positions[0].deg + self.accel[0] * time_elapsed**2) * u.deg),
