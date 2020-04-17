@@ -156,7 +156,9 @@ def main():
     def target_offset_callback(tracker: Tracker) -> False:
         """Use gamepad integrator to adjust the target predicted position
 
-        This is registered as a callback for the Tracker object.
+        This is registered as a callback for the Tracker object. An offset is only applied when the
+        'B' button on the gamepad is held down to prevent unintentional disruption of the control
+        system action.
 
         Args:
             tracker: The instance of Tracker that called this function.
@@ -165,12 +167,15 @@ def main():
             False to indicate that the control loop should continue execution as normal.
         """
         #pylint: disable=unused-argument
-        x, y = game_pad.get_integrator()
-        gamepad_polar = x + 1j*y
-        error_source.target_position_offset = BlindErrorSource.PositionOffset(
-            direction=Angle(np.angle(gamepad_polar)*u.rad),
-            separation=Angle(np.abs(gamepad_polar)*u.deg),
-        )
+        if game_pad.state.get('BTN_EAST', 0) == 1:
+            x, y = game_pad.get_integrator()
+            gamepad_polar = x + 1j*y
+            error_source.blind.target_position_offset = BlindErrorSource.PositionOffset(
+                direction=Angle(np.angle(gamepad_polar)*u.rad),
+                separation=Angle(np.abs(gamepad_polar)*u.deg),
+            )
+        else:
+            error_source.blind.target_position_offset = None
         return False
 
 

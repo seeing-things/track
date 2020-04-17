@@ -10,6 +10,7 @@ or by intelligently switching between sources.
 
 import threading
 from abc import abstractmethod
+from collections import deque
 from enum import IntEnum
 from typing import NamedTuple, Optional, Tuple, List, Dict
 from math import inf
@@ -207,6 +208,7 @@ class BlindErrorSource(ErrorSource):
         self.meridian_side = meridian_side
         self.target_position_offset = None
         self.target_position = None
+        self.target_position_deque = deque(maxlen=2)  # position history for offset calc
         super().__init__()
 
 
@@ -219,6 +221,9 @@ class BlindErrorSource(ErrorSource):
         backward, or side-to-side along its current trajectory. This is much more intuitive than
         trying to figure out the same adjustment in some coordinate system.
 
+        Unfortunately the processing required to apply this offset is not negligible, so this
+        method should be avoided except when needed.
+
         Args:
             position: The target position to be adjusted.
             offset: Offset to be applied.
@@ -227,13 +232,14 @@ class BlindErrorSource(ErrorSource):
             Target position with offset applied.
         """
 
-        # estimate direction vector of the target using positions now and several seconds later
-        now = Time.now()
-        position_now = self.target.get_position(now)
-        position_later = self.target.get_position(now + TimeDelta(10.0, format='sec'))
+        self.target_position_deque.append(position)
+        if len(self.target_position_deque) < 2 or offset.separation.deg == 0.0:
+            return position
 
-        # position angle pointing in direction of target motion
-        trajectory_position_angle = position_now.position_angle(position_later)
+        # estimate direction vector of the target using last two position estimates
+        target_position_now = self.target_position_deque[1]
+        target_position_earlier = self.target_position_deque[0]
+        trajectory_position_angle = target_position_earlier.position_angle(target_position_now)
 
         # position angle in direction of offset to be applied
         offset_position_angle = trajectory_position_angle + offset.direction
