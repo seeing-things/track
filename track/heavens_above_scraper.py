@@ -210,6 +210,7 @@ def main():
             assert span_tag['id'].startswith('ctl00_cph1_lblLine')
             tle.append(span_tag.string)
 
+        os.makedirs(args.outdir, exist_ok=True)
         filename = os.path.join(os.path.normpath(args.outdir), urlify(sat) + '.tle')
         with open(filename, 'w') as f:
             for line in tle:
