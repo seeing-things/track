@@ -8,6 +8,8 @@ import datetime
 import monthdelta
 import os
 from math import inf
+from astropy.coordinates import EarthLocation
+import astropy.units as u
 from track.gps_client import GPSValues, GPSMargins, GPS
 
 def urlify(s):
