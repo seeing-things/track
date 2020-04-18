@@ -156,6 +156,8 @@ def main():
         print('Got CTRL-C, shutting down...')
     except Exception as e:
         print('Unhandled exception: ' + str(e))
+        import traceback
+        traceback.print_exc()
     finally:
         # don't rely on destructors to safe mount!
         print('Safing mount...', end='', flush=True)
