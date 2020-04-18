@@ -203,7 +203,7 @@ def main():
         default=0.2,
         type=float
     )
-    cameras.add_program_arguments(parser)
+    cameras.add_program_arguments(parser, profile='align')
     args = parser.parse_args()
 
     if args.mount_type == 'gemini':
@@ -275,7 +275,7 @@ def main():
     tracker.stop_when_converged = True
     tracker.converge_max_error_mag = Angle(2.0 * u.deg)
 
-    camera = cameras.make_camera_from_args(args)
+    camera = cameras.make_camera_from_args(args, profile='align')
 
     if args.telem_enable:
         telem_logger = track.TelemLogger(

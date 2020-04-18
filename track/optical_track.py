@@ -62,7 +62,7 @@ def main():
         '--laser-ftdi-serial',
         help='serial number of laser pointer FTDI device',
     )
-    cameras.add_program_arguments(parser)
+    cameras.add_program_arguments(parser, profile='track')
     args = parser.parse_args()
 
     # Set priority of this thread to realtime. Do this before constructing objects since priority
@@ -110,8 +110,7 @@ def main():
 
     # Create object with base type ErrorSource
     mount_model = track.model.load_default_model()
-    camera = cameras.make_camera_from_args(args)
-    camera.video_mode = True
+    camera = cameras.make_camera_from_args(args, profile='track')
     error_source = track.OpticalErrorSource(
         camera=camera,
         mount=mount,

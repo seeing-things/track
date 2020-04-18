@@ -18,10 +18,10 @@ def main():
         help='skip plate solving',
         action='store_true'
     )
-    cameras.add_program_arguments(parser)
+    cameras.add_program_arguments(parser, profile='align')
     args = parser.parse_args()
 
-    camera = cameras.make_camera_from_args(args)
+    camera = cameras.make_camera_from_args(args, profile='align')
 
     cv2.namedWindow('camera', cv2.WINDOW_NORMAL)
     cv2.resizeWindow('camera', 640, 480)
