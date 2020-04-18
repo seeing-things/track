@@ -31,6 +31,35 @@ from track.targets import Target
 from track.telem import TelemSource
 
 
+def separation(sc1: SkyCoord, sc2: SkyCoord) -> Angle:
+    """Calculate the on-sky separation angle between two coordinates.
+
+    This is equivalent to `SkyCoord.separation()` but is much faster because it uses the haversine
+    formula rather than the iterative Vincenty formula. We don't need to handle edge cases like
+    antipodal points on the sphere but we do need fast execution. This approach was profiled as
+    ~70 times faster than `SkyCoord.separation()`.
+
+    Formula reference: https://en.wikipedia.org/wiki/Great-circle_distance
+
+    Args:
+        sc1: One of the coordinates.
+        sc2: The other coordinate.
+
+    Returns:
+        The separation between sc1 and sc2.
+    """
+    us1 = sc1.represent_as(UnitSphericalRepresentation)
+    us2 = sc2.represent_as(UnitSphericalRepresentation)
+    lat_diff = us1.lat.rad - us2.lat.rad
+    lon_diff = us1.lon.rad - us2.lon.rad
+    return Angle(
+            2 * np.arcsin(np.sqrt(
+                np.sin(lat_diff / 2)**2
+                + np.cos(us1.lat.rad)*np.cos(us2.lat.rad)*np.sin(lon_diff / 2)**2
+            )) * u.rad
+        )
+
+
 class PointingError(NamedTuple):
     """Set of pointing error terms.
 
@@ -286,7 +315,7 @@ class BlindErrorSource(ErrorSource):
 
         # required for error magnitude calcaulation
         mount_topocentric = self.mount_model.encoders_to_topocentric(mount_enc_positions)
-        error_magnitude = mount_topocentric.separation(target_position)
+        error_magnitude = separation(mount_topocentric, target_position)
 
         pointing_error = PointingError(
             *[self._smallest_allowed_error(
