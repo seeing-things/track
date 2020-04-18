@@ -118,6 +118,8 @@ class TelemLogger:
                     self._post_point(name, source.get_telem_channels())
             except Exception as e:
                 print('Failed to post telemetry to database, logger shutting down: ' + str(e))
+                import traceback
+                traceback.print_exc()
                 self.running = False
                 return
             elapsed_time = time.time() - start_time
