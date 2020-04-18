@@ -754,7 +754,7 @@ class HybridErrorSource(ErrorSource):
         """Set telemetry dict polled by telemetry thread"""
         self._telem_mutex.acquire()
         self._telem_chans = {}
-        self._telem_chans['state'] = self.state
+        self._telem_chans['state'] = self.state.value
         if chans is not None:
             self._telem_chans.update(chans)
         self._telem_mutex.release()
