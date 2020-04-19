@@ -578,8 +578,8 @@ class OpticalErrorSource(ErrorSource):
             error_magnitude
         )
 
-        # find target position in topocentric frame (used by HybridErrorSource)
-        self.target_position = self.mount_model.encoders_to_topocentric(target_enc_positions)
+        # find target position in topocentric frame (used by HybridErrorSource for divergence calc)
+        self.target_position = self.mount_model.spherical_to_topocentric(target_coord)
 
         telem_chans = {}
         telem_chans['error_mag'] = error_magnitude.deg
