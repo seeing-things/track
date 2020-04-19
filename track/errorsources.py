@@ -453,14 +453,14 @@ class OpticalErrorSource(ErrorSource):
             frame_annotated,
             (int(self.frame_center_px[0]), 0),
             (int(self.frame_center_px[0]), frame_height - 1),
-            (50, 50, 50),
+            (100, 100, 100),
             1
         )
         cv2.line(
             frame_annotated,
             (0, int(self.frame_center_px[1])),
             (frame_width - 1, int(self.frame_center_px[1])),
-            (50, 50, 50),
+            (100, 100, 100),
             1
         )
 
