@@ -45,6 +45,21 @@ class Camera(ABC):
 
     @property
     @abstractmethod
+    def binning(self) -> int:
+        """Binning configuration.
+
+        Many cameras support binning of multiple physical photosites in a square grid into a single
+        value as if they were a single photosite. The binning number is the number of photosites
+        on each side of such a grid, so a binning of 2 means photosites are grouped into 2x2 grids
+        of four photosites each. A binning value of 1 means that no binning is applied and all
+        photosites are preserved.
+
+        Returns:
+            Binning number.
+        """
+
+    @property
+    @abstractmethod
     def field_of_view(self) -> Tuple[float, float]:
         """Field of view of the camera.
 
@@ -286,6 +301,11 @@ class ASICamera(Camera):
         return self._pixel_scale
 
     @property
+    def binning(self) -> int:
+        """Binning configuration"""
+        return self._binning
+
+    @property
     def frame_shape(self) -> Tuple[int, int]:
         """Shape of array returned by get_frame()"""
         return self._frame_shape
@@ -498,6 +518,10 @@ class WebCam(Camera):
     @property
     def pixel_scale(self) -> float:
         return self._pixel_scale
+
+    @property
+    def binning(self) -> int:
+        return 1
 
     @property
     def video_mode(self) -> bool:

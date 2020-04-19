@@ -608,8 +608,8 @@ class OpticalErrorSource(ErrorSource):
         self.show_annotated_frame(frame, keypoints, target_keypoint)
 
         # error terms in camera frame
-        error_x = Angle(error_x_px * self.camera.pixel_scale * u.deg)
-        error_y = Angle(error_y_px * self.camera.pixel_scale * u.deg)
+        error_x = Angle(error_x_px * self.camera.pixel_scale * self.camera.binning * u.deg)
+        error_y = Angle(error_y_px * self.camera.pixel_scale * self.camera.binning * u.deg)
 
         # transform to mount encoder error terms
         pointing_error, telem = self._camera_to_mount_error(error_x, error_y)
