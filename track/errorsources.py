@@ -507,7 +507,7 @@ class OpticalErrorSource(ErrorSource):
         """
 
         # angular separation and direction from center of camera frame to target
-        error_complex = error_x.deg + 1j*error_y.deg
+        error_complex = error_x.deg - 1j*error_y.deg
         error_magnitude = Angle(np.abs(error_complex) * u.deg)
         error_direction = Angle(np.angle(error_complex) * u.rad)
 
@@ -524,7 +524,7 @@ class OpticalErrorSource(ErrorSource):
             target_position_angle += 180*u.deg
         target_coord = SkyCoord(mount_coord).directional_offset_by(
             position_angle=target_position_angle,
-            separation=error_magnitude
+            separation=-error_magnitude
         ).represent_as(UnitSphericalRepresentation)
 
         # convert target position back to mount encoder positions
