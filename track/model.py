@@ -380,27 +380,59 @@ class MountModel:
         )
 
 
-    def encoders_to_topocentric(self, encoder_positions: MountEncoderPositions) -> SkyCoord:
-        """Convert mount encoder positions to a topocentric coordinate.
+    def spherical_to_topocentric(self, coord: UnitSphericalRepresentation) -> SkyCoord:
+        """Convert from mount-relative spherical coordinates to a topocentric coordinate.
 
         Args:
-            encoder_positions (MountEncoderPositions): Set of mount encoder positions.
+            coord: Coordinate in the mount frame.
 
         Returns:
             A SkyCoord object with AltAz frame. The location and obstime attributes of this object
             will not be populated. These will need to be set in order to transform it to an
             inertial equatorial frame such as ICRS.
         """
+        # transform pole of coordinate system from mount pole to local zenith
+        return SkyCoord(tip_axis(
+            coord,
+            self.model_params.pole_rot_axis_az,
+            -self.model_params.pole_rot_angle
+        ), frame=AltAz)
 
+
+    def topocentric_to_spherical(self, sky_coord: SkyCoord) -> UnitSphericalRepresentation:
+        """Convert from a topocentric coordinate to a mount-relative spherical coordinate.
+
+        Args:
+            sky_coord: Coordinate in AltAz frame to be converted.
+
+        Returns:
+            A mount-relative spherical coordinate, where longitude corresponds to mount axis 0 and
+            latitude corresponds to mount axis 1.
+        """
+        # transform pole of coordinate system from local zenith to mount pole
+        return tip_axis(
+            sky_coord,
+            self.model_params.pole_rot_axis_az,
+            self.model_params.pole_rot_angle
+        )
+
+
+    def encoders_to_topocentric(self, encoder_positions: MountEncoderPositions) -> SkyCoord:
+        """Convert mount encoder positions to a topocentric coordinate.
+
+        Args:
+            encoder_positions: Set of mount encoder positions.
+
+        Returns:
+            A SkyCoord object with AltAz frame. The location and obstime attributes of this object
+            will not be populated. These will need to be set in order to transform it to an
+            inertial equatorial frame such as ICRS.
+        """
         # convert encoder positions to mount-relative spherical coordinate system
         mount_coord, _ = self.encoder_to_spherical(encoder_positions)
 
         # transform pole of coordinate system from mount pole to local zenith
-        return SkyCoord(tip_axis(
-            mount_coord,
-            self.model_params.pole_rot_axis_az,
-            -self.model_params.pole_rot_angle
-        ), frame=AltAz)
+        return self.spherical_to_topocentric(mount_coord)
 
 
     def topocentric_to_encoders(
@@ -426,11 +458,7 @@ class MountModel:
             raise TypeError('frame of sky_coord must be AltAz')
 
         # transform pole of coordinate system from local zenith to mount pole
-        mount_coord = tip_axis(
-            sky_coord,
-            self.model_params.pole_rot_axis_az,
-            self.model_params.pole_rot_angle
-        )
+        mount_coord = self.topocentric_to_spherical(sky_coord)
 
         # transform from mount-relative spherical coordiante to encoder positions
         return self.spherical_to_encoder(mount_coord, meridian_side)
