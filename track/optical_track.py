@@ -85,14 +85,15 @@ def main():
         """
         if game_pad.state.get('BTN_EAST', 0) == 1:
             gamepad_x, gamepad_y = game_pad.get_proportional()
-            slew_rate_0 = mount.max_slew_rate * gamepad_x
-            slew_rate_1 = mount.max_slew_rate * gamepad_y
-            tracker.slew_rate[mount.AxisName[0]], _ = mount.slew(mount.AxisName[0], slew_rate_0)
-            tracker.slew_rate[mount.AxisName[1]], _ = mount.slew(mount.AxisName[1], slew_rate_1)
-            # Set loop filter integrators to match so that when gamepad control is released there
-            # is a smooth handoff to optical tracking control.
-            tracker.loop_filter[mount.AxisName[0]].int = tracker.slew_rate[mount.AxisName[0]]
-            tracker.loop_filter[mount.AxisName[1]].int = tracker.slew_rate[mount.AxisName[1]]
+            slew_rates = (
+                mount.max_slew_rate * gamepad_x,
+                mount.max_slew_rate * gamepad_y
+            )
+            for idx, axis_name in enumerate(mount.AxisName):
+                tracker.slew_rate[axis_name], _ = mount.slew(axis_name, slew_rates[idx])
+                # Set loop filter integrators to match so that when gamepad control is released
+                # there is a smooth handoff to optical tracking control.
+                tracker.controllers[axis_name].integrator = tracker.slew_rate[axis_name]
             return True
         else:
             return False
