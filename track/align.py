@@ -152,6 +152,12 @@ def main():
         type=float
     )
     parser.add_argument(
+        '--guide-cam-orientation',
+        help='orientation of guidescope camera, clockwise positive (deg)',
+        default=0.0,
+        type=float,
+    )
+    parser.add_argument(
         '--telem-enable',
         help='enable logging of telemetry to database',
         action='store_true'
@@ -405,7 +411,7 @@ def main():
 
             model_param_set = ModelParamSet(
                 model_params=model_params,
-                guide_cam_orientation=Longitude(0*u.deg),  # TODO: solve for this!
+                guide_cam_orientation=Longitude(args.guide_cam_orientation*u.deg),
                 location=location,
                 timestamp=time.time(),
             )
