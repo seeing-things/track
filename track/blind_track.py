@@ -170,12 +170,12 @@ def main():
         if game_pad.state.get('BTN_EAST', 0) == 1:
             x, y = game_pad.get_integrator()
             gamepad_polar = x + 1j*y
-            error_source.blind.target_position_offset = BlindErrorSource.PositionOffset(
+            error_source.target_position_offset = BlindErrorSource.PositionOffset(
                 direction=Angle(np.angle(gamepad_polar)*u.rad),
                 separation=Angle(np.abs(gamepad_polar)*u.deg),
             )
         else:
-            error_source.blind.target_position_offset = None
+            error_source.target_position_offset = None
         return False
 
 
