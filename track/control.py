@@ -250,6 +250,48 @@ class PIDController:
         return prop_term + self.integrator + derivative_term
 
 
+class ModelPredictiveController:
+
+    # does this completely replace the BlindErrorSource? I think it does... that's disconcerting
+
+    def __init__(self):
+        # probably need arguments for:
+        # * how long the time window should extend into the future
+        # * what control cycle period / rate to assume
+        # * handle to a target object
+        # * handle to a mount model object to convert target positions to mount encoder positions
+        # * handle to a mount object (or whatever is needed to predict mount response to commands)
+        pass
+
+    def update(self) -> Quantity:
+
+        # do the following things:
+        # 1. refresh queue of predicted target positions looking into the future
+        #    - discard any predictions that are now in the past from the front of the queue
+        #    - may need to add more predictions to the end of the queue
+        # 2. get current position of the mount
+        # 3. run optimizer (seeded with modified version of previous output)
+        opt_result = minimize(
+            fun=objective,
+            x0=slew_rates_predicted,
+            args=(times_from_now, mount, positions_target),
+            bounds=[(-slew_rate_max, slew_rate_max)]*len(times_from_now),
+            method='SLSQP',  # Chosen by experimentation for speed and consistency
+            options={'disp': False, 'ftol': 1e-10, 'maxiter': 10}
+        )
+        # 4. return first output from optimizer
+
+    def _objective(self, slew_rate_commands, times_from_now, mount, positions_target):
+
+        # predict mount position in the future assuming this set of slew rate commands
+        positions_mount, _ = self.mount.predict(times_from_now, slew_rate_commands)
+
+        pointing_errors = positions_target - positions_mount
+
+        # return mean error magnitude
+        return np.mean(np.abs(pointing_errors))
+
+
 class Tracker(TelemSource):
     """Main tracking loop class.
 
