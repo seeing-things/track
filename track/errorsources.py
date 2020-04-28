@@ -530,21 +530,25 @@ class OpticalErrorSource(ErrorSource):
         cv2.waitKey(1)
 
 
-    def _camera_to_mount_error(self, error_x: Angle, error_y: Angle) -> Tuple[PointingError, Dict]:
-        """Transform from error terms in camera frame to mount encoder error terms
+    def _camera_to_mount_error(
+            self,
+            target_x: Angle,
+            target_y: Angle
+        ) -> Tuple[PointingError, Dict]:
+        """Transform from target position in camera frame to mount encoder error terms
 
         Args:
-            error_x: Error term in camera's x-axis
-            error_y: Error term in camera's y-axis
+            target_x: Target position in camera's x-axis
+            target_y: Target position in camera's y-axis
 
         Returns:
             Pointing error and dict of telemetry channels.
         """
 
         # angular separation and direction from center of camera frame to target
-        error_complex = error_x.deg - 1j*error_y.deg
-        error_magnitude = Angle(np.abs(error_complex) * u.deg)
-        error_direction = Angle(np.angle(error_complex) * u.rad)
+        target_position_cam = target_x.deg + 1j*target_y.deg
+        target_offset_magnitude = Angle(np.abs(target_position_cam) * u.deg)
+        target_direction_cam = Angle(np.angle(target_position_cam) * u.rad)
 
         # Current position of mount is assumed to be the position of the center of the camera frame
         mount_enc_positions = self.mount.get_position(max_cache_age=0.1)
@@ -553,13 +557,13 @@ class OpticalErrorSource(ErrorSource):
         )
 
         # Find the position of the target relative to the mount position
-        target_position_angle = error_direction + self.mount_model.guide_cam_orientation
+        target_position_angle = self.mount_model.guide_cam_orientation - target_direction_cam
         if mount_meridian_side == MeridianSide.EAST:
             # camera orientation flips when crossing the pole
             target_position_angle += 180*u.deg
         target_coord = SkyCoord(mount_coord).directional_offset_by(
             position_angle=target_position_angle,
-            separation=-error_magnitude
+            separation=target_offset_magnitude
         ).represent_as(UnitSphericalRepresentation)
 
         # convert target position back to mount encoder positions
@@ -575,15 +579,15 @@ class OpticalErrorSource(ErrorSource):
                 target_enc_positions[axis],
                 self.mount.no_cross_encoder_positions()[axis],
             ) for axis in self.mount.AxisName],
-            error_magnitude
+            target_offset_magnitude
         )
 
         # find target position in topocentric frame (used by HybridErrorSource for divergence calc)
         self.target_position = self.mount_model.spherical_to_topocentric(target_coord)
 
         telem_chans = {}
-        telem_chans['error_mag'] = error_magnitude.deg
-        telem_chans['error_cam_direction'] = error_direction.deg
+        telem_chans['error_mag'] = target_offset_magnitude.deg
+        telem_chans['target_direction_cam'] = target_direction_cam.deg
         telem_chans['target_position_angle'] = target_position_angle.deg
         for axis in self.mount.AxisName:
             telem_chans[f'target_enc_{axis}'] = target_enc_positions[axis].deg
@@ -626,31 +630,35 @@ class OpticalErrorSource(ErrorSource):
         self.consec_no_detect_frames = 0
 
         # find the keypoint closest to the center of the frame
-        min_error = None
+        min_dist = None
         target_keypoint = None
         for keypoint in keypoints:
-            # error is the vector between the keypoint and center frame
-            e_x = self.frame_center_px[0] - keypoint.pt[0]
-            e_y = keypoint.pt[1] - self.frame_center_px[1]
-            error_mag = np.abs(e_x + 1j*e_y)
+            # Transform keypoint position to a Cartesian coordinate system defined such that (0,0)
+            # is the center of the camera frame, +Y points toward the top of the frame, and +X
+            # points toward the right edge of the frame. Pixel indices start from zero in the
+            # upper-left corner, therefore the horizontal index increases in the +X direction and
+            # the vertical index increases in the -Y direction.
+            keypoint_x_px = keypoint.pt[0] - self.frame_center_px[0]
+            keypoint_y_px = self.frame_center_px[1] - keypoint.pt[1]
+            keypoint_dist_from_center_px = np.abs(keypoint_x_px + 1j*keypoint_y_px)
 
-            if min_error is None or error_mag < min_error:
+            if min_dist is None or keypoint_dist_from_center_px < min_dist:
                 target_keypoint = keypoint
-                min_error = error_mag
-                error_x_px = e_x
-                error_y_px = e_y
+                min_dist = keypoint_dist_from_center_px
+                target_x_px = keypoint_x_px
+                target_y_px = keypoint_y_px
 
         self.show_annotated_frame(frame, keypoints, target_keypoint)
 
-        # error terms in camera frame
-        error_x = Angle(error_x_px * self.camera.pixel_scale * self.camera.binning * u.deg)
-        error_y = Angle(error_y_px * self.camera.pixel_scale * self.camera.binning * u.deg)
+        # convert target position units from pixels to degrees
+        target_x = Angle(target_x_px * self.camera.pixel_scale * self.camera.binning * u.deg)
+        target_y = Angle(target_y_px * self.camera.pixel_scale * self.camera.binning * u.deg)
 
         # transform to mount encoder error terms
-        pointing_error, telem = self._camera_to_mount_error(error_x, error_y)
+        pointing_error, telem = self._camera_to_mount_error(target_x, target_y)
 
-        telem['error_cam_x'] = error_x.deg
-        telem['error_cam_y'] = error_y.deg
+        telem['target_cam_x'] = target_x.deg
+        telem['target_cam_y'] = target_y.deg
 
         self._set_telem_channels(telem)
 
