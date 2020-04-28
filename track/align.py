@@ -251,21 +251,17 @@ def main():
                 f'altitude: {location.height:.2f}'
             )
 
-    # Parameters for use during alignment. This is meant to be just good enough that the model is
-    # able to tell roughly which direction is up so that the positions used during alignment are
-    # all above the horizon.
-    model_params = ModelParameters(
-        axis_0_offset=Angle(0*u.deg),
-        axis_1_offset=Angle(0*u.deg),
-        pole_rot_axis_az=Angle(90*u.deg),
-        pole_rot_angle=Angle((90.0 - args.mount_pole_alt)*u.deg),
-        camera_tilt=Angle(0*u.deg),
+    # This is meant to be just good enough that the model is able to tell roughly which direction
+    # is up so that the positions used during alignment are all above the horizon.
+    starter_mount_model = track.model.load_default_model(
+        mount_pole_alt=Longitude(args.mount_pole_alt*u.deg),
+        location=location
     )
 
     # target and meridian_side will be populated later
     error_source = track.BlindErrorSource(
         mount=mount,
-        mount_model=MountModel(ModelParamSet(model_params, None, location, time.time())),
+        mount_model=starter_mount_model,
         target=None,
         meridian_side=None
     )

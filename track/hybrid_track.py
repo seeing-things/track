@@ -15,6 +15,7 @@ import ephem
 import numpy as np
 import astropy.units as u
 from astropy.coordinates import Angle
+import click
 import track
 from track.control import Tracker
 from track.errorsources import BlindErrorSource, HybridErrorSource
@@ -186,8 +187,16 @@ def main():
             error_source.blind.target_position_offset = None
         return False
 
-    # Create object with base type ErrorSource
-    mount_model = track.model.load_default_model()
+    # Load a MountModel object
+    try:
+        mount_model = track.model.load_stored_model()
+    except track.model.StaleParametersException:
+        if click.confirm('Stored model parameters are stale. Use anyway?', default=False):
+            mount_model = track.model.load_stored_model(max_age=None)
+        else:
+            print('Aborting. To refresh model parameters, run align program.')
+            sys.exit(1)
+
     camera = cameras.make_camera_from_args(args, profile='track')
     error_source = HybridErrorSource(
         mount=mount,

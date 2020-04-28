@@ -13,6 +13,7 @@ a target is acquired by the camera gamepad control is inhibited.
 
 import os
 import sys
+import click
 import track
 from track import cameras
 
@@ -109,8 +110,19 @@ def main():
         print('mount-type not supported: ' + args.mount_type)
         sys.exit(1)
 
+    # Load a MountModel object
+    try:
+        mount_model = track.model.load_stored_model()
+    except track.model.StaleParametersException:
+        if click.confirm('Stored model parameters are stale. Use anyway?', default=False):
+            mount_model = track.model.load_stored_model(max_age=None)
+        elif click.confirm('Okay. Use a default set of model parameters instead?', default=False):
+            mount_model = track.model.load_default_model()
+        else:
+            print('No valid mount model could be loaded. Aborting.')
+            sys.exit(1)
+
     # Create object with base type ErrorSource
-    mount_model = track.model.load_default_model()
     camera = cameras.make_camera_from_args(args, profile='track')
     error_source = track.OpticalErrorSource(
         camera=camera,

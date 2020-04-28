@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from astropy.utils import iers
 from astropy import units as u
 from astropy.time import Time
-from astropy.coordinates import SkyCoord, Longitude, Angle, EarthLocation, AltAz
+from astropy.coordinates import SkyCoord, Latitude, Longitude, Angle, EarthLocation, AltAz
 from astropy.coordinates.matrix_utilities import rotation_matrix
 from astropy.coordinates.representation import UnitSphericalRepresentation, CartesianRepresentation
 from track.config import CONFIG_PATH
@@ -648,7 +648,7 @@ def save_default_param_set(model_param_set: ModelParamSet) -> None:
         pickle.dump(model_param_set, f, pickle.HIGHEST_PROTOCOL)
 
 
-def load_default_param_set(max_age: Optional[float] = 12*3600) -> ModelParamSet:
+def load_stored_param_set(max_age: Optional[float] = 12*3600) -> ModelParamSet:
     """Loads the model parameter set from disk at the default location.
 
     Args:
@@ -674,7 +674,7 @@ def load_default_param_set(max_age: Optional[float] = 12*3600) -> ModelParamSet:
     return model_param_set
 
 
-def load_default_model(
+def load_stored_model(
         max_age: Optional[float] = 12*3600
     ) -> MountModel:
     """Loads the model parameter set from disk and returns a MountModel instance.
@@ -690,4 +690,39 @@ def load_default_model(
         StaleParametersException: When the timestamp of the ModelParamSet loaded from disk exceeds
         max_age.
     """
-    return MountModel(load_default_param_set(max_age))
+    return MountModel(load_stored_param_set(max_age))
+
+
+def load_default_model(
+        mount_pole_alt: Latitude = Latitude(90*u.deg),
+        guide_cam_orientation: Longitude = Longitude(0*u.deg),
+        location: Optional[EarthLocation] = None,
+    ) -> MountModel:
+    """Returns a MountModel instance initialized with a set of default parameters.
+
+    This may be appropriate to use in scenarios when alignment has not been performed yet and
+    proper alignment is not necessary. For example, this may be sufficient for tracking with a
+    camera without blind pointing.
+
+    Args:
+        mount_pole_alt: Altitude of the mount's pole above the horizon. Default value corresponds
+            to mount pole facing zenith which is true for an azimuth-altitude mount.
+        guide_cam_orientation: See ModelParamSet documentation.
+        location: Observer location. If not specified this value will not be initialized which will
+            cause certain transforms in the mount model class to fail if invoked.
+
+    Returns:
+        A MountModel instantiated with minimal parameters.
+    """
+    return MountModel(
+        ModelParamSet(ModelParameters(
+            axis_0_offset=Angle(0*u.deg),
+            axis_1_offset=Angle(0*u.deg),
+            pole_rot_axis_az=Angle(90*u.deg),
+            pole_rot_angle=Angle((90.0 - mount_pole_alt.deg)*u.deg),
+            camera_tilt=Angle(0*u.deg),
+        ),
+        guide_cam_orientation=guide_cam_orientation,
+        location=location,
+        timestamp=time.time())
+    )
