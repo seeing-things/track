@@ -109,10 +109,11 @@ class ModelParamSet(NamedTuple):
     Attributes:
         model_params: Instance of ModelParameters as defined in this module.
         guide_cam_orientation: The orientation of the guidescope camera with respect to the mount-
-            relative spherical coordinate system (as returned by, e.g.,
-            `MountModel.encoder_to_spherical()`). Specifically, this gives the position angle of
-            the positive x-axis in the camera frame, where "position angle" is defined using the
-            east-of-north convention.
+            relative spherical coordinate system. When set to 0, the +X axis in the camera frame
+            Cartesian coordinate system points toward the mount pole when the mount axis 1 is west
+            of the mount meridian. When viewed from behind the camera, a clockwise rotation
+            corresponds to a positive value for this parameter and a counter-clockwise rotation
+            corresponds to a negative value.
         location: Location of the mount for which model_params is applicable. Not used in any
             MountModel calculations.
         timestamp: Unix timestamp giving the approximate time that this set of model parameters
