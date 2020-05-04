@@ -269,7 +269,7 @@ class NexStarMount(TelescopeMount):
     def slew(self, axis: int, rate: float) -> Tuple[float, bool]:
         """Command the mount to slew on one axis.
 
-        Commands the mount to slew at a paritcular rate in one axis. Each axis is controlled
+        Commands the mount to slew at a particular rate in one axis. Each axis is controlled
         independently. To slew in both axes, call this function twice: once for each axis. If the
         slew is in the altitude axis and altitude limits have been set, the function will check the
         mount's current position against the limits. If the limit has been violated and the slew
@@ -488,8 +488,8 @@ class LosmandyGeminiMount(TelescopeMount):
         independently. To slew in both axes, call this function twice: once for each axis.
 
         Args:
-            axis (AxisName): The axis to affect.
-            rate (float): The slew rate in degrees per second. The sign of the value indicates the
+            axis: The axis to affect.
+            rate: The slew rate in degrees per second. The sign of the value indicates the
                 direction of the slew.
 
         Returns:
