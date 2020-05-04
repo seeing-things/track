@@ -110,6 +110,24 @@ class TelescopeMount(ABC):
 
 
     @abstractmethod
+    def get_slew_rate(self, axis: int) -> float:
+        """Get current slew rate on one axis.
+
+        Gets the current slew rate on one mount axis. This should ideally return the actual slew
+        rate as opposed to the last requested slew rate passed to a call to `slew()` since
+        requested rates are not always achieved instantly, if at all, due to various physical
+        limitations such as acceleration time and slew rate limits.
+
+        Args:
+            axis: The index of the axis to which this operation applies. Same conventions as used
+                by `slew()`.
+
+        Returns:
+            The current slew rate of the axis in degrees per second.
+        """
+
+
+    @abstractmethod
     def safe(self) -> bool:
         """Bring mount into a safe state.
 
@@ -244,6 +262,7 @@ class NexStarMount(TelescopeMount):
             Longitude(alt*u.deg),
         )
         self.cached_position_time = time.time()
+        self._rate_last_commanded = {self.AxisName.AZIMUTH: 0.0, self.AxisName.ALTITUDE: 0.0}
         return self.cached_position
 
 
@@ -295,8 +314,29 @@ class NexStarMount(TelescopeMount):
 
         # slew_var argument units are arcseconds per second
         self.mount.slew_var(axis, rate * 3600.0)
+        self._rate_last_commanded[axis] = rate
 
         return (rate, limits_exceeded)
+
+
+    def get_slew_rate(self, axis: int) -> float:
+        """Get current slew rate of one mount axis in degrees per second.
+
+        For this mount the actual slew rate cannot be queried directly from the mount hardware,
+        therefore the best we can do is cache the last commanded rate and return that. Since the
+        mount enforces acceleration limits automatically the mount may not have achieved the last
+        commanded rate if this method is called soon after a large rate change.
+
+        A more accurate measure of instantaneous slew rate may be possible by querying the mount
+        position twice to calculate delta position divided by delta time.
+
+        Args:
+            axis: The axis to which this applies.
+
+        Returns:
+            The current slew rate of this mount axis in degrees per second.
+        """
+        return self._rate_last_commanded[axis]
 
 
     def safe(self) -> bool:
@@ -479,6 +519,12 @@ class LosmandyGeminiMount(TelescopeMount):
             limits_exceeded = True
 
         return (actual_rate, limits_exceeded)
+
+
+    def get_slew_rate(self, axis: int) -> float:
+        """Get current slew rate of one mount axis in degrees per second."""
+        axis = self.AxisName(axis)
+        return self.mount.get_slew_rate(axis.short_name())
 
 
     def safe(self) -> bool:
