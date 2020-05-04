@@ -19,6 +19,7 @@ import errno
 import ctypes
 import numpy as np
 import v4l2
+import imageio
 from configargparse import Namespace
 import cv2
 import asi
@@ -217,6 +218,7 @@ class ASICamera(Camera):
             pixel_scale=args.camera_pixel_scale / 3600.0,
             binning=args.zwo_binning,
             name=args.zwo_name,
+            frame_dump_dir=args.camera_frame_dump_dir,
         )
         if profile == 'track':
             camera.exposure = args.zwo_exposure_time
@@ -236,6 +238,7 @@ class ASICamera(Camera):
             binning: int = 1,
             video_mode: bool = False,
             name: str = None,
+            frame_dump_dir: str = None,
         ):
         """Initialize and configure ZWO ASI camera.
 
@@ -247,6 +250,10 @@ class ASICamera(Camera):
                 string. If None the name is not checked and the first camera is used. Note that
                 multiple cameras could have the same Name; when this is the case, this constructor
                 will connect to the first camera having a Name that matches.
+            frame_dump_dir: Base directory to which frames from the camera should be written to
+                disk. This object will create a new numbered directory in this directory and all
+                frames will be written in PNG format with an incrementing frame count in the
+                filenames. If None, no frames will be written to disk.
 
         Raises:
             ASIError for any camera related problems.
@@ -282,6 +289,11 @@ class ASICamera(Camera):
                 asi.ASI_FALSE
             )
         )
+
+        self.dump_frames_to_files = frame_dump_dir is not None
+        if self.dump_frames_to_files:
+            self._dump_init(frame_dump_dir)
+
         self.video_mode = video_mode
 
     def __del__(self):
@@ -416,6 +428,9 @@ class ASICamera(Camera):
         if self.info.IsColorCam == asi.ASI_TRUE and self._binning == 1:
             frame = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2GRAY)
 
+        if self.dump_frames_to_files:
+            self._dump_one(frame)
+
         return frame
 
     def take_exposure(self, timeout: float = inf) -> np.ndarray:
@@ -451,6 +466,28 @@ class ASICamera(Camera):
         frame = ASICheck(asi.ASIGetDataAfterExp(self.info.CameraID, self._frame_size_bytes))
         return self._reshape_frame_data(frame)
 
+    def _dump_init(self, frame_dump_dir: str) -> None:
+        self.dump_idx = 0
+
+        # find and create a not-yet-existent 'guidecam_dump_####' directory
+        num = 0
+        while True:
+            self.dump_dir = frame_dump_dir + '/guidecam_dump_{:04d}'.format(num)
+            try:
+                os.makedirs(self.dump_dir)
+            except (IOError, OSError) as e:
+                if e.errno == errno.EEXIST:
+                    num += 1
+                else:
+                    raise
+            else:
+                break
+
+    def _dump_one(self, frame) -> None:
+        """Dump a frame to disk"""
+        imageio.imwrite(os.path.join(self.dump_dir, f'frame_{self.dump_idx:06d}.png'), frame)
+        self.dump_idx += 1
+
 
 class WebCam(Camera):
     """Webcams or other cameras that can be accessed using the 'Video4Linux' (V4L) drivers."""
@@ -464,10 +501,6 @@ class WebCam(Camera):
             default=3200,
             type=int
         )
-        parser.add_argument(
-            '--webcam-frame-dump-dir',
-            help='directory to save webcam frames as jpeg files on disk',
-        )
 
     @staticmethod
     def from_program_args(args: Namespace, profile: str) -> 'WebCam':
@@ -476,7 +509,7 @@ class WebCam(Camera):
             dev_path=args.webcam_dev,
             ctrl_exposure=args.webcam_exposure,
             pixel_scale=args.camera_pixel_scale / 3600.0,  # program arg is in arcseconds
-            frame_dump_dir=args.webcam_frame_dump_dir,
+            frame_dump_dir=args.camera_frame_dump_dir,
         )
 
     def __init__(
@@ -851,6 +884,11 @@ def add_program_arguments(parser: ArgParser, profile: str) -> None:
         help='camera pixel scale in arcseconds per pixel',
         required=True,
         type=float
+    )
+    parser.add_argument(
+        '--camera-frame-dump-dir',
+        help='directory to save camera frames as files on disk',
+        type=str,
     )
     webcam_group = parser.add_argument_group(
         title='Webcam Options',
