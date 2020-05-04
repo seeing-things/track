@@ -254,13 +254,39 @@ class ModelPredictiveController:
 
     # does this completely replace the BlindErrorSource? I think it does... that's disconcerting
 
-    def __init__(self):
+    def __init__(
+            self,
+            target: Target,
+            mount: TelescopeMount,
+            mount_model: MountModel,
+            prediction_horizon: float,
+            control_cycle_period: float,
+        ):
+        """
+
+        Args:
+            target: The target being tracked.
+            mount: The mount under control. This object also provides a model of the mount used to
+                predict future mount dynamics in response to control inputs.
+            mount_model: Used to convert between coordinate systems.
+            prediction_horizon: The controller will look ahead this many seconds into the future
+                when optimizing control output against predicted future mount and target dynamics.
+            control_cycle_period: The expected typical period of the control loop in seconds. This
+                object will measure the actual loop period with a moving average filter and adapt
+                accordingly so this just needs to be in the right ballpark to get things started.
+        """
         # probably need arguments for:
         # * how long the time window should extend into the future
         # * what control cycle period / rate to assume
         # * handle to a target object
         # * handle to a mount model object to convert target positions to mount encoder positions
         # * handle to a mount object (or whatever is needed to predict mount response to commands)
+        #
+        # probably need to:
+        # * create and init queue of future predicted target positions, perhaps going further into
+        #   the future than necessary by a couple seconds since we don't know how much time will
+        #   elapse between when this constructor is called and when update() is called the first
+        #   time.
         pass
 
     def update(self) -> Quantity:
