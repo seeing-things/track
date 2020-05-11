@@ -16,6 +16,8 @@ import sys
 import click
 import track
 from track import cameras
+from astropy.coordinates import Longitude
+import astropy.units as u
 
 def main():
     """See module docstring"""
@@ -116,8 +118,11 @@ def main():
     except track.model.StaleParametersException:
         if click.confirm('Stored model parameters are stale. Use anyway?', default=False):
             mount_model = track.model.load_stored_model(max_age=None)
-        elif click.confirm('Okay. Use a default set of model parameters instead?', default=False):
-            mount_model = track.model.load_default_model()
+        elif click.confirm('Okay. Use a default set of model parameters instead?', default=True):
+            guide_cam_orientation = click.prompt(
+                'Enter guide camera orientation in degrees, clockwise positive', type=float)
+            mount_model = track.model.load_default_model(
+                guide_cam_orientation=Longitude(guide_cam_orientation*u.deg))
         else:
             print('No valid mount model could be loaded. Aborting.')
             sys.exit(1)
