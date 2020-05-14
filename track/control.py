@@ -318,8 +318,8 @@ class ModelPredictiveController:
 
         if self.target_times.size == 0:
             # Add first predicted target position
-            self.target_times = Time([time_now])
-            target_position = self._get_target_position(time_now)
+            self.target_times = Time([time_now + self.control_cycle_period])
+            target_position = self._get_target_position(time_now + self.control_cycle_period)
             self.positions_target[0] = Longitude([target_position[0]])
             self.positions_target[1] = Longitude([target_position[1]])
             self.slew_rates_predicted[0] = np.zeros(1)
@@ -367,9 +367,10 @@ class ModelPredictiveController:
                 fun=self._objective,
                 x0=self.slew_rates_predicted[axis],
                 args=(
-                    times_from_now,
+                    times_from_now.sec,
                     self.positions_target[axis],
                     position_mount_now[axis],
+                    self.mount.no_cross_encoder_positions()[axis],
                     slew_rates_now[axis]
                 ),
                 bounds=[(-self.mount.max_slew_rate, self.mount.max_slew_rate)]*len(times_from_now),
@@ -383,14 +384,15 @@ class ModelPredictiveController:
     def _objective(
             self,
             slew_rate_commands: np.ndarray,
-            times_from_now: TimeDelta,
+            times_from_now: float,
             positions_target: Longitude,
             position_axis_now: Longitude,
+            no_cross_position: Longitude,
             slew_rate_now: float,
         ):
 
         # predict mount axis position in the future assuming this set of slew rate commands
-        positions_mount = self.mount.predict(
+        positions_mount, _ = self.mount.predict(
             times_from_now,
             slew_rate_commands,
             position_axis_now,
