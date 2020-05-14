@@ -231,6 +231,7 @@ class NexStarMount(TelescopeMount):
         self.max_slew_rate = max_slew_rate
         self.cached_position = None
         self.cached_position_time = None
+        self._rate_last_commanded = {self.AxisName.AZIMUTH: 0.0, self.AxisName.ALTITUDE: 0.0}
 
 
     def get_position(self, max_cache_age: float = 0.0) -> MountEncoderPositions:
@@ -262,7 +263,6 @@ class NexStarMount(TelescopeMount):
             Longitude(alt*u.deg),
         )
         self.cached_position_time = time.time()
-        self._rate_last_commanded = {self.AxisName.AZIMUTH: 0.0, self.AxisName.ALTITUDE: 0.0}
         return self.cached_position
 
 
