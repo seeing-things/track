@@ -196,7 +196,7 @@ class PIDController:
         return update_period
 
 
-    def update(self, error: Angle) -> Quantity:
+    def update(self, error: Angle) -> float:
         """Update the controller using new error measurement.
 
         Updates the controller using new error signal information. The loop filter coefficients are
