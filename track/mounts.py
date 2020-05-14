@@ -558,7 +558,7 @@ class LosmandyGeminiMount(TelescopeMount):
 
     def predict(
             self,
-            times_from_start: TimeDelta,
+            times_from_start: np.ndarray,
             rate_commands: np.ndarray,
             position_axis_start: Longitude,
             slew_rate_start: float,
@@ -573,8 +573,8 @@ class LosmandyGeminiMount(TelescopeMount):
         final position prediction corresponds to the end of that interval at times_from_start[-1].
 
         Args:
-            times_from_start: An array of TimeDeltas measured from the starting time (t = 0). The
-                returned position predictions will correspond to these instants in time.
+            times_from_start: An array of times in seconds measured from the starting time (t = 0).
+                The returned position predictions will correspond to these instants in time.
             rate_commands: An array of slew rate commands that are assumed to be sent to the mount
                 in the future. The size of this array must match the size of times_from_start. Note
                 that the mount is not able to achieve these rates instantly due to acceleration
@@ -584,8 +584,8 @@ class LosmandyGeminiMount(TelescopeMount):
 
         Returns:
             A tuple where the first element is an array of predicted mount axis encoder positions
-            and the second element is an array of predicted slew rates. Each entry in these arrays
-            corresponds to elements in the times_from_start array.
+            in degrees and the second element is an array of predicted slew rates in degrees per
+            second. Each entry in these arrays corresponds to elements in the times_from_start array.
         """
         positions_predicted = []
         rates_predicted = []
