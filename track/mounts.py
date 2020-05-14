@@ -20,6 +20,7 @@ import time
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import Longitude
+from astropy.time import TimeDelta
 import point
 
 
@@ -448,6 +449,7 @@ class LosmandyGeminiMount(TelescopeMount):
         self.ra_east_limit = ra_east_limit
         self.bypass_ra_limits = bypass_ra_limits
         self.max_slew_rate = max_slew_rate
+        self.max_slew_accel = max_slew_accel
         self.cached_position = None
         self.cached_position_time = None
 
@@ -552,3 +554,75 @@ class LosmandyGeminiMount(TelescopeMount):
             MountEncoderPositions: Contains the encoder positions that should not be crossed.
         """
         return MountEncoderPositions(Longitude(0*u.deg), Longitude(0*u.deg))
+
+
+    def predict(
+            self,
+            times_from_start: TimeDelta,
+            rate_commands: np.ndarray,
+            position_axis_start: Longitude,
+            slew_rate_start: float,
+        ) -> Tuple[Longitude, np.ndarray]:
+        """Predict future axis positions based on a set of future commands.
+
+        Note that the slew rate commands are assumed to be issued at the *start* of each time
+        interval and the predicted positions correspond to the *end* of the same interval (which is
+        also the start of the following interval). Consequently, rate_commands[0] is assumed to be
+        executed immediately (0 seconds from now), followed by rate_commands[1] executed at
+        times_from_start[0], etc., until the last command is issued at times_from_start[-2] and the
+        final position prediction corresponds to the end of that interval at times_from_start[-1].
+
+        Args:
+            times_from_start: An array of TimeDeltas measured from the starting time (t = 0). The
+                returned position predictions will correspond to these instants in time.
+            rate_commands: An array of slew rate commands that are assumed to be sent to the mount
+                in the future. The size of this array must match the size of times_from_start. Note
+                that the mount is not able to achieve these rates instantly due to acceleration
+                limits. The predicted positions take this into account.
+            position_axis_start: The position of the mount axis at time t = 0.
+            slew_rate_start: The slew rate of the mount axis at time t = 0.
+
+        Returns:
+            A tuple where the first element is an array of predicted mount axis encoder positions
+            and the second element is an array of predicted slew rates. Each entry in these arrays
+            corresponds to elements in the times_from_start array.
+        """
+        positions_predicted = []
+        rates_predicted = []
+        position_current = position_axis_start.deg
+        rate_at_start_of_step = slew_rate_start
+        time_steps = np.concatenate(((times_from_start[0],), np.diff(times_from_start)))
+
+        for time_step, rate_command in zip(time_steps, rate_commands):
+
+            # solve for time_accel_end
+            time_accel_end = np.abs(rate_command - rate_at_start_of_step) / self.max_slew_accel
+            accel = self.max_slew_accel * np.sign(rate_command - rate_at_start_of_step)
+
+            # acceleration continues to the end of this timestep
+            if time_accel_end >= time_step:
+                position_current += accel*time_step**2 + rate_at_start_of_step*time_step
+                positions_predicted.append(position_current)
+                rate_at_start_of_step += accel*time_step
+                rates_predicted.append(rate_at_start_of_step)
+                continue
+
+            # no rate change this timestep
+            if time_accel_end == 0:
+                position_current += rate_at_start_of_step*time_step
+                positions_predicted.append(position_current)
+                rates_predicted.append(rate_at_start_of_step)
+                continue
+
+            # compute position at time_accel_end, the moment accel ends / commanded rate achieved
+            position_at_accel_end = (accel*time_accel_end**2 + rate_at_start_of_step*time_accel_end
+                                     + position_current)
+
+            # compute position at end of timestep
+            position_current = rate_command*(time_step - time_accel_end) + position_at_accel_end
+            positions_predicted.append(position_current)
+
+            rate_at_start_of_step = rate_command
+            rates_predicted.append(rate_command)
+
+        return Longitude(positions_predicted, unit='deg'), rates_predicted
