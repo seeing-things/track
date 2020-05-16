@@ -133,10 +133,10 @@ class ErrorSource(TelemSource):
 
     @staticmethod
     def _smallest_allowed_error(
-            mount_enc_position: Longitude,
-            target_enc_position: Longitude,
-            no_cross_position: Optional[Longitude] = None,
-        ) -> Angle:
+            mount_enc_position: float,
+            target_enc_position: float,
+            no_cross_position: Optional[float] = None,
+        ) -> float:
         """Compute error term for a single axis taking into account no-cross positions
 
         The shortest path on an axis is just the difference between the target and mount encoder
@@ -146,24 +146,27 @@ class ErrorSource(TelemSource):
         terms that are either the shortest distance if allowed or the longer distance if
         constraints prevent taking the short path.
 
+        Note that Astropy objects are not used for performance reasons. Otherwise, the arguments
+        would be Longitude objects and the return type would be an Angle.
+
         Args:
-            mount_enc_position: The mount encoder position. Scalar or array.
-            target_enc_position: The target encoder position. Scalar or array.
-            no_cross_position: Encoder position that this axis is not allowed to cross or None if
-                no such position exists.
+            mount_enc_position: The mount encoder position(s) in degrees. Scalar or array.
+            target_enc_position: The target encoder position(s) in degrees. Scalar or array.
+            no_cross_position: Encoder position in degrees that this axis is not allowed to cross
+                or None if no such position exists.
 
         Returns:
-            The error term(s) for this axis.
+            The error term(s) for this axis in degrees.
         """
 
         # shortest path to target
-        prelim_error = (target_enc_position.deg - mount_enc_position.deg + 180) % 360 - 180
+        prelim_error = (target_enc_position - mount_enc_position + 180) % 360 - 180
 
         if no_cross_position is None:
-            return Angle(prelim_error*u.deg)
+            return prelim_error
 
         # error term as if the no-cross point were the target position
-        no_cross_error = (no_cross_position.deg - mount_enc_position.deg + 180) % 360 - 180
+        no_cross_error = (no_cross_position - mount_enc_position + 180) % 360 - 180
 
         # actual target is closer than the no-cross point so can't possibly be crossing it
         target_closer_indices = np.abs(prelim_error) <= np.abs(no_cross_error)
@@ -177,7 +180,7 @@ class ErrorSource(TelemSource):
             prelim_error - 360*np.sign(prelim_error)
         )
 
-        return Angle(final_error*u.deg)
+        return final_error
 
 
 class BlindErrorSource(ErrorSource):

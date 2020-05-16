@@ -368,9 +368,9 @@ class ModelPredictiveController:
                 x0=self.slew_rates_predicted[axis],
                 args=(
                     times_from_now.sec,
-                    self.positions_target[axis],
-                    position_mount_now[axis],
-                    self.mount.no_cross_encoder_positions()[axis],
+                    self.positions_target[axis].deg,
+                    position_mount_now[axis].deg,
+                    self.mount.no_cross_encoder_positions()[axis].deg,
                     slew_rates_now[axis]
                 ),
                 bounds=[(-self.mount.max_slew_rate, self.mount.max_slew_rate)]*len(times_from_now),
@@ -385,9 +385,9 @@ class ModelPredictiveController:
             self,
             slew_rate_commands: np.ndarray,
             times_from_now: float,
-            positions_target: Longitude,
-            position_axis_now: Longitude,
-            no_cross_position: Longitude,
+            positions_target: np.ndarray,
+            position_axis_now: float,
+            no_cross_position: float,
             slew_rate_now: float,
         ):
 
@@ -399,17 +399,11 @@ class ModelPredictiveController:
             slew_rate_now
         )
 
-        # TODO: Replace this with calls to ErrorSource._smallest_allowed_error() ? That will be
-        # super slow though. Hopefully there is a way to optimize that logic. Looks like can make
-        # arrays of astropy Quantity objects, so that seems promising.
-        # pointing_errors = positions_target - positions_mount
-
-        pointing_errors = []
-        for pos_mount, pos_target in zip(positions_mount, positions_target):
-            pointing_errors.append(
-                ErrorSource._smallest_allowed_error(pos_mount, pos_target, self.meridian_side)
-            )
-        pointing_errors = Angle(pointing_errors).deg
+        pointing_errors = ErrorSource._smallest_allowed_error(
+            positions_mount,
+            positions_target,
+            no_cross_position
+        )
 
         # return mean error magnitude
         return np.mean(np.abs(pointing_errors))

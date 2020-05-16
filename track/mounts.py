@@ -560,9 +560,9 @@ class LosmandyGeminiMount(TelescopeMount):
             self,
             times_from_start: np.ndarray,
             rate_commands: np.ndarray,
-            position_axis_start: Longitude,
+            position_axis_start: float,
             slew_rate_start: float,
-        ) -> Tuple[Longitude, np.ndarray]:
+        ) -> Tuple[np.ndarray, np.ndarray]:
         """Predict future axis positions based on a set of future commands.
 
         Note that the slew rate commands are assumed to be issued at the *start* of each time
@@ -571,6 +571,8 @@ class LosmandyGeminiMount(TelescopeMount):
         executed immediately (0 seconds from now), followed by rate_commands[1] executed at
         times_from_start[0], etc., until the last command is issued at times_from_start[-2] and the
         final position prediction corresponds to the end of that interval at times_from_start[-1].
+
+        Note also that Astropy objects are not used in this method for performance reasons.
 
         Args:
             times_from_start: An array of times in seconds measured from the starting time (t = 0).
@@ -585,11 +587,12 @@ class LosmandyGeminiMount(TelescopeMount):
         Returns:
             A tuple where the first element is an array of predicted mount axis encoder positions
             in degrees and the second element is an array of predicted slew rates in degrees per
-            second. Each entry in these arrays corresponds to elements in the times_from_start array.
+            second. Each entry in these arrays corresponds to elements in the times_from_start
+            array.
         """
         positions_predicted = []
         rates_predicted = []
-        position_current = position_axis_start.deg
+        position_current = position_axis_start
         rate_at_start_of_step = slew_rate_start
         time_steps = np.concatenate(((times_from_start[0],), np.diff(times_from_start)))
 
@@ -625,4 +628,4 @@ class LosmandyGeminiMount(TelescopeMount):
             rate_at_start_of_step = rate_command
             rates_predicted.append(rate_command)
 
-        return Longitude(positions_predicted, unit='deg'), rates_predicted
+        return np.array(positions_predicted) % 360, np.array(rates_predicted)
