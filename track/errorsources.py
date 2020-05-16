@@ -135,7 +135,7 @@ class ErrorSource(TelemSource):
     def _smallest_allowed_error(
             mount_enc_position: Longitude,
             target_enc_position: Longitude,
-            no_cross_position: Optional[Longitude],
+            no_cross_position: Optional[Longitude] = None,
         ) -> Angle:
         """Compute error term for a single axis taking into account no-cross positions
 
