@@ -87,5 +87,20 @@ class TestSmallestAllowedError(unittest.TestCase):
         )
         assert_allclose(error.deg, -358.0)
 
+    def test_vector(self):
+        error = ErrorSource._smallest_allowed_error(
+            mount_enc_position=Longitude([1, 2, 359], unit='deg'),
+            target_enc_position=Longitude([2, 1, 0], unit='deg'),
+        )
+        assert_allclose(error.deg, np.array([1, -1, 1]))
+
+    def test_vector_with_limit(self):
+        error = ErrorSource._smallest_allowed_error(
+            mount_enc_position=Longitude([1, 10, 10, 10], unit='deg'),
+            target_enc_position=Longitude([2, 11, 90, -10], unit='deg'),
+            no_cross_position=Longitude(0*u.deg)
+        )
+        assert_allclose(error.deg, np.array([1, 1, 80, 340]))
+
 if __name__ == "__main__":
     unittest.main()

@@ -147,39 +147,37 @@ class ErrorSource(TelemSource):
         constraints prevent taking the short path.
 
         Args:
-            mount_enc_position: The mount encoder position.
-            target_enc_position: The target encoder position.
+            mount_enc_position: The mount encoder position. Scalar or array.
+            target_enc_position: The target encoder position. Scalar or array.
             no_cross_position: Encoder position that this axis is not allowed to cross or None if
                 no such position exists.
 
         Returns:
-            The error term for this axis, with wrap_angle set to 180 degrees.
+            The error term(s) for this axis.
         """
 
-        # shortest path
-        prelim_error = Angle(
-            Longitude(target_enc_position - mount_enc_position, wrap_angle=180*u.deg)
-        )
+        # shortest path to target
+        prelim_error = (target_enc_position.deg - mount_enc_position.deg + 180) % 360 - 180
 
-        # No limit, no problem! In this case always take the shortest distance path.
         if no_cross_position is None:
-            return prelim_error
+            return Angle(prelim_error*u.deg)
 
         # error term as if the no-cross point were the target position
-        no_cross_error = Angle(
-            Longitude(no_cross_position - mount_enc_position, wrap_angle=180*u.deg)
-        )
+        no_cross_error = (no_cross_position.deg - mount_enc_position.deg + 180) % 360 - 180
 
         # actual target is closer than the no-cross point so can't possibly be crossing it
-        if abs(prelim_error) <= abs(no_cross_error):
-            return prelim_error
+        target_closer_indices = np.abs(prelim_error) <= np.abs(no_cross_error)
 
         # actual target is in opposite direction from the no-cross point
-        if np.sign(prelim_error) != np.sign(no_cross_error):
-            return prelim_error
+        target_opposite_indices = np.sign(prelim_error) != np.sign(no_cross_error)
 
-        # switch direction since prelim_error would have crossed the no-cross point
-        return prelim_error + 360*u.deg if prelim_error < 0 else prelim_error - 360*u.deg
+        final_error = np.where(np.logical_or(target_closer_indices, target_opposite_indices),
+            prelim_error,
+            # switch direction since prelim_error would have crossed the no-cross point
+            prelim_error - 360*np.sign(prelim_error)
+        )
+
+        return Angle(final_error*u.deg)
 
 
 class BlindErrorSource(ErrorSource):
