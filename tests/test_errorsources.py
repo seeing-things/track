@@ -6,8 +6,8 @@ import unittest
 import numpy as np
 from numpy.testing import assert_allclose
 from astropy import units as u
-from astropy.coordinates import SkyCoord
-from track.errorsources import separation
+from astropy.coordinates import SkyCoord, Longitude
+from track.errorsources import separation, ErrorSource
 
 
 class TestSeparation(unittest.TestCase):
@@ -39,6 +39,53 @@ class TestSeparation(unittest.TestCase):
             sep_track = separation(sc1, sc2)
 
             assert_allclose(sep_astropy.deg, sep_track.deg)
+
+class TestSmallestAllowedError(unittest.TestCase):
+
+    def test_positive_error(self):
+        error = ErrorSource._smallest_allowed_error(
+            mount_enc_position=Longitude(1*u.deg),
+            target_enc_position=Longitude(2*u.deg)
+        )
+        assert_allclose(error.deg, 1.0)
+
+    def test_negative_error(self):
+        error = ErrorSource._smallest_allowed_error(
+            mount_enc_position=Longitude(2*u.deg),
+            target_enc_position=Longitude(1*u.deg)
+        )
+        assert_allclose(error.deg, -1.0)
+
+    def test_wrapping(self):
+        error = ErrorSource._smallest_allowed_error(
+            mount_enc_position=Longitude(359*u.deg),
+            target_enc_position=Longitude(0*u.deg)
+        )
+        assert_allclose(error.deg, 1.0)
+
+    def test_target_closer_than_limit(self):
+        error = ErrorSource._smallest_allowed_error(
+            mount_enc_position=Longitude(0*u.deg),
+            target_enc_position=Longitude(1*u.deg),
+            no_cross_position=Longitude(30*u.deg),
+        )
+        assert_allclose(error.deg, 1.0)
+
+    def test_target_opposite_dir_from_limit(self):
+        error = ErrorSource._smallest_allowed_error(
+            mount_enc_position=Longitude(0*u.deg),
+            target_enc_position=Longitude(60*u.deg),
+            no_cross_position=Longitude(-30*u.deg),
+        )
+        assert_allclose(error.deg, 60.0)
+
+    def test_long_way_around(self):
+        error = ErrorSource._smallest_allowed_error(
+            mount_enc_position=Longitude(-1*u.deg),
+            target_enc_position=Longitude(1*u.deg),
+            no_cross_position=Longitude(0*u.deg),
+        )
+        assert_allclose(error.deg, -358.0)
 
 if __name__ == "__main__":
     unittest.main()
