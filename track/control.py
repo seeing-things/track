@@ -254,6 +254,20 @@ class PIDController:
         return prop_term + self.integrator + derivative_term
 
 
+class SlewRateCommand(NamedTuple):
+    """Slew rate command to be sent at a specific time in the future.
+
+    This is the return value of `ModelPredictiveController.update()`.
+
+    Attributes:
+        time_to_send: Time at which the slew rate commands should be sent to the mount.
+        rates: Dictionary of slew rates in degrees per second where keys are the axis indices (0 or
+            1).
+    """
+    time_to_send: Time
+    rates: dict
+
+
 class ModelPredictiveController:
     """A model predictive controller (MPC).
 
@@ -287,116 +301,166 @@ class ModelPredictiveController:
         """
         self.target = target
         self.mount = mount
+        self.axes = list(mount.AxisName)
         self.mount_model = mount_model
         self.meridian_side = meridian_side
         self.prediction_horizon = TimeDelta(prediction_horizon, format='sec')
         self.control_cycle_period = TimeDelta(control_cycle_period, format='sec')
-
-        # Arrays of predicted target encoder positions for each mount axis and cache of optimized
-        # future slew rates used to seed the optimizer. Using separate arrays for each thing rather
-        # than, say, a list or deque of MountEncoderPosition tuples to optimize performance.
-        self.target_times = Time([], format='datetime')  # empty array of Time objects
-        self.positions_target = {0: Longitude([], unit='deg'), 1: Longitude([], unit='deg')}
-        self.slew_rates_predicted = {0: np.array([]), 1: np.array([])}
+        self.slew_rate_command_prev = SlewRateCommand(
+            time_to_send=Time.now(),
+            rates=dict.fromkeys(self.axes, 0.0)
+        )
+        self._init_prediction_arrays(Time.now() + 2*self.control_cycle_period)
 
     def _get_target_position(self, time_future: Time) -> MountEncoderPositions:
+        """Get target position for a specific time and convert to mount encoder positions"""
         target_topocentric = self.target.get_position(time_future)
         return self.mount_model.topocentric_to_encoders(target_topocentric, self.meridian_side)
 
-    def _refresh_target_predictions(self, time_now: Time) -> None:
-        """Discard positions in the past and extend predicted positions to horizon"""
+    def _init_prediction_arrays(self, time_start: Time) -> None:
+        """Initialize arrays of predicted target positions and slew rates out to prediction horizon
 
-        time_horizon = time_now + self.prediction_horizon + self.control_cycle_period
+        Args:
+            time_start: The first target position in the arrays will correspond to this absolute
+                time. The arrays will be populated with predictions that start at this time and end
+                at this time plus the prediction horizon.
+        """
 
-        # Discard target positions that are less than one control cycle period in the future
-        keep_indices = self.target_times >= time_now + self.control_cycle_period
-        self.target_times = self.target_times[keep_indices]
-        self.positions_target[0] = self.positions_target[0][keep_indices]
-        self.positions_target[1] = self.positions_target[1][keep_indices]
-        self.slew_rates_predicted[0] = self.slew_rates_predicted[0][keep_indices]
-        self.slew_rates_predicted[1] = self.slew_rates_predicted[1][keep_indices]
+        num_items = int(self.prediction_horizon / self.control_cycle_period)
+        times_from_start = TimeDelta(self.control_cycle_period*np.arange(num_items), format='sec')
 
-        if self.target_times.size == 0:
-            # Add first predicted target position
-            self.target_times = Time([time_now + self.control_cycle_period])
-            target_position = self._get_target_position(time_now + self.control_cycle_period)
-            self.positions_target[0] = Longitude([target_position[0]])
-            self.positions_target[1] = Longitude([target_position[1]])
-            self.slew_rates_predicted[0] = np.zeros(1)
-            self.slew_rates_predicted[1] = np.zeros(1)
+        self.target_times = time_start + times_from_start
 
-        # TODO: resizing arrays using append() and insert() re-allocates memory... consider using
-        # fixed-length arrays and using roll() to discard old entries and then assigning new
-        # values by indexing into the array
-        while self.target_times[-1] < time_horizon:
-            array_size = self.target_times.size
-            time_future = self.target_times[-1] + self.control_cycle_period
-            target_position = self._get_target_position(time_future)
-            self.target_times = self.target_times.insert(array_size, time_future)
-            self.positions_target[0] = self.positions_target[0].insert(
-                array_size,
-                target_position[0]
-            )
-            self.positions_target[1] = self.positions_target[1].insert(
-                array_size,
-                target_position[1]
-            )
-            self.slew_rates_predicted[0] = np.append(
-                self.slew_rates_predicted[0],
-                self.slew_rates_predicted[0][-1]
-            )
-            self.slew_rates_predicted[1] = np.append(
-                self.slew_rates_predicted[1],
-                self.slew_rates_predicted[1][-1]
-            )
+        self.positions_target = dict([(axis, np.zeros(num_items)) for axis in self.axes])
+        for idx, target_time in enumerate(self.target_times):
+            position_target = self._get_target_position(target_time)
+            for axis in self.axes:
+                self.positions_target[axis][idx] = position_target[axis].deg
 
-    def update(self) -> Tuple[float, float]:
+        self.slew_rates_predicted = dict([(axis, np.zeros(num_items)) for axis in self.axes])
+
+    def _advance_prediction_arrays(self) -> Time:
+        """Advance arrays of predicted target positions and slew rates by one control cycle.
+
+        Returns:
+            The time corresponding to the oldest target position that was stored in the arrays
+            prior to this method being called; in other words, the time corresponding to the target
+            position removed during this call.
+        """
+        time_oldest_target = self.target_times[0]
+
+        # Shift all the arrays forward by one cycle period
+        self.target_times = Time(np.roll(self.target_times.value, -1))
+        for axis in self.axes:
+            self.positions_target[axis] = np.roll(self.positions_target[axis], -1)
+            self.slew_rates_predicted[axis] = np.roll(self.slew_rates_predicted[axis], -1)
+
+        # Update the last element of each array to a new value near the prediction horizon
+        time_next = self.target_times[-2] + self.control_cycle_period
+        self.target_times[-1] = time_next
+        target_position = self._get_target_position(time_next)
+        for axis in self.axes:
+            self.positions_target[axis][-1] = target_position[axis].deg
+            self.slew_rates_predicted[axis][-1] = self.slew_rates_predicted[axis][-2]
+
+        return time_oldest_target
+
+    def update(self) -> SlewRateCommand:
+        """Run model predictive controller to generate optimized slew rate command to send next.
+
+        Does the following:
+        1. Updates arrays of predicted target positions and predicted slew rates out to horizon
+        2. Predicts the position of the mount at the time the next slew rate command will be sent
+        3. Computes the optimum slew rate commands to send next to minimize the average pointing
+           error magnitude out to the prediction horizon.
+
+        Returns:
+            Slew rate commands to send. The return type includes both the slew rates and the time
+            at which those commands should be sent. The caller should wait until that time to send
+            the commands rather than sending them immediately.
+        """
 
         # get current position and slew rates of the mount
         position_mount_now = self.mount.get_position()
-        slew_rates_now = (self.mount.get_slew_rate(0), self.mount.get_slew_rate(1))
+        slew_rates_now = tuple([self.mount.get_slew_rate(axis) for axis in self.axes])
         time_now = Time.now()
 
         # refresh arrays of predicted target positions looking into the future
-        self._refresh_target_predictions(time_now)
-        times_from_now = self.target_times - time_now
+        while True:
+            time_next_cmd = self._advance_prediction_arrays()
+            time_next_cmd_from_now = time_next_cmd - time_now
+            # Keep advancing if the time the next command should be sent is already in the past.
+            # Hopefully this does not happen often, since it means that the control loop is falling
+            # behind. If keeping up, time_next_cmd_from_now should be nearly equal to the control
+            # cycle period.
+            if time_next_cmd_from_now > 0:
+                break
+        times_from_next_cmd = self.target_times - time_next_cmd
 
-        # run optimizers to find best slew rate commands to send next
-        for axis in [0, 1]:
+
+        for axis in self.axes:
+
+            # predict mount position and slew rate at the instant when the next slew rate command
+            # will be sent, which is the start of the prediction window used by the optimizer
+            position_mount_at_next_cmd, slew_rate_at_next_cmd = self.mount.predict(
+                times_from_start=np.array([time_next_cmd_from_now.sec]),
+                rate_commands=np.array([self.slew_rate_command_prev.rates[axis]]),
+                position_axis_start=position_mount_now[axis].deg,
+                slew_rate_start=slew_rates_now[axis]
+            )
+            # Numpy arrays returned by previous call to mount.predict() are length-1
+            position_mount_at_next_cmd = float(position_mount_at_next_cmd)
+            slew_rate_at_next_cmd = float(slew_rate_at_next_cmd)
+
+            # run optimizer to find best slew rate command to send next
             opt_result = minimize(
                 fun=self._objective,
                 x0=self.slew_rates_predicted[axis],
                 args=(
-                    times_from_now.sec,
-                    self.positions_target[axis].deg,
-                    position_mount_now[axis].deg,
+                    times_from_next_cmd.sec,
+                    self.positions_target[axis],
+                    position_mount_at_next_cmd,
+                    slew_rate_at_next_cmd,
                     self.mount.no_cross_encoder_positions()[axis].deg,
-                    slew_rates_now[axis]
                 ),
-                bounds=[(-self.mount.max_slew_rate, self.mount.max_slew_rate)]*len(times_from_now),
+                bounds=[(
+                    -self.mount.max_slew_rate,
+                    self.mount.max_slew_rate
+                )]*len(times_from_next_cmd),
                 method='SLSQP',  # Chosen by experimentation for speed and consistency
                 options={'disp': False, 'ftol': 1e-10, 'maxiter': 10}
             )
             self.slew_rates_predicted[axis] = opt_result.x
 
-        return self.slew_rates_predicted[0][0], self.slew_rates_predicted[1][0]
+        slew_rate_command = SlewRateCommand(
+            time_to_send=time_next_cmd,
+            rates=dict([(axis, self.slew_rates_predicted[axis][0]) for axis in self.axes])
+        )
+        self.slew_rate_command_prev = slew_rate_command
+
+        return slew_rate_command
 
     def _objective(
             self,
             slew_rate_commands: np.ndarray,
-            times_from_now: float,
+            times_from_start: np.ndarray,
             positions_target: np.ndarray,
-            position_axis_now: float,
+            position_axis_start: float,
+            slew_rate_start: float,
             no_cross_position: float,
-            slew_rate_now: float,
         ):
+        """The objective (cost) function that the optimizer attempts to minimize.
+
+        This predicts the mean magnitude of the pointing error over a future time window in
+        response to a provided set of future slew rate commands.
+        """
 
         # predict mount axis position in the future assuming this set of slew rate commands
         positions_mount, _ = self.mount.predict(
-            times_from_now,
+            times_from_start,
             slew_rate_commands,
-            position_axis_now,
-            slew_rate_now
+            position_axis_start,
+            slew_rate_start
         )
 
         pointing_errors = ErrorSource._smallest_allowed_error(
@@ -455,15 +519,16 @@ class Tracker(TelemSource):
             mount_model: MountModel,
             meridian_side: MeridianSide,
             target: Target,
-            max_update_period: float = 0.1,
+            control_loop_period: float = 0.1,
         ):
         """Constructs a Tracker object.
 
         Args:
             mount: Provides interface to send slew rate commands to the mount.
-            error_source: Object that computes error terms for each mount axis.
-            pid_gains: Gains for the PID controller.
-            max_update_period: Passed on to the PIDController constructor.
+            mount_model: Alignment model for converting to/from mount encoder positions.
+            meridian_side: Selects which side of mount meridian to point in.
+            target: The target to track.
+            control_loop_period: Target control loop period in seconds.
         """
         self.axes = list(mount.AxisName)
         self.controller = ModelPredictiveController(
@@ -472,8 +537,9 @@ class Tracker(TelemSource):
             mount_model=mount_model,
             meridian_side=meridian_side,
             prediction_horizon=1.0,
-            control_cycle_period=0.1,
+            control_cycle_period=control_loop_period,
         )
+        self.control_loop_period = control_loop_period
         self.controller_outputs = dict.fromkeys(self.axes, 0.0)
         self.error = PointingError(None, None, None)
         self.slew_rate = dict.fromkeys(self.axes, 0.0)
