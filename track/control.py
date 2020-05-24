@@ -14,7 +14,7 @@ import astropy.units as u
 from astropy.units import Quantity
 from astropy.coordinates import Angle, Longitude
 from astropy.time import Time, TimeDelta
-from track.errorsources import ErrorSource, PointingError
+from track.errorsources import ErrorSource, PointingError, separation
 from track.model import MountModel
 from track.mounts import TelescopeMount, MeridianSide, MountEncoderPositions
 from track.targets import Target
@@ -365,7 +365,33 @@ class ModelPredictiveController:
 
         return time_oldest_target
 
-    def update(self) -> SlewRateCommand:
+    def _calc_pointing_error(self, position_mount, time_of_position) -> PointingError:
+        """Calculate current pointing error magnitude
+
+        Args:
+            position_mount: Mount encoder positions
+            time_of_position: Time when position_mount was read
+
+        Returns:
+            Pointing error (see `PointingError` class documentation).
+        """
+        position_target_topo = self.target.get_position(time_of_position)
+        position_mount_topo = self.mount_model.encoders_to_topocentric(position_mount)
+        error_magnitude = separation(position_target_topo, position_mount_topo)
+        position_target_enc = self.mount_model.topocentric_to_encoders(
+            position_target_topo,
+            self.meridian_side
+        )
+        return PointingError(
+            *[Angle(ErrorSource._smallest_allowed_error(
+                position_mount[axis].deg,
+                position_target_enc[axis].deg,
+                self.mount.no_cross_encoder_positions()[axis].deg,
+            )*u.deg) for axis in self.mount.AxisName],
+            error_magnitude
+        )
+
+    def update(self) -> Tuple[SlewRateCommand, Angle]:
         """Run model predictive controller to generate optimized slew rate command to send next.
 
         Does the following:
@@ -375,9 +401,10 @@ class ModelPredictiveController:
            error magnitude out to the prediction horizon.
 
         Returns:
-            Slew rate commands to send. The return type includes both the slew rates and the time
-            at which those commands should be sent. The caller should wait until that time to send
-            the commands rather than sending them immediately.
+            A tuple with the slew rate commands to send and the current pointing error. The rate
+            command type includes both the slew rates and the time at which those commands should
+            be sent. The caller should wait until that time to send the commands rather than
+            sending them immediately.
         """
 
         # get current position and slew rates of the mount
@@ -438,7 +465,7 @@ class ModelPredictiveController:
         )
         self.slew_rate_command_prev = slew_rate_command
 
-        return slew_rate_command
+        return slew_rate_command, self._calc_pointing_error(position_mount_now, time_now)
 
     def _objective(
             self,
