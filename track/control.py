@@ -143,7 +143,6 @@ class ModelPredictiveController:
             self,
             target: Target,
             mount: TelescopeMount,
-            mount_model: MountModel,
             meridian_side: MeridianSide,
             prediction_horizon: float,
             control_cycle_period: float,
@@ -154,7 +153,6 @@ class ModelPredictiveController:
             target: The target being tracked.
             mount: The mount under control. This object also provides a model of the mount used to
                 predict future mount dynamics in response to control inputs.
-            mount_model: Used to convert between coordinate systems.
             prediction_horizon: The controller will look ahead this many seconds into the future
                 when optimizing control output against predicted future mount and target dynamics.
             control_cycle_period: The expected typical period of the control loop in seconds.
@@ -162,7 +160,6 @@ class ModelPredictiveController:
         self.target = target
         self.mount = mount
         self.axes = list(mount.AxisName)
-        self.mount_model = mount_model
         self.meridian_side = meridian_side
         self.prediction_horizon = TimeDelta(prediction_horizon, format='sec')
         self.control_cycle_period = TimeDelta(control_cycle_period, format='sec')
@@ -176,11 +173,6 @@ class ModelPredictiveController:
         self.positions_target = None
         self.slew_rates_predicted = None
         self._init_prediction_arrays(Time.now() + 2*self.control_cycle_period)
-
-    def _get_target_position(self, time_future: Time) -> MountEncoderPositions:
-        """Get target position for a specific time and convert to mount encoder positions"""
-        target_topocentric = self.target.get_position(time_future)
-        return self.mount_model.topocentric_to_encoders(target_topocentric, self.meridian_side)
 
     def _init_prediction_arrays(self, time_start: Time) -> None:
         """Initialize arrays of predicted target positions and slew rates out to prediction horizon
@@ -196,13 +188,43 @@ class ModelPredictiveController:
 
         self.target_times = time_start + times_from_start
 
-        self.positions_target = {axis: np.zeros(num_items) for axis in self.axes}
-        for idx, target_time in enumerate(self.target_times):
-            position_target = self._get_target_position(target_time)
-            for axis in self.axes:
-                self.positions_target[axis][idx] = position_target[axis].deg
+        # init target position array to current mount position in case actual target position
+        # is indeterminate
+        position_mount = self.mount.get_position()
+        self.positions_target = {axis: np.full(num_items, position_mount[axis].deg)
+            for axis in self.axes}
+        self._refresh_target_positions()
 
         self.slew_rates_predicted = {axis: np.zeros(num_items) for axis in self.axes}
+
+    def _refresh_target_positions(self) -> None:
+        """Refresh all of the elements of the predicted target position arrays
+
+        Can't assume for all target types that predicted positions will remain unchanged as time
+        progresses. For example, a prediction ten seconds into the future may have low confidence
+        but 9 seconds later, when that time instant is only one second in the future, the estimate
+        of the future position may have been greatly refined.
+        """
+        if self.target.supports_prediction:
+            for idx, target_time in enumerate(self.target_times):
+                try:
+                    _, position_target_enc = self.target.get_position(target_time)
+                except self.target.IndeterminatePosition:
+                    continue
+                for axis in self.axes:
+                    self.positions_target[axis][idx] = position_target_enc[axis].deg
+        else:
+            try:
+                _, position_target_enc = self.target.get_position()
+            except self.target.IndeterminatePosition:
+                # Assume the target is still at the most recently predicted position since we don't
+                # know any better
+                return
+            # Since target does not support prediction, assume that its future position is the same
+            # as the current position. This may lead to bad tracking performance if the target is
+            # actually moving.
+            for axis in self.axes:
+                self.positions_target[axis][:] = position_target_enc[axis].deg
 
     def _advance_prediction_arrays(self) -> Time:
         """Advance arrays of predicted target positions and slew rates by one control cycle.
@@ -220,13 +242,16 @@ class ModelPredictiveController:
             self.positions_target[axis] = np.roll(self.positions_target[axis], -1)
             self.slew_rates_predicted[axis] = np.roll(self.slew_rates_predicted[axis], -1)
 
-        # Update the last element of each array to a new value near the prediction horizon
-        time_next = self.target_times[-2] + self.control_cycle_period
-        self.target_times[-1] = time_next
-        target_position = self._get_target_position(time_next)
+        # Update the last element of time and slew rate arrays
+        self.target_times[-1] = self.target_times[-2] + self.control_cycle_period
         for axis in self.axes:
-            self.positions_target[axis][-1] = target_position[axis].deg
             self.slew_rates_predicted[axis][-1] = self.slew_rates_predicted[axis][-2]
+            # This should be overwritten by `_refresh_target_positions()` but in case it is unable
+            # to get a new prediction this is the next-best thing
+            self.positions_target[axis][-1] = self.positions_target[axis][-2]
+
+        # refresh predicted target positions
+        self._refresh_target_positions()
 
         return time_oldest_target
 
@@ -407,7 +432,6 @@ class Tracker(TelemSource):
         self.controller = ModelPredictiveController(
             target=target,
             mount=mount,
-            mount_model=mount_model,
             meridian_side=meridian_side,
             prediction_horizon=1.0,
             control_cycle_period=control_loop_period,
@@ -517,14 +541,11 @@ class Tracker(TelemSource):
         """Final tasks to perform at the end of each control cycle."""
 
         # get target position for the same time as mount state was queried
-        position_target_topo = self.target.get_position(mount_state.time_queried)
+        (position_target_topo,
+            position_target_enc) = self.target.get_position(mount_state.time_queried)
 
         # coordinate system transformations
         position_mount_topo = self.mount_model.encoders_to_topocentric(mount_state.position)
-        position_target_enc = self.mount_model.topocentric_to_encoders(
-            position_target_topo,
-            self.meridian_side
-        )
 
         error_enc = {axis: float(smallest_allowed_error(
             mount_state.position[axis].deg,
