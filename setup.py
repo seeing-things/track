@@ -15,7 +15,7 @@ setup(
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version='0.2.0',
+    version='0.3.0',
 
     description='A mess of code for tracking moving objects with a telescope',
     long_description=long_description,
@@ -44,6 +44,7 @@ setup(
 
     install_requires=[
         'appdirs>=1.4',
+        'astropy>=4.0',
         'bs4>=0.0.1',
         'click>=7.0',
         'ConfigArgParse==0.12.0',
