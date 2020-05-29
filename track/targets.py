@@ -2,6 +2,7 @@
 
 from typing import Dict, List, Optional, Tuple
 from abc import ABC, abstractmethod
+from datetime import datetime
 from functools import lru_cache
 from math import inf
 import threading
@@ -40,8 +41,13 @@ class Target(ABC):
         """
 
     @abstractmethod
-    def get_position(self, t: Optional[Time] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
+    def get_position(self, t: Optional[datetime] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
         """Get the apparent position of the target for the specified time.
+
+        For performance reasons, some implementations of this class may elect to add memoization
+        support to this method by adding the @lru_cache decorator from the functools module. This
+        decorator requires that all arguments be hashable. This is why the time argument to this
+        method is of type datetime.datetime rather than astropy's Time.
 
         Args:
             t: The time for which the position should correspond. If None, the position returned
@@ -87,7 +93,7 @@ class FixedTopocentricTarget(Target):
         """Prediction is trivial since the target apparent position is fixed"""
         return True
 
-    def get_position(self, t: Optional[Time] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
+    def get_position(self, t: Optional[datetime] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
         """Since the topocentric position is fixed the t argument is ignored"""
         return (self.position_topo, self.position_enc)
 
@@ -129,11 +135,10 @@ class AcceleratingMountAxisTarget(Target):
     def supports_prediction(self) -> bool:
         return True
 
-    def get_position(self, t: Optional[Time] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
+    def get_position(self, t: Optional[datetime] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
         """Gets the position of the simulated target for a specific time."""
 
-        if t is None:
-            t = Time.now()
+        t = Time.now() if t is None else Time(t)
 
         if self.time_start is None:
             # Don't do this in constructor because it may be a couple seconds between when the
@@ -188,11 +193,9 @@ class PyEphemTarget(Target):
         return True
 
     @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
-    def get_position(self, t: Optional[Time] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
+    def get_position(self, t: Optional[datetime] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
         """Get apparent position of this target"""
-        if t is None:
-            t = Time.now()
-        self.observer.date = ephem.Date(t.datetime)
+        self.observer.date = ephem.Date(t if t is not None else Time.now().value)
         self.target.compute(self.observer)
         position_topo = SkyCoord(self.target.az * u.rad, self.target.alt * u.rad, frame='altaz')
         position_enc = self.mount_model.topocentric_to_encoders(position_topo, self.meridian_side)
@@ -338,7 +341,7 @@ class CameraTarget(Target, TelemSource):
         return target_keypoint
 
 
-    def get_position(self, t: Optional[Time] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
+    def get_position(self, t: None = None) -> Tuple[SkyCoord, MountEncoderPositions]:
         """Compute pointing error using computer vision and a camera.
 
         The encoder error terms are computed using this rough procedure:
