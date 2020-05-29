@@ -156,7 +156,6 @@ class ModelPredictiveController:
                 when optimizing control output against predicted future mount and target dynamics.
             control_cycle_period: The expected typical period of the control loop in seconds.
         """
-        self.target = target
         self.mount = mount
         self.axes = list(mount.AxisName)
         self.prediction_horizon = TimeDelta(prediction_horizon, format='sec')
@@ -166,10 +165,20 @@ class ModelPredictiveController:
             rates=dict.fromkeys(self.axes, 0.0)
         )
 
-        # These attributes will be initialized in a separate method
+        # These attributes will be initialized when target property is set
         self.target_times = None
         self.positions_target = None
         self.slew_rates_predicted = None
+
+        self.target = target  # setting this property triggers array initialization
+
+    @property
+    def target(self) -> Target:
+        return self._target
+
+    @target.setter
+    def target(self, new_target: Target) -> None:
+        self._target = new_target
         self._init_prediction_arrays(Time.now() + 2*self.control_cycle_period)
 
     def _init_prediction_arrays(self, time_start: Time) -> None:
@@ -444,6 +453,15 @@ class Tracker(TelemSource):
 
         self._telem_mutex = threading.Lock()
         self._telem_chans = {}
+
+    @property
+    def target(self) -> Target:
+        return self._target
+
+    @target.setter
+    def target(self, new_target: Target) -> None:
+        self._target = new_target
+        self.controller.target = new_target
 
     def register_callback(self, callback):
         """Register a callback function.
