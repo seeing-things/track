@@ -52,7 +52,7 @@ class Target(ABC):
         Args:
             t: The time for which the position should correspond. If None, the position returned
                 will correspond to the time this method is called and should be nearly the same
-                as calling with this argument set to Time.now().
+                as calling with this argument set to datetime.now(timezone.utc).
 
         Returns:
             A tuple containing:
