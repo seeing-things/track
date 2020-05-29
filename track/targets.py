@@ -192,10 +192,22 @@ class PyEphemTarget(Target):
         """PyEphem is able to calculate target positions for any time"""
         return True
 
-    @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
+
     def get_position(self, t: Optional[datetime] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
         """Get apparent position of this target"""
-        self.observer.date = ephem.Date(t if t is not None else Time.now().value)
+        return self._get_position(t if t is not None else Time.now().value)
+
+
+    @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
+    def _get_position(self, t: datetime) -> Tuple[SkyCoord, MountEncoderPositions]:
+        """Implementation of get_position()
+
+        A wrapper is necessary to allow memoization caching to work properly. Without this
+        wrapper, the lru_cache decorator applied to the get_position() method would cause it to
+        return the same value every time it is called with the argument set to None, which is not
+        the desired result.
+        """
+        self.observer.date = ephem.Date(t)
         self.target.compute(self.observer)
         position_topo = SkyCoord(self.target.az * u.rad, self.target.alt * u.rad, frame='altaz')
         position_enc = self.mount_model.topocentric_to_encoders(position_topo, self.meridian_side)
