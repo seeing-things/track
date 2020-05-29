@@ -14,7 +14,7 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord, Angle, UnitSphericalRepresentation
 from astropy.time import Time, TimeDelta
 from track.model import MountModel
-from track.mounts import TelescopeMount, MeridianSide, MountEncoderPositions
+from track.mounts import TelescopeMount, MountEncoderPositions
 from track.targets import Target
 from track.telem import TelemSource
 
@@ -143,7 +143,6 @@ class ModelPredictiveController:
             self,
             target: Target,
             mount: TelescopeMount,
-            meridian_side: MeridianSide,
             prediction_horizon: float,
             control_cycle_period: float,
         ):
@@ -160,7 +159,6 @@ class ModelPredictiveController:
         self.target = target
         self.mount = mount
         self.axes = list(mount.AxisName)
-        self.meridian_side = meridian_side
         self.prediction_horizon = TimeDelta(prediction_horizon, format='sec')
         self.control_cycle_period = TimeDelta(control_cycle_period, format='sec')
         self.slew_rate_command_prev = SlewRateCommand(
@@ -415,7 +413,6 @@ class Tracker(TelemSource):
             self,
             mount: TelescopeMount,
             mount_model: MountModel,
-            meridian_side: MeridianSide,
             target: Target,
             control_loop_period: float = 0.1,
         ):
@@ -424,7 +421,6 @@ class Tracker(TelemSource):
         Args:
             mount: Provides interface to send slew rate commands to the mount.
             mount_model: Alignment model for converting to/from mount encoder positions.
-            meridian_side: Selects which side of mount meridian to point in.
             target: The target to track.
             control_loop_period: Target control loop period in seconds.
         """
@@ -432,14 +428,12 @@ class Tracker(TelemSource):
         self.controller = ModelPredictiveController(
             target=target,
             mount=mount,
-            meridian_side=meridian_side,
             prediction_horizon=1.0,
             control_cycle_period=control_loop_period,
         )
         self.control_loop_period = control_loop_period
         self.mount = mount
         self.mount_model = mount_model
-        self.meridian_side = meridian_side
         self.target = target
         self.num_iterations = 0
         self.callback = None
