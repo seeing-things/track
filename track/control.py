@@ -215,7 +215,9 @@ class ModelPredictiveController:
         if self.target.supports_prediction:
             for idx, target_time in enumerate(self.target_times):
                 try:
-                    _, position_target_enc = self.target.get_position(target_time)
+                    _, position_target_enc = self.target.get_position(
+                        target_time.to_value('datetime')
+                    )
                 except self.target.IndeterminatePosition:
                     continue
                 for axis in self.axes:
@@ -553,8 +555,9 @@ class Tracker(TelemSource):
         """Final tasks to perform at the end of each control cycle."""
 
         # get target position for the same time as mount state was queried
-        (position_target_topo,
-            position_target_enc) = self.target.get_position(mount_state.time_queried)
+        (position_target_topo, position_target_enc) = self.target.get_position(
+            mount_state.time_queried.to_value('datetime')
+        )
 
         # coordinate system transformations
         position_mount_topo = self.mount_model.encoders_to_topocentric(mount_state.position)
