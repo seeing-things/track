@@ -221,6 +221,8 @@ class Gamepad(TelemSource):
         os.sched_setscheduler(0, os.SCHED_OTHER, os.sched_param(0))
 
         while True:
+            time_loop_start = time.perf_counter()
+
             if not self.running:
                 return
 
@@ -233,7 +235,10 @@ class Gamepad(TelemSource):
                 self.int_x = np.clip(self.int_x, -self.int_limit, self.int_limit)
                 self.int_y = np.clip(self.int_y, -self.int_limit, self.int_limit)
 
-            time.sleep(self.int_loop_period)
+            time_elapsed = time.perf_counter() - time_loop_start
+            time_sleep = self.int_loop_period - time_elapsed
+            if time_sleep > 0:
+                time.sleep(time_sleep)
 
     def get_telem_channels(self):
         names = ['left_x', 'left_y', 'right_x', 'right_y', 'int_x', 'int_y']
