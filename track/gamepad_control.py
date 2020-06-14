@@ -60,24 +60,12 @@ def main():
         if args.bypass_alt_limits:
             print('Warning: Altitude limits disabled! Be careful!')
     elif args.mount_type == 'gemini':
-        mount = track.LosmandyGeminiMount(args.mount_path)
+        mount = track.LosmandyGeminiMount(args.mount_path, use_multiprocessing=False)
     else:
         mount = None
         print('mount-type not supported: ' + args.mount_type)
 
     game_pad = track.Gamepad()
-
-    def gamepad_callback(event_state):
-        """Called whenever analog stick values change"""
-        x, y = game_pad.get_value()
-        mount.slew(0, mount.max_slew_rate * x)
-        mount.slew(1, mount.max_slew_rate * y)
-
-    if mount is not None:
-        game_pad.register_callback('ABS_X', gamepad_callback)
-        game_pad.register_callback('ABS_Y', gamepad_callback)
-        game_pad.register_callback('ABS_RX', gamepad_callback)
-        game_pad.register_callback('ABS_RY', gamepad_callback)
 
     try:
         laser = track.LaserPointer(serial_num=args.laser_ftdi_serial)
@@ -98,8 +86,14 @@ def main():
         telem_logger.start()
 
     try:
-        # do nothing in this thread until CTRL-C
-        Event().wait()
+        if mount is None:
+            # do nothing in this thread until CTRL-C
+            Event().wait()
+        else:
+            while True:
+                x, y = game_pad.get_value()
+                mount.slew(0, mount.max_slew_rate * x)
+                mount.slew(1, mount.max_slew_rate * y)
 
     except KeyboardInterrupt:
         print('Got CTRL-C, shutting down...')
