@@ -67,6 +67,18 @@ def main():
 
     game_pad = track.Gamepad()
 
+    def gamepad_callback(event_state):
+        """Called whenever analog stick values change"""
+        x, y = game_pad.get_value()
+        mount.slew(0, mount.max_slew_rate * x)
+        mount.slew(1, mount.max_slew_rate * y)
+
+    if mount is not None:
+        game_pad.register_callback('ABS_X', gamepad_callback)
+        game_pad.register_callback('ABS_Y', gamepad_callback)
+        game_pad.register_callback('ABS_RX', gamepad_callback)
+        game_pad.register_callback('ABS_RY', gamepad_callback)
+
     try:
         laser = track.LaserPointer(serial_num=args.laser_ftdi_serial)
         game_pad.register_callback('BTN_SOUTH', laser.set)
@@ -86,14 +98,8 @@ def main():
         telem_logger.start()
 
     try:
-        if mount is None:
-            # do nothing in this thread until CTRL-C
-            Event().wait()
-        else:
-            while True:
-                x, y = game_pad.get_value()
-                mount.slew(0, mount.max_slew_rate * x)
-                mount.slew(1, mount.max_slew_rate * y)
+        # do nothing in this thread until CTRL-C
+        Event().wait()
 
     except KeyboardInterrupt:
         print('Got CTRL-C, shutting down...')

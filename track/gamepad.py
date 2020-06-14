@@ -5,6 +5,7 @@ program the integrated x- and y- values are printed to the console.
 """
 
 import os
+import signal
 import threading
 import time
 import selectors
@@ -35,7 +36,7 @@ class Gamepad(TelemSource):
         int_loop_period: The period of the integrator thread loop in seconds.
         int_limit: The integrators will be limited to this absolute value.
         callbacks: A dict where keys are event codes and values are callback function handles.
-        state: A dict storing the last received event.state for each event.code. Starts empty.
+        state: A dict storing the last received event.state for each event.code.
         gamepad: An instance of a gamepad object from the inputs package.
         input_thread: A thread reading input from the gamepad.
         integrator_thread: A thread for integrating the analog stick values.
@@ -45,14 +46,14 @@ class Gamepad(TelemSource):
     """
 
     MAX_ANALOG_VAL = 2**15
-    MIN_LEVEL = 0.01
+    DEAD_ZONE_MAG = 256
 
     def __init__(
             self,
             left_gain=1.0,
             right_gain=0.1,
             int_limit=1.0,
-            int_loop_period=0.01
+            int_loop_period=0.1
         ):
         """Inits Gamepad object.
 
@@ -77,14 +78,18 @@ class Gamepad(TelemSource):
         self.int_loop_period = int_loop_period
         self.int_limit = int_limit
         self.callbacks = {}
-        self.state = {}
+        self.state = {'ABS_X': 0, 'ABS_Y': 0, 'ABS_RX': 0, 'ABS_RY': 0}
         if len(inputs.devices.gamepads) < 1:
             raise RuntimeError('No gamepads found')
         self.gamepad = inputs.devices.gamepads[0]
         self.input_thread = threading.Thread(target=self.__get_input, name='Gamepad: input thread')
-        self.integrator_thread = threading.Thread(target=self.__integrator, name='Gamepad: integrator thread')
+        self.integrator_thread = threading.Thread(
+            target=self.__integrator,
+            name='Gamepad: integrator thread'
+        )
         self.integrator_mode = False
         self.running = True
+        self.debug_prints = False
 
         # Use a selector on the character device that the inputs package reads from so that we
         # can avoid blocking on calls to gamepad.read() in the input_thread loop. Calls that block
@@ -131,14 +136,36 @@ class Gamepad(TelemSource):
         """
         self.callbacks[event_code] = callback
 
-    def __get_input(self):
-        """Thread function for reading input from gamepad
+    def _update_analog(self, stick: str) -> None:
+        """Convert integer analog stick values to floating point"""
+        if stick == 'left':
+            raw_vector = self.state['ABS_X'] - 1j*self.state['ABS_Y']
+        elif stick == 'right':
+            raw_vector = self.state['ABS_RX'] - 1j*self.state['ABS_RY']
+        else:
+            raise ValueError("stick must be 'left' or 'right'")
 
-        The inputs package is written such that calls to read() block until an
-        event is available to be returned. There is no way to query the device
-        to see if any events are ready. Therefore we must execute this loop
-        in its own thread so it doesn't block other processing.
-        """
+        raw_mag = abs(raw_vector)
+
+        # scaled dead zone algorithm
+        # https://www.gamasutra.com/blogs/JoshSutphin/20130416/190541/Doing_Thumbstick_Dead_Zones_Right.php
+        if raw_mag >= self.DEAD_ZONE_MAG:
+            scaled_mag = (raw_mag - self.DEAD_ZONE_MAG) / (self.MAX_ANALOG_VAL - self.DEAD_ZONE_MAG)
+        else:
+            scaled_mag = 0.0
+
+        scaled_vector = scaled_mag * np.exp(1j*np.angle(raw_vector))
+
+        if stick == 'left':
+            self.left_x = scaled_vector.real
+            self.left_y = scaled_vector.imag
+        elif stick == 'right':
+            self.right_x = scaled_vector.real
+            self.right_y = scaled_vector.imag
+
+
+    def __get_input(self):
+        """Thread for reading input from gamepad"""
 
         # Make sure this thread does not have realtime priority
         os.sched_setscheduler(0, os.SCHED_OTHER, os.sched_param(0))
@@ -147,21 +174,23 @@ class Gamepad(TelemSource):
             if not self.running:
                 return
 
-            if self.sel.select(timeout=0.01):
+            # use select() to check if events are waiting to avoid blocking on read()
+            if self.sel.select(timeout=0.1):
+
+                # call to read() is blocking
                 events = self.gamepad.read()
                 for event in events:
+                    # cache the raw state of this event
+                    self.state[event.code] = event.state
+
                     if event.code == 'ABS_X':
-                        left_x = float(event.state) / self.MAX_ANALOG_VAL
-                        self.left_x = left_x if abs(left_x) >= self.MIN_LEVEL else 0.0
+                        self._update_analog('left')
                     elif event.code == 'ABS_Y':
-                        left_y = -float(event.state) / self.MAX_ANALOG_VAL
-                        self.left_y = left_y if abs(left_y) >= self.MIN_LEVEL else 0.0
+                        self._update_analog('left')
                     elif event.code == 'ABS_RX':
-                        right_x = float(event.state) / self.MAX_ANALOG_VAL
-                        self.right_x = right_x if abs(right_x) >= self.MIN_LEVEL else 0.0
+                        self._update_analog('right')
                     elif event.code == 'ABS_RY':
-                        right_y = -float(event.state) / self.MAX_ANALOG_VAL
-                        self.right_y = right_y if abs(right_y) >= self.MIN_LEVEL else 0.0
+                        self._update_analog('right')
                     elif event.code == 'BTN_NORTH' and event.state == 1:
                         self.int_x = 0.0
                     elif event.code == 'BTN_WEST' and event.state == 1:
@@ -176,8 +205,8 @@ class Gamepad(TelemSource):
                     if callback is not None:
                         callback(event.state)
 
-                    # cache the raw state of this event so it can be inspected at any time
-                    self.state[event.code] = event.state
+                    if self.debug_prints:
+                        print(event.code + ': ' + str(event.state))
 
     def __integrator(self):
         """Thread function for integrating analog stick values.
@@ -214,14 +243,14 @@ class Gamepad(TelemSource):
         return chans
 
 def main():
-    """Prints integrated x/y values to the console every 10 ms."""
-    try:
-        gamepad = Gamepad()
-        while True:
-            print('(' + str(gamepad.int_x) + ',' + str(gamepad.int_y) + ')')
-            time.sleep(0.01)
+    """Prints all gamepad events received"""
 
+    gamepad = Gamepad()
+    gamepad.debug_prints = True
+    try:
+        signal.pause()
     except KeyboardInterrupt:
+        gamepad.running = False
         print('goodbye')
 
 if __name__ == "__main__":
