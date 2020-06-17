@@ -9,21 +9,24 @@ def find_features(frame: np.ndarray) -> List[cv2.KeyPoint]:
     """Find bright features in a camera frame.
 
     Args:
-        frame: A camera frame.
+        frame: A grayscale camera frame with dtype uint8.
 
     Returns:
         A list of keypoints.
     """
 
-    # TODO: Make magic numbers parameters or find them adaptively
-    # pick a threshold as the max of these two methods:
-    # - 99th percentile of histogram
-    # - peak of histogram plus a magic number
+    if frame.dtype != np.uint8:
+        # No fundamental reason; just hasn't been implemented
+        raise ValueError('Only uint8 frames are supported')
+
     hist, _ = np.histogram(frame.ravel(), 256, [0, 256])
-    cumsum = np.cumsum(hist)
-    threshold_1 = np.argmax(cumsum >= 0.99*cumsum[-1])
-    threshold_2 = np.argmax(hist) + 4
-    threshold = max(threshold_1, threshold_2)
+
+    # Threshold is placed at the first index after the peak in the histogram where the slope is
+    # non-negative. The idea is to keep the threshold as low as possible to allow detection of dim
+    # targets while still rejecting as much background noise as possible.
+    hist_max_index = np.argmax(hist)
+    hist_diff = np.diff(hist)
+    threshold = np.argmax(hist_diff[hist_max_index:] >= 0) + hist_max_index
 
     _, thresh = cv2.threshold(
         frame,
@@ -42,17 +45,21 @@ def find_features(frame: np.ndarray) -> List[cv2.KeyPoint]:
     keypoints = []
     for contour in contours:
         moms = cv2.moments(contour)
-        if moms['m00'] == 0.0:
+
+        # reject contours with less than 2 pixels
+        if contour.shape[0] < 2:
             continue
 
-        # find the center of mass
-        center = np.array([moms['m10'] / moms['m00'], moms['m01'] / moms['m00']])
+        # find the centroid
+        if moms['m00'] > 0.0:
+            center = np.array([moms['m10'] / moms['m00'], moms['m01'] / moms['m00']])
+        else:
+            # if the contour is so small that the internal area is 0 any random pixel in the
+            # contour should be close enough
+            center = contour[0][0]
 
         # find the maximum distance between the center and the contour
-        radius = 0.0
-        for p in contour:
-            dist = np.linalg.norm(center - p)
-            radius = max(radius, dist)
+        radius = np.max(np.linalg.norm(center - contour, axis=2))
 
         keypoints.append(cv2.KeyPoint(center[0], center[1], 2.0*radius))
 
