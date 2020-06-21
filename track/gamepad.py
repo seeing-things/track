@@ -255,7 +255,7 @@ def main():
     try:
         signal.pause()
     except KeyboardInterrupt:
-        gamepad.running = False
+        gamepad.stop()
         print('goodbye')
 
 if __name__ == "__main__":
