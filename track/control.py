@@ -41,11 +41,11 @@ def separation(sc1: SkyCoord, sc2: SkyCoord) -> Angle:
     lat_diff = us1.lat.rad - us2.lat.rad
     lon_diff = us1.lon.rad - us2.lon.rad
     return Angle(
-            2 * np.arcsin(np.sqrt(
-                np.sin(lat_diff / 2)**2
-                + np.cos(us1.lat.rad)*np.cos(us2.lat.rad)*np.sin(lon_diff / 2)**2
-            )) * u.rad
-        )
+        2 * np.arcsin(np.sqrt(
+            np.sin(lat_diff / 2)**2
+            + np.cos(us1.lat.rad)*np.cos(us2.lat.rad)*np.sin(lon_diff / 2)**2
+        )) * u.rad
+    )
 
 
 def smallest_allowed_error(
@@ -90,7 +90,8 @@ def smallest_allowed_error(
     # actual target is in opposite direction from the no-cross point
     target_opposite_indices = np.sign(prelim_error) != np.sign(no_cross_error)
 
-    final_error = np.where(np.logical_or(target_closer_indices, target_opposite_indices),
+    final_error = np.where(
+        np.logical_or(target_closer_indices, target_opposite_indices),
         prelim_error,
         # switch direction since prelim_error would have crossed the no-cross point
         prelim_error - 360*np.sign(prelim_error)
@@ -174,6 +175,7 @@ class ModelPredictiveController:
 
     @property
     def target(self) -> Target:
+        """Get target"""
         return self._target
 
     @target.setter
@@ -198,8 +200,9 @@ class ModelPredictiveController:
         # init target position array to current mount position in case actual target position
         # is indeterminate
         position_mount = self.mount.get_position()
-        self.positions_target = {axis: np.full(num_items, position_mount[axis].deg)
-            for axis in self.axes}
+        self.positions_target = {
+            axis: np.full(num_items, position_mount[axis].deg) for axis in self.axes
+        }
         self._refresh_target_positions()
 
         self.slew_rates_predicted = {axis: np.zeros(num_items) for axis in self.axes}
@@ -456,6 +459,7 @@ class Tracker(TelemSource):
 
     @property
     def target(self) -> Target:
+        """Get target"""
         return self._target
 
     @target.setter
