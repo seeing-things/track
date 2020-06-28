@@ -212,26 +212,13 @@ class ModelPredictiveController:
         but 9 seconds later, when that time instant is only one second in the future, the estimate
         of the future position may have been greatly refined.
         """
-        if self.target.supports_prediction:
-            for idx, target_time in enumerate(self.target_times):
-                try:
-                    _, position_target_enc = self.target.get_position(target_time)
-                except self.target.IndeterminatePosition:
-                    continue
-                for axis in self.axes:
-                    self.positions_target[axis][idx] = position_target_enc[axis].deg
-        else:
+        for idx, target_time in enumerate(self.target_times):
             try:
-                _, position_target_enc = self.target.get_position()
+                _, position_target_enc = self.target.get_position(target_time)
             except self.target.IndeterminatePosition:
-                # Assume the target is still at the most recently predicted position since we don't
-                # know any better
-                return
-            # Since target does not support prediction, assume that its future position is the same
-            # as the current position. This may lead to bad tracking performance if the target is
-            # actually moving.
+                continue
             for axis in self.axes:
-                self.positions_target[axis][:] = position_target_enc[axis].deg
+                self.positions_target[axis][idx] = position_target_enc[axis].deg
 
     def _advance_prediction_arrays(self) -> Time:
         """Advance arrays of predicted target positions and slew rates by one control cycle.
