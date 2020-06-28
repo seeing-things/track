@@ -139,7 +139,7 @@ class ASICamera(Camera):
     """ZWO ASI Cameras"""
 
     class BitDepth(enum.IntEnum):
-        """Indicates side of mount meridian. This is significant for equatorial mounts."""
+        """Bit depth of pixels."""
         RAW8 = asi.ASI_IMG_RAW8
         RAW16 = asi.ASI_IMG_RAW16
 
