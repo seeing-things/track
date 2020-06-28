@@ -215,26 +215,13 @@ class ModelPredictiveController:
         but 9 seconds later, when that time instant is only one second in the future, the estimate
         of the future position may have been greatly refined.
         """
-        if self.target.supports_prediction:
-            for idx, target_time in enumerate(self.target_times):
-                try:
-                    _, position_target_enc = self.target.get_position(target_time)
-                except self.target.IndeterminatePosition:
-                    continue
-                for axis in self.axes:
-                    self.positions_target[axis][idx] = position_target_enc[axis].deg
-        else:
+        for idx, target_time in enumerate(self.target_times):
             try:
-                _, position_target_enc = self.target.get_position()
+                position_target = self.target.get_position(target_time)
             except self.target.IndeterminatePosition:
-                # Assume the target is still at the most recently predicted position since we don't
-                # know any better
-                return
-            # Since target does not support prediction, assume that its future position is the same
-            # as the current position. This may lead to bad tracking performance if the target is
-            # actually moving.
+                continue
             for axis in self.axes:
-                self.positions_target[axis][:] = position_target_enc[axis].deg
+                self.positions_target[axis][idx] = position_target.enc[axis].deg
 
     def _advance_prediction_arrays(self) -> Time:
         """Advance arrays of predicted target positions and slew rates by one control cycle.
@@ -509,6 +496,9 @@ class Tracker(TelemSource):
             cycle_period = time_now - time_last_start if time_last_start is not None else None
             time_last_start = time_now
 
+            # some (but not all) targets need to grab and process data from sensors
+            self.target.process_sensor_data()
+
             # get current position and slew rates of the mount
             mount_state = MountState(
                 rates=tuple([self.mount.get_slew_rate(axis) for axis in self.axes]),
@@ -557,21 +547,19 @@ class Tracker(TelemSource):
         """Final tasks to perform at the end of each control cycle."""
 
         # get target position for the same time as mount state was queried
-        (position_target_topo, position_target_enc) = self.target.get_position(
-            mount_state.time_queried
-        )
+        position_target = self.target.get_position(mount_state.time_queried)
 
         # coordinate system transformations
         position_mount_topo = self.mount_model.encoders_to_topocentric(mount_state.position)
 
         error_enc = {axis: float(smallest_allowed_error(
             mount_state.position[axis].deg,
-            position_target_enc[axis].deg,
+            position_target.enc[axis].deg,
             self.mount.no_cross_encoder_positions()[axis].deg,
         )) for axis in self.axes}
 
         # on-sky separation between target and mount positions
-        error_magnitude = separation(position_target_topo, position_mount_topo)
+        error_magnitude = separation(position_target.topo, position_mount_topo)
 
         # populate dict of telemetry channels
         self._telem_mutex.acquire()
@@ -581,13 +569,13 @@ class Tracker(TelemSource):
         self._telem_chans['num_iterations'] = self.num_iterations
         self._telem_chans['mount_az'] = position_mount_topo.az.deg
         self._telem_chans['mount_alt'] = position_mount_topo.alt.deg
-        self._telem_chans['target_az'] = position_target_topo.az.deg
-        self._telem_chans['target_alt'] = position_target_topo.alt.deg
+        self._telem_chans['target_az'] = position_target.topo.az.deg
+        self._telem_chans['target_alt'] = position_target.topo.alt.deg
         self._telem_chans['error_mag'] = error_magnitude.deg
         for axis in self.axes:
             self._telem_chans[f'rate_{axis}'] = mount_state.rates[axis]
             self._telem_chans[f'mount_enc_{axis}'] = mount_state.position[axis].deg
-            self._telem_chans[f'target_enc_{axis}'] = position_target_enc[axis].deg
+            self._telem_chans[f'target_enc_{axis}'] = position_target.enc[axis].deg
             self._telem_chans[f'error_enc_{axis}'] = error_enc[axis]
             if rate_command is not None:
                 self._telem_chans[f'rate_command_{axis}'] = rate_command.rates[axis]

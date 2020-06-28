@@ -1,13 +1,12 @@
 """targets for use in telescope tracking control loop"""
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, NamedTuple
 from abc import ABC, abstractmethod
 from functools import lru_cache
 from math import inf
 import threading
 import numpy as np
-from astropy.coordinates import (Angle, EarthLocation, SkyCoord, AltAz, Longitude,
-    UnitSphericalRepresentation)
+from astropy.coordinates import Angle, EarthLocation, SkyCoord, AltAz, Longitude
 from astropy.time import Time
 from astropy import units as u
 import ephem
@@ -17,6 +16,19 @@ from track.compvis import find_features, PreviewWindow
 from track.model import MountModel
 from track.mounts import MeridianSide, MountEncoderPositions, TelescopeMount
 from track.telem import TelemSource
+
+
+class TargetPosition(NamedTuple):
+    """Position of a target at a specific time.
+
+    Attributes:
+        time: Time at which the target is expected to be located at this position.
+        position_topo: Topographical target position (azimuth and altitude).
+        position_enc: Mount encoder positions corresponding to target's apparent position.
+    """
+    time: Time
+    topo: SkyCoord
+    enc: MountEncoderPositions
 
 
 class Target(ABC):
@@ -29,35 +41,32 @@ class Target(ABC):
         target in the camera frame.
         """
 
-    @property
     @abstractmethod
-    def supports_prediction(self) -> bool:
-        """True if the class supports `get_position()` for specific times.
-
-        Certain instances of Target may only be able to determine the target position at the
-        moment `get_position()` is called. When this is the case, this property will be False and
-        `get_position()` will only succeed when the argument is left unspecified.
-        """
-
-    @abstractmethod
-    def get_position(self, t: Optional[Time] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
+    def get_position(self, t: Time) -> TargetPosition:
         """Get the apparent position of the target for the specified time.
 
         Args:
-            t: The time for which the position should correspond. If None, the position returned
-                will correspond to the time this method is called and should be nearly the same
-                as calling with this argument set to Time.now().
+            t: The time for which the position should correspond, if possible. For some targets
+                the position can be found at this exact time. For others it may not be possible to
+                predict the position in the past or in the future. The `time` field of the return
+                tuple will be populated to indicate the actual time that corresponds to the return
+                value's position.
 
         Returns:
-            A tuple containing:
-            1. A SkyCoord object having AltAz frame giving the apparent position of the object in
-               the topocentric reference frame
-            2. An instance of MountEncoderPositions giving the apparent position of the object in
-               terms of the mount's encoder positions.
+            The target position as an instance of TargetPosition.
 
         Raises:
             IndeterminatePosition if the target position cannot be determined.
-            ValueError if t is not None and the `supports_prediction` attribute is False.
+        """
+
+    def process_sensor_data(self) -> None:
+        """Get and process data from any sensors associated with this target type.
+
+        This method will be called once near the beginning of the control cycle. Reading of sensor
+        data and processing of that data into intermediate state should be done in this method. The
+        code should be optimized such that calls to get_position() are as fast as practical. If no
+        sensors are associated with this target type there is no need to override this default
+        no-op implementation.
         """
 
 
@@ -82,14 +91,9 @@ class FixedTopocentricTarget(Target):
         self.position_topo = coord
         self.position_enc = mount_model.topocentric_to_encoders(coord, meridian_side)
 
-    @property
-    def supports_prediction(self) -> bool:
-        """Prediction is trivial since the target apparent position is fixed"""
-        return True
-
-    def get_position(self, t: Optional[Time] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
+    def get_position(self, t: Optional[Time] = None) -> TargetPosition:
         """Since the topocentric position is fixed the t argument is ignored"""
-        return (self.position_topo, self.position_enc)
+        return TargetPosition(t, self.position_topo, self.position_enc)
 
 
 class AcceleratingMountAxisTarget(Target):
@@ -125,15 +129,8 @@ class AcceleratingMountAxisTarget(Target):
         self.time_start = None
         self.initial_positions = initial_encoder_positions
 
-    @property
-    def supports_prediction(self) -> bool:
-        return True
-
-    def get_position(self, t: Optional[Time] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
+    def get_position(self, t: Time) -> TargetPosition:
         """Gets the position of the simulated target for a specific time."""
-
-        if t is None:
-            t = Time.now()
 
         if self.time_start is None:
             # Don't do this in constructor because it may be a couple seconds between when the
@@ -146,7 +143,7 @@ class AcceleratingMountAxisTarget(Target):
             Longitude((self.initial_positions[1].deg + self.accel[1] * time_elapsed**2) * u.deg),
         )
         position_topo = self.mount_model.encoders_to_topocentric(position_enc)
-        return (position_topo, position_enc)
+        return TargetPosition(t, position_topo, position_enc)
 
 
 class PyEphemTarget(Target):
@@ -182,31 +179,15 @@ class PyEphemTarget(Target):
         self.mount_model = mount_model
         self.meridian_side = meridian_side
 
-    @property
-    def supports_prediction(self) -> bool:
-        """PyEphem is able to calculate target positions for any time"""
-        return True
-
-
-    def get_position(self, t: Optional[Time] = None) -> Tuple[SkyCoord, MountEncoderPositions]:
-        """Get apparent position of this target"""
-        return self._get_position(t if t is not None else Time.now())
-
 
     @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
-    def _get_position(self, t: Time) -> Tuple[SkyCoord, MountEncoderPositions]:
-        """Implementation of get_position()
-
-        A wrapper is necessary to allow memoization caching to work properly. Without this
-        wrapper, the lru_cache decorator applied to the get_position() method would cause it to
-        return the same value every time it is called with the argument set to None, which is not
-        the desired result.
-        """
+    def get_position(self, t: Time) -> TargetPosition:
+        """Get apparent position of this target"""
         self.observer.date = ephem.Date(t.datetime)
         self.target.compute(self.observer)
         position_topo = SkyCoord(self.target.az * u.rad, self.target.alt * u.rad, frame='altaz')
         position_enc = self.mount_model.topocentric_to_encoders(position_topo, self.meridian_side)
-        return (position_topo, position_enc)
+        return TargetPosition(t, position_topo, position_enc)
 
 
 class CameraTarget(Target, TelemSource):
@@ -224,7 +205,7 @@ class CameraTarget(Target, TelemSource):
             meridian_side: Optional[MeridianSide] = None,
             camera_timeout: float = inf,
         ):
-        """Construct an instance of OpticalErrorSource
+        """Construct an instance of CameraTarget
 
         Args:
             camera: Camera from which to capture imagery.
@@ -250,28 +231,26 @@ class CameraTarget(Target, TelemSource):
         self.frame_center_px = (frame_width / 2.0, frame_height / 2.0)
         self.preview_window = PreviewWindow(frame_width, frame_height)
 
+        self.target_position = None
+
         self._telem_mutex = threading.Lock()
         self._telem_chans = {}
-
-    @property
-    def supports_prediction(self) -> bool:
-        """Can only calculate target position using the most recent camera frame"""
-        return False
 
     def _camera_to_mount_position(
             self,
             target_x: Angle,
-            target_y: Angle
-        ) -> Tuple[SkyCoord, MountEncoderPositions, Dict]:
-        """Transform from target position in camera frame to positions in 3D coordinate systems
+            target_y: Angle,
+            telem_chans: Optional[Dict] = None,
+        ) -> SkyCoord:
+        """Transform from target position in camera frame to position in mount frame
 
         Args:
             target_x: Target position in camera's x-axis
             target_y: Target position in camera's y-axis
+            telem_chans: Dict to be populated with new telemetry channels
 
         Returns:
-            Target position in topocentric frame, corresponding mount encoder positions, and dict
-            of telemetry channels.
+            Target position in mount frame
         """
 
         # angular separation and direction from center of camera frame to target
@@ -293,25 +272,16 @@ class CameraTarget(Target, TelemSource):
         target_coord = SkyCoord(mount_coord).directional_offset_by(
             position_angle=target_position_angle,
             separation=target_offset_magnitude
-        ).represent_as(UnitSphericalRepresentation)
-
-        # convert target position back to mount encoder positions
-        target_position_enc = self.mount_model.spherical_to_encoder(
-            coord=target_coord,
-            meridian_side=self.meridian_side,
         )
 
-        target_position_topo = self.mount_model.spherical_to_topocentric(target_coord)
+        if telem_chans is not None:
+            telem_chans['error_mag'] = target_offset_magnitude.deg
+            telem_chans['target_direction_cam'] = target_direction_cam.deg
+            telem_chans['target_position_angle'] = target_position_angle.deg
+            for axis in self.mount.AxisName:
+                telem_chans[f'mount_enc_{axis}'] = mount_enc_positions[axis].deg
 
-        telem_chans = {}
-        telem_chans['error_mag'] = target_offset_magnitude.deg
-        telem_chans['target_direction_cam'] = target_direction_cam.deg
-        telem_chans['target_position_angle'] = target_position_angle.deg
-        for axis in self.mount.AxisName:
-            telem_chans[f'target_enc_{axis}'] = target_position_enc[axis].deg
-            telem_chans[f'mount_enc_{axis}'] = mount_enc_positions[axis].deg
-
-        return target_position_topo, target_position_enc, telem_chans
+        return target_coord
 
     def _get_keypoint_xy(self, keypoint: cv2.KeyPoint) -> Tuple[float, float]:
         """Get the x/y coordinates of a keypoint in the camera frame.
@@ -347,43 +317,55 @@ class CameraTarget(Target, TelemSource):
 
         return target_keypoint
 
-
-    def get_position(self, t: None = None) -> Tuple[SkyCoord, MountEncoderPositions]:
-        """Compute pointing error using computer vision and a camera.
-
-        The encoder error terms are computed using this rough procedure:
-        1) A frame is obtained from the camera
-        2) Computer vision algorithms are applied to identify bright objects
-        3) The bright object nearest the center of the camera frame is assumed to be the target
-        4) The error vector for the selected object is computed in the camera's frame
-        5) The error vector is transformed from camera frame to mount encoder positions and altaz
+    def get_position(self, t: Time) -> TargetPosition:
+        """Compute target position using computer vision and a camera.
 
         Args:
-            t: Must be None. The position returned is always for the most recently received camera
-                frame, which corresponds roughly to the time this method is called.
+            t: Ignored. Position returned always corresponds to the most recent time
+                process_sensor_data() was called and successfully identified a target.
 
         Returns:
             Topocentric position of the target and corresponding mount encoder positions.
 
         Raises:
-            IndeterminatePosition if a target could not be identified in the camera frame.
-            ValueError if t is not None.
+            IndeterminatePosition if a target could not be identified in the most recent camera
+                frame.
         """
-        if t is not None:
-            raise ValueError('prediction not supported')
+        if self.target_position is None:
+            raise self.IndeterminatePosition('No target detected in most recent frame')
+        return self.target_position
+
+    def process_sensor_data(self) -> None:
+        """Process a new camera frame and cache the computed target position in this object.
+
+        The positions are computed using this rough procedure:
+        1) A frame is obtained from the camera
+        2) Computer vision algorithms are applied to identify bright objects
+        3) The bright object nearest the center of the camera frame is assumed to be the target
+        4) The centroid position of the target blob is transformed from camera frame to topocentric
+           frame and to mount encoder positions. These are cached in this object.
+        """
+        telem = {}
 
         frame = self.camera.get_frame(timeout=self.camera_timeout)
+        # This time isn't going to be exceptionally accurate, but unfortunately most cameras do not
+        # provide a means of determining the exact time when the frame was captured by the sensor.
+        # There are probably ways to estimate the frame time more accurately but this is likely
+        # good enough.
+        target_time = Time.now()
 
         if frame is None:
+            self.target_position = None
             self._set_telem_channels()
-            raise self.IndeterminatePosition('No frame was available')
+            return
 
         keypoints = find_features(frame)
 
         if not keypoints:
+            self.target_position = None
             self.preview_window.show_annotated_frame(frame)
             self._set_telem_channels()
-            raise self.IndeterminatePosition('No target identified')
+            return
 
         # assume that the target is the keypoint nearest the center of the camera frame
         target_keypoint = self._keypoint_nearest_center_frame(keypoints)
@@ -394,16 +376,19 @@ class CameraTarget(Target, TelemSource):
         target_x_px, target_y_px = self._get_keypoint_xy(target_keypoint)
         target_x = Angle(target_x_px * self.camera.pixel_scale * self.camera.binning * u.deg)
         target_y = Angle(target_y_px * self.camera.pixel_scale * self.camera.binning * u.deg)
-
-        # transform to mount encoder error terms
-        position_topo, position_enc, telem = self._camera_to_mount_position(target_x, target_y)
-
         telem['target_cam_x'] = target_x.deg
         telem['target_cam_y'] = target_y.deg
 
-        self._set_telem_channels(telem)
+        # transform to world coordinates
+        position_mount = self._camera_to_mount_position(target_x, target_y, telem)
 
-        return position_topo, position_enc
+        position_enc = self.mount_model.spherical_to_encoder(
+            position_mount,
+            self.meridian_side
+        )
+        position_topo = self.mount_model.spherical_to_topocentric(position_mount)
+        self.target_position = TargetPosition(target_time, position_topo, position_enc)
+        self._set_telem_channels(telem)
 
     def _set_telem_channels(self, chans: Optional[Dict] = None) -> None:
         """Set telemetry dict polled by telemetry thread"""
