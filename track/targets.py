@@ -146,6 +146,41 @@ class AcceleratingMountAxisTarget(Target):
         return TargetPosition(t, position_topo, position_enc)
 
 
+class OverheadPassTarget(Target):
+    """A target that passes directly overhead at a steady 1 degree per second horizon-to-horizon.
+    """
+
+    def __init__(
+            self,
+            mount_model: MountModel,
+            meridian_side: MeridianSide,
+        ):
+        """Construct an OverheadPassTarget.
+
+        Args:
+            mount_model: An instance of class MountModel for coordinate system conversions.
+            meridian_side: Desired side of mount-relative meridian.
+        """
+        self.mount_model = mount_model
+        self.meridian_side = meridian_side
+        self.time_start = Time.now()
+        self.position_start = SkyCoord(90*u.deg, -20*u.deg, frame='altaz')
+        self.position_angle = self.position_start.position_angle(
+            SkyCoord(0*u.deg, 90*u.deg, frame='altaz')
+        )
+
+    @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
+    def get_position(self, t: Time) -> TargetPosition:
+        """Gets the position of the simulated target for a specific time."""
+        time_elapsed = (t - self.time_start).sec
+        separation = time_elapsed*u.deg  # 1 deg/s
+
+        position_topo = self.position_start.directional_offset_by(self.position_angle, separation)
+        position_enc = self.mount_model.topocentric_to_encoders(position_topo, self.meridian_side)
+
+        return TargetPosition(t, position_topo, position_enc)
+
+
 class PyEphemTarget(Target):
     """A target using the PyEphem package"""
 
