@@ -95,7 +95,7 @@ def main():
                 mount.max_slew_rate * gamepad_y
             )
             for idx, axis_name in enumerate(mount.AxisName):
-                tracker.slew_rate[axis_name], _ = mount.slew(axis_name, slew_rates[idx])
+                mount.slew(axis_name, slew_rates[idx])
             return True
         else:
             return False
