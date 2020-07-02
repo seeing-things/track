@@ -7,6 +7,7 @@ from math import inf
 import threading
 import numpy as np
 from astropy.coordinates import Angle, EarthLocation, SkyCoord, AltAz, Longitude
+from astropy.coordinates.representation import UnitSphericalRepresentation
 from astropy.time import Time
 from astropy import units as u
 import ephem
@@ -276,7 +277,7 @@ class CameraTarget(Target, TelemSource):
             target_x: Angle,
             target_y: Angle,
             telem_chans: Optional[Dict] = None,
-        ) -> SkyCoord:
+        ) -> UnitSphericalRepresentation:
         """Transform from target position in camera frame to position in mount frame
 
         Args:
@@ -307,7 +308,7 @@ class CameraTarget(Target, TelemSource):
         target_coord = SkyCoord(mount_coord).directional_offset_by(
             position_angle=target_position_angle,
             separation=target_offset_magnitude
-        )
+        ).represent_as(UnitSphericalRepresentation)
 
         if telem_chans is not None:
             telem_chans['error_mag'] = target_offset_magnitude.deg
