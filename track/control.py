@@ -546,37 +546,49 @@ class Tracker(TelemSource):
         ) -> "Tracker.StopReason":
         """Final tasks to perform at the end of each control cycle."""
 
-        # get target position for the same time as mount state was queried
-        position_target = self.target.get_position(mount_state.time_queried)
-
         # coordinate system transformations
         position_mount_topo = self.mount_model.encoders_to_topocentric(mount_state.position)
 
-        error_enc = {axis: float(smallest_allowed_error(
-            mount_state.position[axis].deg,
-            position_target.enc[axis].deg,
-            self.mount.no_cross_encoder_positions()[axis].deg,
-        )) for axis in self.axes}
+        try:
+            # get target position for the same time as mount state was queried
+            position_target = self.target.get_position(mount_state.time_queried)
 
-        # on-sky separation between target and mount positions
-        error_magnitude = separation(position_target.topo, position_mount_topo)
+        except Target.IndeterminatePosition:
+            stop_reason = self._check_stopping_conditions()
+            self._telem_mutex.acquire()
+            self._telem_chans = {}
 
-        # populate dict of telemetry channels
-        self._telem_mutex.acquire()
-        self._telem_chans = {}
+        else:
+            error_enc = {axis: float(smallest_allowed_error(
+                mount_state.position[axis].deg,
+                position_target.enc[axis].deg,
+                self.mount.no_cross_encoder_positions()[axis].deg,
+            )) for axis in self.axes}
+
+            # on-sky separation between target and mount positions
+            error_magnitude = separation(position_target.topo, position_mount_topo)
+
+            stop_reason = self._check_stopping_conditions(error_magnitude)
+
+            # populate dict of telemetry channels
+            self._telem_mutex.acquire()
+            self._telem_chans = {}
+            self._telem_chans['target_az'] = position_target.topo.az.deg
+            self._telem_chans['target_alt'] = position_target.topo.alt.deg
+            self._telem_chans['error_mag'] = error_magnitude.deg
+            for axis in self.axes:
+                self._telem_chans[f'target_enc_{axis}'] = position_target.enc[axis].deg
+                self._telem_chans[f'error_enc_{axis}'] = error_enc[axis]
+
+
         if cycle_period is not None:
             self._telem_chans['cycle_period'] = cycle_period
         self._telem_chans['num_iterations'] = self.num_iterations
         self._telem_chans['mount_az'] = position_mount_topo.az.deg
         self._telem_chans['mount_alt'] = position_mount_topo.alt.deg
-        self._telem_chans['target_az'] = position_target.topo.az.deg
-        self._telem_chans['target_alt'] = position_target.topo.alt.deg
-        self._telem_chans['error_mag'] = error_magnitude.deg
         for axis in self.axes:
             self._telem_chans[f'rate_{axis}'] = mount_state.rates[axis]
             self._telem_chans[f'mount_enc_{axis}'] = mount_state.position[axis].deg
-            self._telem_chans[f'target_enc_{axis}'] = position_target.enc[axis].deg
-            self._telem_chans[f'error_enc_{axis}'] = error_enc[axis]
             if rate_command is not None:
                 self._telem_chans[f'rate_command_{axis}'] = rate_command.rates[axis]
         if rate_command_time_error is not None:
@@ -584,10 +596,13 @@ class Tracker(TelemSource):
         self._telem_mutex.release()
 
         self.num_iterations += 1
-        return self._check_stopping_conditions(error_magnitude)
+        return stop_reason
 
 
-    def _check_stopping_conditions(self, error_magnitude: Angle) -> "Tracker.StopReason":
+    def _check_stopping_conditions(
+            self,
+            error_magnitude: Optional[Angle] = None
+        ) -> "Tracker.StopReason":
         """Checks if any set stopping conditions are satisfied.
 
         Args:
@@ -607,8 +622,9 @@ class Tracker(TelemSource):
                 stop_reason |= self.StopReason.TIMEOUT
 
         if self.stopping_conditions.error_threshold is not None:
-            if error_magnitude <= self.stopping_conditions.error_threshold:
-                stop_reason |= self.StopReason.CONVERGED
+            if error_magnitude is not None:
+                if error_magnitude <= self.stopping_conditions.error_threshold:
+                    stop_reason |= self.StopReason.CONVERGED
 
         return stop_reason
 
