@@ -304,10 +304,14 @@ class CameraTarget(Target, TelemSource):
         self._telem_mutex = threading.Lock()
         self._telem_chans = {}
 
+        from collections import deque
+        self.q = deque(maxlen=3)
+
     def _camera_to_mount_position(
             self,
             target_x: Angle,
             target_y: Angle,
+            mount_enc_positions,  # TODO: add type annotation
             telem_chans: Optional[Dict] = None,
         ) -> UnitSphericalRepresentation:
         """Transform from target position in camera frame to position in mount frame
@@ -327,7 +331,7 @@ class CameraTarget(Target, TelemSource):
         target_direction_cam = Angle(np.angle(target_position_cam) * u.rad)
 
         # Current position of mount is assumed to be the position of the center of the camera frame
-        mount_enc_positions = self.mount.get_position()
+        # mount_enc_positions = self.mount.get_position()
         mount_coord, mount_meridian_side = self.mount_model.encoder_to_spherical(
             mount_enc_positions
         )
@@ -416,6 +420,14 @@ class CameraTarget(Target, TelemSource):
         telem = {}
 
         frame = self.camera.get_frame(timeout=self.camera_timeout)
+        self.q.append(self.mount.get_position())
+        mount_enc_positions = self.q[0]
+        # try:
+        #     mount_enc_positions = self.mount_enc_positions
+        #     self.mount_enc_positions = self.mount.get_position()
+        # except:
+        #     mount_enc_positions = self.mount.get_position()
+        #     self.mount_enc_positions = mount_enc_positions
         # This time isn't going to be exceptionally accurate, but unfortunately most cameras do not
         # provide a means of determining the exact time when the frame was captured by the sensor.
         # There are probably ways to estimate the frame time more accurately but this is likely
@@ -448,7 +460,7 @@ class CameraTarget(Target, TelemSource):
         telem['target_cam_y'] = target_y.deg
 
         # transform to world coordinates
-        position_mount = self._camera_to_mount_position(target_x, target_y, telem)
+        position_mount = self._camera_to_mount_position(target_x, target_y, mount_enc_positions, telem)
 
         position_enc = self.mount_model.spherical_to_encoder(
             position_mount,
