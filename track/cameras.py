@@ -385,18 +385,31 @@ class ASICamera(Camera):
         return ASICheck(asi.ASIGetDroppedFrames(self.info.CameraID))
 
     def get_frame(self, timeout: float = inf) -> np.ndarray:
-
+        """Get a frame from the camera. See base class docstring for details."""
         if self.video_mode:
             timeout_ms = int(timeout * 1000) if timeout < inf else -1
-            try:
-                frame = ASICheck(
-                    asi.ASIGetVideoData(self.info.CameraID,
-                                        self._frame_size_bytes,
-                                        timeout_ms)
-                )
-                frame = self._reshape_frame_data(frame)
-            except asi.ASIError:
+            status_code, frame = asi.ASIGetVideoData(self.info.CameraID,
+                                                     self._frame_size_bytes,
+                                                     timeout_ms)
+            if status_code == asi.ASI_ERROR_TIMEOUT:
                 return None
+            elif status_code != asi.ASI_SUCCESS:
+                raise RuntimeError(f'Got status code {status_code} from ASIGetVideoData')
+
+            # If we got one frame with no timeout see if there are any more frames waiting so that
+            # the freshest frame is returned. Stale frames are dropped.
+            while True:
+                status_code, frame_tmp = asi.ASIGetVideoData(self.info.CameraID,
+                                                             self._frame_size_bytes,
+                                                             0)
+                if status_code == asi.ASI_SUCCESS:
+                    frame = frame_tmp
+                elif status_code == asi.ASI_ERROR_TIMEOUT:
+                    break
+                else:
+                    raise RuntimeError(f'Got status code {status_code} from ASIGetVideoData')
+
+            frame = self._reshape_frame_data(frame)
         else:
             frame = self.take_exposure(timeout)
 
