@@ -30,6 +30,7 @@ from astropy.time import Time
 from astropy.coordinates import SkyCoord, EarthLocation, Angle, Longitude
 import track
 from track import cameras
+from track.control import Tracker
 from track.config import DATA_PATH
 from track.model import ModelParameters, ModelParamSet, MountModel
 from track.mounts import MeridianSide
@@ -258,25 +259,6 @@ def main():
         location=location
     )
 
-    # target and meridian_side will be populated later
-    error_source = track.BlindErrorSource(
-        mount=mount,
-        mount_model=starter_mount_model,
-        target=None,
-        meridian_side=None
-    )
-    telem_sources = {'error_blind': error_source}
-
-    tracker = track.Tracker(
-        mount=mount,
-        error_source=error_source,
-    )
-    telem_sources['tracker'] = tracker
-    tracker.stop_on_timer = True
-    tracker.max_run_time = args.timeout
-    tracker.stop_when_converged = True
-    tracker.converge_max_error_mag = Angle(2.0 * u.deg)
-
     camera = cameras.make_camera_from_args(args, profile='align')
 
     if args.telem_enable:
@@ -284,7 +266,6 @@ def main():
             host=args.telem_db_host,
             port=args.telem_db_port,
             period=args.telem_period,
-            sources=telem_sources,
         )
         telem_logger.start()
 
@@ -314,12 +295,23 @@ def main():
             print(f'Moving to position {idx + 1} of {len(positions)}: '
                   f'Az: {position.position.az.deg:.2f}, Alt: {position.position.alt.deg:.2f}')
 
-            error_source.target = FixedTopocentricTarget(position.position)
-            error_source.meridian_side = position.meridian_side
-            stop_reason = tracker.run()
+            target = FixedTopocentricTarget(
+                position.position,
+                starter_mount_model,
+                position.meridian_side
+            )
+            tracker = Tracker(
+                mount=mount,
+                mount_model=starter_mount_model,
+                target=target
+            )
+            telem_logger.sources['tracker'] = tracker
+            stop_reason = tracker.run(tracker.StoppingConditions(
+                timeout=args.timeout, error_threshold=Angle(2.0 * u.deg)
+            ))
             mount.safe()
-            if stop_reason != 'converged':
-                raise RuntimeError('Unexpected tracker stop reason: "{}"'.format(stop_reason))
+            if tracker.StopReason.CONVERGED not in stop_reason:
+                raise RuntimeError(f'Unexpected tracker stop reason: {stop_reason}')
             time.sleep(1.0)
 
             print('Converged on the target position. Attempting plate solving.')

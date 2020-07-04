@@ -60,6 +60,11 @@ class TelescopeMount(ABC):
     This class provides some abstract methods to provide a common interface for telescope mounts.
     """
 
+    @property
+    @abstractmethod
+    def slew_accel(self) -> float:
+        """Expected acceleration of when changing slew rate in degrees per second squared"""
+        raise NotImplementedError
 
     @abstractmethod
     def get_position(self, max_cache_age: float = 0.0) -> MountEncoderPositions:
@@ -165,6 +170,82 @@ class TelescopeMount(ABC):
         """
 
 
+    def predict(
+            self,
+            times_from_start: np.ndarray,
+            rate_commands: np.ndarray,
+            position_axis_start: float,
+            slew_rate_start: float,
+        ) -> Tuple[np.ndarray, np.ndarray]:
+        """Predict future axis positions based on a set of future commands.
+
+        Note that the slew rate commands are assumed to be issued at the *start* of each time
+        interval and the predicted positions correspond to the *end* of the same interval (which is
+        also the start of the following interval). Consequently, rate_commands[0] is assumed to be
+        executed immediately (0 seconds from now), followed by rate_commands[1] executed at
+        times_from_start[0], etc., until the last command is issued at times_from_start[-2] and the
+        final position prediction corresponds to the end of that interval at times_from_start[-1].
+
+        Note also that Astropy objects are not used in this method for performance reasons.
+
+        Args:
+            times_from_start: An array of times in seconds measured from the starting time (t = 0).
+                The returned position predictions will correspond to these instants in time.
+            rate_commands: An array of slew rate commands that are assumed to be sent to the mount
+                in the future. The size of this array must match the size of times_from_start. Note
+                that the mount is not able to achieve these rates instantly due to acceleration
+                limits. The predicted positions take this into account.
+            position_axis_start: The position of the mount axis at time t = 0.
+            slew_rate_start: The slew rate of the mount axis at time t = 0.
+
+        Returns:
+            A tuple where the first element is an array of predicted mount axis encoder positions
+            in degrees and the second element is an array of predicted slew rates in degrees per
+            second. Each entry in these arrays corresponds to elements in the times_from_start
+            array.
+        """
+        positions_predicted = []
+        rates_predicted = []
+        position_current = float(position_axis_start)
+        rate_at_start_of_step = float(slew_rate_start)
+        time_steps = np.concatenate(((times_from_start[0],), np.diff(times_from_start)))
+        slew_accel = self.slew_accel
+
+        for time_step, rate_command in zip(time_steps, rate_commands):
+
+            # solve for time_accel_end
+            time_accel_end = np.abs(rate_command - rate_at_start_of_step) / slew_accel
+            accel = slew_accel * np.sign(rate_command - rate_at_start_of_step)
+
+            # acceleration continues to the end of this timestep
+            if time_accel_end >= time_step:
+                position_current += accel*time_step**2 + rate_at_start_of_step*time_step
+                positions_predicted.append(position_current)
+                rate_at_start_of_step += accel*time_step
+                rates_predicted.append(rate_at_start_of_step)
+                continue
+
+            # no rate change this timestep
+            if time_accel_end == 0:
+                position_current += rate_at_start_of_step*time_step
+                positions_predicted.append(position_current)
+                rates_predicted.append(rate_at_start_of_step)
+                continue
+
+            # compute position at time_accel_end, the moment accel ends / commanded rate achieved
+            position_at_accel_end = (accel*time_accel_end**2 + rate_at_start_of_step*time_accel_end
+                                     + position_current)
+
+            # compute position at end of timestep
+            position_current = rate_command*(time_step - time_accel_end) + position_at_accel_end
+            positions_predicted.append(position_current)
+
+            rate_at_start_of_step = rate_command
+            rates_predicted.append(rate_command)
+
+        return np.array(positions_predicted) % 360, np.array(rates_predicted)
+
+
 class NexStarMount(TelescopeMount):
     """Interface class to facilitate tracking with NexStar telescopes.
 
@@ -206,6 +287,7 @@ class NexStarMount(TelescopeMount):
             alt_max_limit: float = 65.0,
             bypass_alt_limits: bool = False,
             max_slew_rate: float = 16319.0/3600.0,
+            slew_accel: float = 10.0,
         ):
         """Inits NexStarMount object.
 
@@ -223,15 +305,24 @@ class NexStarMount(TelescopeMount):
             max_slew_rate: The maximum slew rate supported by the mount. The default value (about
                 4.5 deg/s) is the max rate supported by the NexStar 130SLT hand controller as
                 determined by experimentation.
+            slew_accel: The approximate acceleration of the mount in degrees per second squared on
+                changing slew rates. This directly affects the accuracy of `predict()` in the
+                parent class.
         """
         self.mount = point.NexStar(device_name)
         self.alt_min_limit = alt_min_limit
         self.alt_max_limit = alt_max_limit
         self.bypass_alt_limits = bypass_alt_limits
         self.max_slew_rate = max_slew_rate
+        self._slew_accel = slew_accel
         self.cached_position = None
         self.cached_position_time = None
         self._rate_last_commanded = {self.AxisName.AZIMUTH: 0.0, self.AxisName.ALTITUDE: 0.0}
+
+
+    @property
+    def slew_accel(self) -> float:
+        return self._slew_accel
 
 
     def get_position(self, max_cache_age: float = 0.0) -> MountEncoderPositions:
@@ -406,7 +497,7 @@ class LosmandyGeminiMount(TelescopeMount):
             ra_east_limit: float = 110.0,
             bypass_ra_limits: bool = False,
             max_slew_rate: float = 4.0,
-            max_slew_accel: float = 40.0,
+            slew_accel: float = 20.0,
             max_slew_step: float = 0.5,
             use_multiprocessing: bool = True,
         ):
@@ -425,8 +516,8 @@ class LosmandyGeminiMount(TelescopeMount):
                 meridian to the east.
             bypass_ra_limits: If True RA axis limits will not be enforced.
             max_slew_rate: The maximum allowed slew rate magnitude in degrees per second.
-            max_slew_accel: The maximum allowed slew acceleration in degrees per second squared.
-                Higher limits increase the likelihood of motor stalls.
+            slew_accel: The desired acceleration of the mount in degrees per second squared when
+                changing slew rates. Higher acceleration increases the likelihood of motor stalls.
             max_slew_step: The maximum change in slew rate per slew command in degrees per second.
                 Higher limits increase the likelihood of motor stalls.
         """
@@ -434,7 +525,7 @@ class LosmandyGeminiMount(TelescopeMount):
             backend=point.gemini_backend.Gemini2BackendUDP(0.25, device_name),
             rate_limit=max_slew_rate,
             rate_step_limit=max_slew_step,
-            accel_limit=max_slew_accel,
+            accel_limit=slew_accel,
             use_multiprocessing=use_multiprocessing,
         )
 
@@ -448,8 +539,14 @@ class LosmandyGeminiMount(TelescopeMount):
         self.ra_east_limit = ra_east_limit
         self.bypass_ra_limits = bypass_ra_limits
         self.max_slew_rate = max_slew_rate
+        self._slew_accel = slew_accel
         self.cached_position = None
         self.cached_position_time = None
+
+
+    @property
+    def slew_accel(self) -> float:
+        return self._slew_accel
 
 
     def get_position(self, max_cache_age: float = 0.0) -> MountEncoderPositions:

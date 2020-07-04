@@ -16,6 +16,8 @@ import sys
 import click
 import track
 from track import cameras
+from track.targets import CameraTarget
+from track.control import Tracker
 from astropy.coordinates import Longitude
 import astropy.units as u
 
@@ -93,10 +95,7 @@ def main():
                 mount.max_slew_rate * gamepad_y
             )
             for idx, axis_name in enumerate(mount.AxisName):
-                tracker.slew_rate[axis_name], _ = mount.slew(axis_name, slew_rates[idx])
-                # Set loop filter integrators to match so that when gamepad control is released
-                # there is a smooth handoff to optical tracking control.
-                tracker.controllers[axis_name].integrator = tracker.slew_rate[axis_name]
+                mount.slew(axis_name, slew_rates[idx])
             return True
         else:
             return False
@@ -129,16 +128,17 @@ def main():
 
     # Create object with base type ErrorSource
     camera = cameras.make_camera_from_args(args, profile='track')
-    error_source = track.OpticalErrorSource(
+    target_optical = CameraTarget(
         camera=camera,
         mount=mount,
         mount_model=mount_model,
     )
-    telem_sources = {'error_optical': error_source}
+    telem_sources = {'target_optical': target_optical}
 
-    tracker = track.Tracker(
+    tracker = Tracker(
         mount=mount,
-        error_source=error_source,
+        mount_model=mount_model,
+        target=target_optical,
     )
     telem_sources['tracker'] = tracker
 
