@@ -557,7 +557,7 @@ class WebCam(Camera):
             timeout: How long to wait for a fresh frame in seconds. Use math.inf to disable.
 
         Returns:
-            The frame as a numpy array in BGR format.
+            The frame as a numpy array.
         """
 
         self.block_until_frame_ready(timeout)
