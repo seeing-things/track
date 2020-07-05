@@ -20,9 +20,9 @@ import time
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import Longitude
-import point
 from configargparse import Namespace
 from track.config import ArgParser
+import point
 
 
 class MeridianSide(IntEnum):
@@ -87,7 +87,7 @@ class TelescopeMount(ABC):
 
 
     @abstractmethod
-    def slew(self, axis: int, rate: float) -> Tuple[float, bool]:
+    def slew(self, axis: int, rate: float) -> None:
         """Command the mount to slew on one axis.
 
         Commands the mount to slew at a paritcular rate in one axis. A mount may enforce limits
@@ -104,15 +104,9 @@ class TelescopeMount(ABC):
             rate: The requested slew rate in degrees per second. The sign of the value indicates
                 the direction of the slew.
 
-        Returns:
-            A two-element tuple where the first element is a float giving the actual slew rate
-                achieved by the mount. The actual rate could differ from the requested rate due
-                to quantization or due to enforcement of slew rate, acceleration, or axis position
-                limits. The second element is a boolean that is set to True if any of the limits
-                enforced by the mount were exceeded by the requested slew rate.
-
         Raises:
             ValueError if the axis is out of range for the specific mount.
+            ValueError if the magntiude of `rate` exceeds the max supported slew rate.
         """
 
 
@@ -359,7 +353,7 @@ class NexStarMount(TelescopeMount):
         return self.cached_position
 
 
-    def slew(self, axis: int, rate: float) -> Tuple[float, bool]:
+    def slew(self, axis: int, rate: float) -> None:
         """Command the mount to slew on one axis.
 
         Commands the mount to slew at a particular rate in one axis. Each axis is controlled
@@ -378,23 +372,18 @@ class NexStarMount(TelescopeMount):
         mount's position directly.
 
         Args:
-            axis (AxisName): The axis to affect.
-            rate (float): The slew rate in degrees per second. The sign of the value indicates the
+            axis: The axis to affect.
+            rate: The slew rate in degrees per second. The sign of the value indicates the
                 direction of the slew.
 
-        Returns:
-            A two-element tuple where the first element is a float giving the actual slew rate
-                achieved by the mount. The actual rate could differ from the requested rate due
-                to slew rate or axis position limits. The second element is a boolean that is set
-                to True if any of the limits enforced by the mount were exceeded by the requested
-                slew rate.
+        Raises:
+            ValueError if the axis is out of range for the specific mount.
+            ValueError if the magntiude of `rate` exceeds the max supported slew rate.
         """
         axis = self.AxisName(axis)
 
-        limits_exceeded = False
         if abs(rate) > self.max_slew_rate:
-            limits_exceeded = True
-            rate = np.clip(rate, -self.max_slew_rate, self.max_slew_rate)
+            raise ValueError(f'Requested rate ({rate}) exceeds max rate ({self.max_slew_rate})')
 
         # enforce altitude limits
         if axis == self.AxisName.ALTITUDE and not self.bypass_position_limits:
@@ -402,14 +391,11 @@ class NexStarMount(TelescopeMount):
             # pylint: disable=bad-continuation
             if ((position[self.AxisName.ALTITUDE].deg >= self.alt_max_limit and rate > 0.0) or
                 (position[self.AxisName.ALTITUDE].deg <= self.alt_min_limit and rate < 0.0)):
-                limits_exceeded = True
                 rate = 0.0
 
         # slew_var argument units are arcseconds per second
         self.mount.slew_var(axis, rate * 3600.0)
         self._rate_last_commanded[axis] = rate
-
-        return (rate, limits_exceeded)
 
 
     def get_slew_rate(self, axis: int) -> float:
@@ -438,15 +424,13 @@ class NexStarMount(TelescopeMount):
         For this mount the only action necessary is to command the slew rate to zero on both axes.
 
         Returns:
-            True if the mount was safed successfully. False otherwise.
+            Always returns True for this mount since there is no way to query the slew rate from
+            the mount.
         """
-        success = True
         for axis in self.AxisName:
-            rate, _ = self.slew(axis, 0.0)
-            if rate != 0.0:
-                success = False
+            self.slew(axis, 0.0)
 
-        return success
+        return True
 
 
     def no_cross_encoder_positions(self) -> MountEncoderPositions:
@@ -581,7 +565,7 @@ class LosmandyGeminiMount(TelescopeMount):
         return self.cached_position
 
 
-    def slew(self, axis: int, rate: float) -> Tuple[float, bool]:
+    def slew(self, axis: int, rate: float) -> None:
         """Command the mount to slew on one axis.
 
         Commands the mount to slew at a particular rate in one axis. Each axis is controlled
@@ -592,33 +576,23 @@ class LosmandyGeminiMount(TelescopeMount):
             rate: The slew rate in degrees per second. The sign of the value indicates the
                 direction of the slew.
 
-        Returns:
-            A two-element tuple where the first element is a float giving the actual slew rate
-                achieved by the mount. The actual rate could differ from the requested rate due
-                to quantization or due to enforcement of slew rate, acceleration, or axis position
-                limits. The second element is a boolean that is set to True if any of the limits
-                enforced by the mount were exceeded by the requested slew rate.
-
         Raises:
-            ValueError: If an invalid axis is requested.
+            ValueError if the axis is out of range for the specific mount.
+            ValueError if the magntiude of `rate` exceeds the max supported slew rate.
         """
         axis = self.AxisName(axis)
 
-        axis_limit_exceeded = False
+        if abs(rate) > self.max_slew_rate:
+            raise ValueError(f'Requested rate ({rate}) exceeds max rate ({self.max_slew_rate})')
+
         if axis == self.AxisName.RIGHT_ASCENSION and not self.bypass_position_limits:
             pra = self.get_position(0.25)[self.AxisName.RIGHT_ASCENSION.value]
             # pylint: disable=bad-continuation
             if ((pra.deg < 180 - self.ra_west_limit and rate < 0.0) or
                 (pra.deg > 180 + self.ra_east_limit and rate > 0.0)):
-                axis_limit_exceeded = True
                 rate = 0.0
 
-        (actual_rate, limits_exceeded) = self.mount.slew(axis.short_name(), rate)
-
-        if axis_limit_exceeded:
-            limits_exceeded = True
-
-        return (actual_rate, limits_exceeded)
+        self.mount.slew(axis.short_name(), rate)
 
 
     def get_slew_rate(self, axis: int) -> float:
