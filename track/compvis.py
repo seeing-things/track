@@ -25,6 +25,8 @@ def find_features(frame: np.ndarray) -> List[cv2.KeyPoint]:
     # non-negative. The idea is to keep the threshold as low as possible to allow detection of dim
     # targets while still rejecting as much background noise as possible.
     hist_max_index = np.argmax(hist)
+    if hist_max_index == 255:
+        return []
     hist_diff = np.diff(hist)
     threshold = np.argmax(hist_diff[hist_max_index:] >= 0) + hist_max_index
 
