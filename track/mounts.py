@@ -261,7 +261,7 @@ class NexStarMount(TelescopeMount):
             optical tube from colliding with the mount. Limit is enforced during calls to slew().
         alt_max_limit: Upper limit on the mount's altitude, which can be used to prevent the
             optical tube from colliding with the mount. Limit is enforced during calls to slew().
-        bypass_alt_limits (bool): If True altitude limits will not be enforced.
+        bypass_position_limits (bool): If True altitude limits will not be enforced.
         max_slew_rate: Maximum slew rate supported by the mount in degrees per second.
         cached_position (MountEncoderPositions): The most recently queried encoder positions or
             None if get_position() has not been called since this object was constructed.
@@ -287,7 +287,7 @@ class NexStarMount(TelescopeMount):
             device_name: str,
             alt_min_limit: float = 0.0,
             alt_max_limit: float = 65.0,
-            bypass_alt_limits: bool = False,
+            bypass_position_limits: bool = False,
             max_slew_rate: float = 16319.0/3600.0,
             slew_accel: float = 10.0,
         ):
@@ -303,7 +303,7 @@ class NexStarMount(TelescopeMount):
                 a NexStar 130SLT.
             alt_max_limit: Upper limit on the mount's altitude. The default value is reasonable for
                 a NexStar 130SLT.
-            bypass_alt_limits: If True altitude limits will not be enforced.
+            bypass_position_limits: If True altitude limits will not be enforced.
             max_slew_rate: The maximum slew rate supported by the mount. The default value (about
                 4.5 deg/s) is the max rate supported by the NexStar 130SLT hand controller as
                 determined by experimentation.
@@ -314,7 +314,7 @@ class NexStarMount(TelescopeMount):
         self.mount = point.NexStar(device_name)
         self.alt_min_limit = alt_min_limit
         self.alt_max_limit = alt_max_limit
-        self.bypass_alt_limits = bypass_alt_limits
+        self.bypass_position_limits = bypass_position_limits
         self.max_slew_rate = max_slew_rate
         self._slew_accel = slew_accel
         self.cached_position = None
@@ -397,7 +397,7 @@ class NexStarMount(TelescopeMount):
             rate = np.clip(rate, -self.max_slew_rate, self.max_slew_rate)
 
         # enforce altitude limits
-        if axis == self.AxisName.ALTITUDE and not self.bypass_alt_limits:
+        if axis == self.AxisName.ALTITUDE and not self.bypass_position_limits:
             position = self.get_position(0.25)
             # pylint: disable=bad-continuation
             if ((position[self.AxisName.ALTITUDE].deg >= self.alt_max_limit and rate > 0.0) or
@@ -472,7 +472,7 @@ class LosmandyGeminiMount(TelescopeMount):
             to Gemini 2.
         ra_west_limit: Right ascension west of meridian limit in degrees.
         ra_east_limit: Right ascension east of meridian limit in degrees.
-        bypass_ra_limits: Boolean, True when RA limits are bypassed.
+        bypass_position_limits: Boolean, True when RA limits are bypassed.
         max_slew_rate: Maximum slew rate supported by the mount in degrees per second.
         cached_position (MountEncoderPositions): Cached from last time position was read from the
             mount or None if get_position() has not been called since this object was constructed.
@@ -497,7 +497,7 @@ class LosmandyGeminiMount(TelescopeMount):
             device_name: str,
             ra_west_limit: float = 110.0,
             ra_east_limit: float = 110.0,
-            bypass_ra_limits: bool = False,
+            bypass_position_limits: bool = False,
             max_slew_rate: float = 4.0,
             slew_accel: float = 20.0,
             max_slew_step: float = 0.5,
@@ -516,7 +516,7 @@ class LosmandyGeminiMount(TelescopeMount):
                 meridian to the west.
             ra_east_limit: Limit right ascension axis to less than this many degrees from the
                 meridian to the east.
-            bypass_ra_limits: If True RA axis limits will not be enforced.
+            bypass_position_limits: If True RA axis limits will not be enforced.
             max_slew_rate: The maximum allowed slew rate magnitude in degrees per second.
             slew_accel: The desired acceleration of the mount in degrees per second squared when
                 changing slew rates. Higher acceleration increases the likelihood of motor stalls.
@@ -539,7 +539,7 @@ class LosmandyGeminiMount(TelescopeMount):
 
         self.ra_west_limit = ra_west_limit
         self.ra_east_limit = ra_east_limit
-        self.bypass_ra_limits = bypass_ra_limits
+        self.bypass_position_limits = bypass_position_limits
         self.max_slew_rate = max_slew_rate
         self._slew_accel = slew_accel
         self.cached_position = None
@@ -605,7 +605,7 @@ class LosmandyGeminiMount(TelescopeMount):
         axis = self.AxisName(axis)
 
         axis_limit_exceeded = False
-        if axis == self.AxisName.RIGHT_ASCENSION and not self.bypass_ra_limits:
+        if axis == self.AxisName.RIGHT_ASCENSION and not self.bypass_position_limits:
             pra = self.get_position(0.25)[self.AxisName.RIGHT_ASCENSION.value]
             # pylint: disable=bad-continuation
             if ((pra.deg < 180 - self.ra_west_limit and rate < 0.0) or
@@ -673,6 +673,11 @@ def add_program_arguments(parser: ArgParser) -> None:
         help='serial device node or hostname for mount command interface',
         default='/dev/ttyACM0'
     )
+    parser.add_argument(
+        '--bypass-position-limits',
+        help='bypass mount axis position limits',
+        action='store_true'
+    )
     mount_group.add_argument(
         '--meridian-side',
         help='side of meridian for equatorial mounts to prefer',
@@ -688,8 +693,14 @@ def make_mount_from_args(args: Namespace) -> TelescopeMount:
         args: Set of program arguments.
     """
     if args.mount_type == 'nexstar':
-        return NexStarMount(args.mount_path)
+        return NexStarMount(
+            device_name=args.mount_path,
+            bypass_position_limits=args.bypass_position_limits
+        )
     elif args.mount_type == 'gemini':
-        return LosmandyGeminiMount(args.mount_path)
+        return LosmandyGeminiMount(
+            device_name=args.mount_path,
+            bypass_position_limits=args.bypass_position_limits
+        )
     else:
         raise ValueError(f'Invalid mount-type: {args.mount_type}')

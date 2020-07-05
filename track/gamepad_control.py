@@ -8,81 +8,30 @@ are controlled by the analog sticks.
 
 from threading import Event
 import track
+from track import laser, mounts, telem
 
 def main():
+    """See module docstring"""
 
     parser = track.ArgParser()
-    parser.add_argument(
-        '--mount-type',
-        help='select mount type (nexstar or gemini)',
-        default='gemini'
-    )
-    parser.add_argument(
-        '--mount-path',
-        help='serial device node or hostname for mount command interface',
-        default='/dev/ttyACM0'
-    )
-    parser.add_argument(
-        '--bypass-alt-limits',
-        help='bypass mount altitude limits',
-        action='store_true'
-    )
-    parser.add_argument(
-        '--telem-enable',
-        help='enable logging of telemetry to database',
-        action='store_true'
-    )
-    parser.add_argument(
-        '--telem-db-host',
-        help='hostname of InfluxDB database server',
-        default='localhost'
-    )
-    parser.add_argument(
-        '--telem-db-port',
-        help='port number of InfluxDB database server',
-        default=8086,
-        type=int
-    )
-    parser.add_argument(
-        '--telem-period',
-        help='telemetry sampling period in seconds',
-        default=1.0,
-        type=float
-    )
-    parser.add_argument(
-        '--laser-ftdi-serial',
-        help='serial number of laser pointer FTDI device',
-    )
+    mounts.add_program_arguments(parser)
+    telem.add_program_arguments(parser)
+    laser.add_program_arguments(parser)
     args = parser.parse_args()
 
-    if args.mount_type == 'nexstar':
-        mount = track.NexStarMount(args.mount_path, bypass_alt_limits=args.bypass_alt_limits)
-        if args.bypass_alt_limits:
-            print('Warning: Altitude limits disabled! Be careful!')
-    elif args.mount_type == 'gemini':
-        mount = track.LosmandyGeminiMount(args.mount_path, use_multiprocessing=False)
-    else:
-        mount = None
-        print('mount-type not supported: ' + args.mount_type)
+    mount = mounts.make_mount_from_args(args)
 
     game_pad = track.Gamepad()
 
     try:
-        laser = track.LaserPointer(serial_num=args.laser_ftdi_serial)
-        game_pad.register_callback('BTN_SOUTH', laser.set)
+        laser_pointer = laser.make_laser_from_args(args)
+        game_pad.register_callback('BTN_SOUTH', laser_pointer.set)
     except OSError:
         print('Could not connect to laser pointer control device.')
-        laser = None
+        laser_pointer = None
 
     if args.telem_enable:
-        telem_logger = track.TelemLogger(
-            host=args.telem_db_host,
-            port=args.telem_db_port,
-            period=args.telem_period,
-            sources={
-                'gamepad': game_pad
-            }
-        )
+        telem_logger = telem.make_telem_logger_from_args(args, sources={'gamepad': game_pad})
         telem_logger.start()
 
     try:
@@ -97,10 +46,6 @@ def main():
 
     except KeyboardInterrupt:
         print('Got CTRL-C, shutting down...')
-    except Exception as e:
-        print('Unhandled exception: ' + str(e))
-        import traceback
-        traceback.print_exc()
     finally:
         if mount is not None:
             # don't rely on destructors to safe mount!

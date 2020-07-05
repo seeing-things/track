@@ -10,26 +10,13 @@ import pandas as pd
 from astropy.coordinates import Longitude
 import astropy.units as u
 import track
+from track import mounts
 
 def main():
     """Apply step functions of varying magnitudes to a mount axis and plot the responses."""
 
     parser = track.ArgParser()
-    parser.add_argument(
-        '--mount-type',
-        help='select mount type (nexstar or gemini)',
-        default='gemini'
-    )
-    parser.add_argument(
-        '--mount-path',
-        help='serial device node or hostname for mount command interface',
-        default='/dev/ttyACM0'
-    )
-    parser.add_argument(
-        '--bypass-alt-limits',
-        help='bypass mount altitude limits',
-        action='store_true'
-    )
+    mounts.add_program_arguments(parser)
     parser.add_argument(
         '--axis',
         help='axis number (0 or 1)',
@@ -38,16 +25,7 @@ def main():
     )
     args = parser.parse_args()
 
-
-    if args.mount_type == 'nexstar':
-        mount = track.NexStarMount(args.mount_path, bypass_alt_limits=args.bypass_alt_limits)
-        if args.bypass_alt_limits:
-            print('Warning: Altitude limits disabled! Be careful!')
-    elif args.mount_type == 'gemini':
-        mount = track.LosmandyGeminiMount(args.mount_path)
-    else:
-        print('mount-type not supported: ' + args.mount_type)
-        sys.exit(1)
+    mount = mounts.make_mount_from_args(args)
 
     step_responses = {}
     direction = +1.0
