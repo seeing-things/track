@@ -7,7 +7,7 @@ loop.
 import time
 import threading
 from enum import Flag, auto
-from typing import NamedTuple, Tuple, Optional, Union
+from typing import Callable, NamedTuple, Tuple, Optional, Union
 import numpy as np
 from scipy.optimize import minimize
 import astropy.units as u
@@ -454,16 +454,15 @@ class Tracker(TelemSource):
         self._target = new_target
         self.controller.target = new_target
 
-    def register_callback(self, callback):
+    def register_callback(self, callback: Callable[[Tracker], bool]) -> None:
         """Register a callback function.
 
-        Registers a callback function to be called once per control loop iteration, just after
-        the error is calculated but prior to any subsequent processing. The callback function is
-        passed a single argument which is a reference to this object (self). It must return a
-        boolean where if False the remainder of that control loop cycle will execute as normal, or
-        when True the rest of the control loop cycle is skipped (other than setting telemetry
-        channels and incrementing the iteration counter). Thus the callback is effectively able to
-        hijack the behavior of the control loop.
+        Registers a callback function to be called once per control loop iteration. The callback
+        function is passed a single argument which is a reference to this object (self). It must
+        return a boolean where if False the remainder of that control loop cycle will execute as
+        normal, or when True the rest of the control loop cycle is skipped (other than setting
+        telemetry channels and incrementing the iteration counter). Thus the callback is
+        effectively able to hijack the behavior of the control loop.
 
         Args:
             callback: The function to call. None to un-register.
@@ -508,7 +507,11 @@ class Tracker(TelemSource):
 
             if self.callback is not None:
                 if self.callback(self):
-                    stop_reason = self._finish_control_cycle(cycle_period, mount_state)
+                    stop_reason = self._finish_control_cycle(
+                        cycle_period,
+                        mount_state,
+                        callback_override=True
+                    )
                     if stop_reason != self.StopReason.NONE:
                         return stop_reason
                     continue
@@ -543,6 +546,7 @@ class Tracker(TelemSource):
             mount_state: MountState,
             rate_command: Optional[SlewRateCommand] = None,
             rate_command_time_error: Optional[float] = None,
+            callback_override: bool = False,
         ) -> "Tracker.StopReason":
         """Final tasks to perform at the end of each control cycle."""
 
@@ -584,6 +588,7 @@ class Tracker(TelemSource):
         if cycle_period is not None:
             self._telem_chans['cycle_period'] = cycle_period
         self._telem_chans['num_iterations'] = self.num_iterations
+        self._telem_chans['callback_override'] = int(callback_override)
         self._telem_chans['mount_az'] = position_mount_topo.az.deg
         self._telem_chans['mount_alt'] = position_mount_topo.alt.deg
         for axis in self.axes:
