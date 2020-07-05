@@ -29,10 +29,10 @@ from astropy.io import fits
 from astropy.time import Time
 from astropy.coordinates import SkyCoord, EarthLocation, Angle, Longitude
 import track
-from track import cameras
+from track import cameras, mounts, telem
 from track.control import Tracker
 from track.config import DATA_PATH
-from track.model import ModelParameters, ModelParamSet, MountModel
+from track.model import ModelParamSet
 from track.mounts import MeridianSide
 from track.targets import FixedTopocentricTarget
 from track.gps_client import GPSValues, GPSMargins, GPS
@@ -115,111 +115,77 @@ def main():
     """Run the alignment procedure! See module docstring for a description."""
 
     parser = track.ArgParser()
-    parser.add_argument(
-        '--mount-type',
-        help='select mount type (nexstar or gemini)',
-        default='gemini'
+    align_group = parser.add_argument_group(
+        title='Alignment Configuration',
+        description='Options that apply to alignment',
     )
-    parser.add_argument(
-        '--mount-path',
-        help='serial device node or hostname for mount command interface',
-        default='/dev/ttyACM0'
-    )
-    parser.add_argument(
-        '--meridian-side',
-        help='do alignment using only positions on this side of meridian defined by mount pole',
-        default=None,
-        choices=tuple(m.name.lower() for m in MeridianSide),
-    )
-    parser.add_argument(
-        '--lat',
-        help='latitude of observer (+N) -- overrides GPS',
-        type=float,
-    )
-    parser.add_argument(
-        '--lon',
-        help='longitude of observer (+E) -- overrides GPS',
-        type=float,
-    )
-    parser.add_argument(
-        '--elevation',
-        help='elevation of observer (m) -- overrides GPS',
-        type=float
-    )
-    parser.add_argument(
+    align_group.add_argument(
         '--mount-pole-alt',
         required=True,
         help='altitude of mount pole above horizon (deg)',
         type=float
     )
-    parser.add_argument(
+    align_group.add_argument(
         '--guide-cam-orientation',
         help='orientation of guidescope camera, clockwise positive (deg)',
         default=0.0,
         type=float,
     )
-    parser.add_argument(
-        '--telem-enable',
-        help='enable logging of telemetry to database',
-        action='store_true'
-    )
-    parser.add_argument(
-        '--telem-db-host',
-        help='hostname of InfluxDB database server',
-        default='localhost'
-    )
-    parser.add_argument(
-        '--telem-db-port',
-        help='port number of InfluxDB database server',
-        default=8086,
-        type=int
-    )
-    parser.add_argument(
-        '--telem-period',
-        help='telemetry sampling period in seconds',
-        default=1.0,
-        type=float
-    )
-    parser.add_argument(
+    align_group.add_argument(
         '--min-positions',
         help='minimum number of positions to add to mount alignment model',
         default=10,
         type=int
     )
-    parser.add_argument(
+    align_group.add_argument(
         '--timeout',
         help='max time to wait for mount to converge on a new position',
         default=120.0,
         type=float
     )
-    parser.add_argument(
+    align_group.add_argument(
         '--max-tries',
         help='max number of plate solving attempts at each position',
         default=3,
         type=int
     )
-    parser.add_argument(
+    align_group.add_argument(
         '--min-alt',
         help='minimum altitude of alignment positions in degrees',
         default=20.0,
         type=float
     )
-    parser.add_argument(
+    align_group.add_argument(
         '--max-rms-error',
         help='warning printed if RMS error in degrees is greater than this',
         default=0.2,
         type=float
     )
+    observer_group = parser.add_argument_group(
+        title='Observer Location Options',
+        description='Setting all three of these options will override GPS',
+    )
+    observer_group.add_argument(
+        '--lat',
+        help='latitude of observer (+N)',
+        type=float,
+    )
+    observer_group.add_argument(
+        '--lon',
+        help='longitude of observer (+E)',
+        type=float,
+    )
+    observer_group.add_argument(
+        '--elevation',
+        help='elevation of observer (m)',
+        type=float
+    )
+    mounts.add_program_arguments(parser)
     cameras.add_program_arguments(parser, profile='align')
+    telem.add_program_arguments(parser)
     args = parser.parse_args()
 
-    if args.mount_type == 'gemini':
-        mount = track.LosmandyGeminiMount(args.mount_path)
-    elif args.mount_type == 'nexstar':
-        mount = track.NexStarMount(args.mount_path)
-    else:
-        print('mount-type not supported: ' + args.mount_type)
-        sys.exit(1)
+    mount = mounts.make_mount_from_args(args)
 
     # Get location of observer from arguments or from GPS
     if all(arg is not None for arg in [args.lat, args.lon, args.elevation]):
@@ -262,11 +228,7 @@ def main():
     camera = cameras.make_camera_from_args(args, profile='align')
 
     if args.telem_enable:
-        telem_logger = track.TelemLogger(
-            host=args.telem_db_host,
-            port=args.telem_db_port,
-            period=args.telem_period,
-        )
+        telem_logger = telem.make_telem_logger_from_args(args)
         telem_logger.start()
 
     if args.meridian_side is not None:

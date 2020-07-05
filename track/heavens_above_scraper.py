@@ -44,54 +44,62 @@ def main():
         help='output directory'
     )
     parser.add_argument(
-        '--lat',
-        help='latitude of observer (+N) -- overrides GPS',
-        type=float,
-    )
-    parser.add_argument(
-        '--lon',
-        help='longitude of observer (+E) -- overrides GPS',
-        type=float,
-    )
-    parser.add_argument(
-        '--elevation',
-        help='elevation of observer (m) -- overrides GPS',
+        '--mag-limit',
+        required=True,
+        help='magnitude cutoff for object passes',
         type=float
     )
-    parser.add_argument(
+    observer_group = parser.add_argument_group(
+        title='Observer Location Options',
+        description='Setting all three of these options will override GPS',
+    )
+    observer_group.add_argument(
+        '--lat',
+        help='latitude of observer (+N)',
+        type=float,
+    )
+    observer_group.add_argument(
+        '--lon',
+        help='longitude of observer (+E)',
+        type=float,
+    )
+    observer_group.add_argument(
+        '--elevation',
+        help='elevation of observer (m)',
+        type=float
+    )
+    time_group = parser.add_argument_group(
+        title='Time Options',
+        description='Options pertaining to time of observation',
+    )
+    time_group.add_argument(
         '--tz',
         required=True,
         help='time zone short code (use \'help\' for a list of codes)'
     )
-    parser.add_argument(
+    time_group.add_argument(
         '--year',
         required=False,
         help='observation year (default: now)',
         type=int
     )
-    parser.add_argument(
+    time_group.add_argument(
         '--month',
         required=False,
         help='observation month (default: now)',
         type=int
     )
-    parser.add_argument(
+    time_group.add_argument(
         '--day',
         required=False,
         help='observation day-of-month (default: now)',
         type=int
     )
-    parser.add_argument(
+    time_group.add_argument(
         '--ampm',
         required=False,
         help='morning or evening (\'AM\' or \'PM\')',
         default='PM'
-    )
-    parser.add_argument(
-        '--mag-limit',
-        required=True,
-        help='magnitude cutoff for object passes',
-        type=float
     )
     args = parser.parse_args()
 
