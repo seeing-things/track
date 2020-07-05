@@ -460,19 +460,21 @@ def add_program_arguments(parser: ArgParser) -> None:
     parser_camera = subparsers.add_parser('camera', help='camera')
     cameras.add_program_arguments(parser_camera, profile='track')
 
-    parser_coord = subparsers.add_parser('coord-eq', help='fixed equatorial coordinate')
-    parser_coord.add_argument('ra', help='right ascension [deg]', type=float)
-    parser_coord.add_argument('dec', help='declination [deg]', type=float)
+    parser_coord_eq = subparsers.add_parser('coord-eq', help='fixed equatorial coordinate')
+    parser_coord_eq.add_argument('ra', help='right ascension [deg]', type=float)
+    parser_coord_eq.add_argument('dec', help='declination [deg]', type=float)
 
-    parser_coord = subparsers.add_parser('coord-topo', help='fixed topocentric coordinate')
-    parser_coord.add_argument('az', help='azimuth [deg]', type=float)
-    parser_coord.add_argument('alt', help='altitude [deg]', type=float)
+    parser_coord_topo = subparsers.add_parser('coord-topo', help='fixed topocentric coordinate')
+    parser_coord_topo.add_argument('az', help='azimuth [deg]', type=float)
+    parser_coord_topo.add_argument('alt', help='altitude [deg]', type=float)
 
     parser_star = subparsers.add_parser('star', help='named star')
     parser_star.add_argument('name', help='name of star')
 
-    parser_star = subparsers.add_parser('solarsystem', help='named solar system body')
-    parser_star.add_argument('name', help='name of planet or moon')
+    parser_solarsystem = subparsers.add_parser('solarsystem', help='named solar system body')
+    parser_solarsystem.add_argument('name', help='name of planet or moon')
+
+    parser_overhead_pass = subparsers.add_parser('overhead-pass', help='simulated overhead pass')
 
 
 def make_target_from_args(
