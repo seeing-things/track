@@ -72,11 +72,9 @@ setup(
     entry_points={
         'console_scripts':[
             'align = track.align:main',
-            'blind_track = track.blind_track:main',
             'gamepad = track.gamepad_control:main',
-            'hybrid_track = track.hybrid_track:main',
             'object_position = track.object_position:main',
-            'optical_track = track.optical_track:main',
+            'track = track.track:main',
         ],
     },
 )

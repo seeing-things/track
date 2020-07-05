@@ -7,6 +7,8 @@ The details of that electrical interface are not specified.
 """
 
 from pyftdi.ftdi import Ftdi
+from configargparse import Namespace
+from track.config import ArgParser
 
 
 # for purposes of set_bitmode bitmask:
@@ -95,3 +97,24 @@ class LaserPointer(object):
             The current state of the laser pointer as a boolean.
         """
         return (self.ftdi.read_pins() & self.laser_pin) == 0x0
+
+
+def add_program_arguments(parser: ArgParser) -> None:
+    """Add program arguments relevant to laser pointers.
+
+    Args:
+        parser: The instance of ArgParser to which this function will add arguments.
+    """
+    parser.add_argument(
+        '--laser-ftdi-serial',
+        help='serial number of laser pointer FTDI device',
+    )
+
+
+def make_laser_from_args(args: Namespace) -> LaserPointer:
+    """Construct a LaserPointer based on the program arguments provided.
+
+    Args:
+        args: Set of program arguments.
+    """
+    return LaserPointer(serial_num=args.laser_ftdi_serial)

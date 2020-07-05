@@ -21,6 +21,8 @@ import numpy as np
 from astropy import units as u
 from astropy.coordinates import Longitude
 import point
+from configargparse import Namespace
+from track.config import ArgParser
 
 
 class MeridianSide(IntEnum):
@@ -649,3 +651,41 @@ class LosmandyGeminiMount(TelescopeMount):
             MountEncoderPositions: Contains the encoder positions that should not be crossed.
         """
         return MountEncoderPositions(Longitude(0*u.deg), Longitude(0*u.deg))
+
+
+def add_program_arguments(parser: ArgParser) -> None:
+    """Add program arguments for all mounts.
+
+    Args:
+        parser: The instance of ArgParser to which this function will add arguments.
+    """
+    parser.add_argument(
+        '--mount-type',
+        help='select mount type (nexstar or gemini)',
+        default='gemini'
+    )
+    parser.add_argument(
+        '--mount-path',
+        help='serial device node or hostname for mount command interface',
+        default='/dev/ttyACM0'
+    )
+    parser.add_argument(
+        '--meridian-side',
+        help='side of meridian for equatorial mounts to prefer',
+        default=MeridianSide.WEST.name.lower(),
+        choices=tuple(m.name.lower() for m in MeridianSide),
+    )
+
+
+def make_mount_from_args(args: Namespace) -> TelescopeMount:
+    """Construct the appropriate TelescopeMount instance based on the program arguments provided.
+
+    Args:
+        args: Set of program arguments.
+    """
+    if args.mount_type == 'nexstar':
+        return NexStarMount(args.mount_path)
+    elif args.mount_type == 'gemini':
+        return LosmandyGeminiMount(args.mount_path)
+    else:
+        raise ValueError(f'Invalid mount-type: {args.mount_type}')

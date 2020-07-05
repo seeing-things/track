@@ -4,6 +4,8 @@ import time
 import threading
 import influxdb
 import datetime
+from configargparse import Namespace
+from track.config import ArgParser
 
 class TelemSource(ABC):
     """Abstract base class for a producer of telemetry.
@@ -126,3 +128,48 @@ class TelemLogger:
             sleep_time = self.period - elapsed_time
             if sleep_time > 0.0:
                 time.sleep(sleep_time)
+
+
+def add_program_arguments(parser: ArgParser) -> None:
+    """Add program arguments relevant to telemetry.
+
+    Args:
+        parser: The instance of ArgParser to which this function will add arguments.
+    """
+    parser.add_argument(
+        '--telem-enable',
+        help='enable logging of telemetry to database',
+        action='store_true'
+    )
+    parser.add_argument(
+        '--telem-db-host',
+        help='hostname of InfluxDB database server',
+        default='localhost'
+    )
+    parser.add_argument(
+        '--telem-db-port',
+        help='port number of InfluxDB database server',
+        default=8086,
+        type=int
+    )
+    parser.add_argument(
+        '--telem-period',
+        help='telemetry sampling period in seconds',
+        default=1.0,
+        type=float
+    )
+
+
+def make_telem_logger_from_args(args: Namespace, sources: dict = {}) -> TelemLogger:
+    """Construct a TelemLogger based on the program arguments provided.
+
+    Args:
+        args: Set of program arguments.
+        sources: Dict of TelemSources to be passed to TelemLogger constructor.
+    """
+    return TelemLogger(
+        host=args.telem_db_host,
+        port=args.telem_db_port,
+        period=args.telem_period,
+        sources=sources,
+    )

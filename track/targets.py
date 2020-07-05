@@ -12,6 +12,9 @@ from astropy.time import Time
 from astropy import units as u
 import ephem
 import cv2
+from configargparse import Namespace
+from track import cameras
+from track.config import ArgParser
 from track.cameras import Camera
 from track.compvis import find_features, PreviewWindow
 from track.model import MountModel
@@ -441,3 +444,122 @@ class CameraTarget(Target, TelemSource):
         chans = self._telem_chans.copy()
         self._telem_mutex.release()
         return chans
+
+
+def add_program_arguments(parser: ArgParser) -> None:
+    """Add program arguments relevant to targets.
+
+    Args:
+        parser: The instance of ArgParser to which this function will add arguments.
+    """
+    subparsers = parser.add_subparsers(title='target types', dest='target_type')
+
+    parser_tle = subparsers.add_parser('tle', help='TLE file')
+    parser_tle.add_argument('file', help='filename of two-line element (TLE) target ephemeris')
+
+    parser_camera = subparsers.add_parser('camera', help='camera')
+    cameras.add_program_arguments(parser_camera, profile='track')
+
+    parser_coord = subparsers.add_parser('coord-eq', help='fixed equatorial coordinate')
+    parser_coord.add_argument('ra', help='right ascension [deg]', type=float)
+    parser_coord.add_argument('dec', help='declination [deg]', type=float)
+
+    parser_coord = subparsers.add_parser('coord-topo', help='fixed topocentric coordinate')
+    parser_coord.add_argument('az', help='azimuth [deg]', type=float)
+    parser_coord.add_argument('alt', help='altitude [deg]', type=float)
+
+    parser_star = subparsers.add_parser('star', help='named star')
+    parser_star.add_argument('name', help='name of star')
+
+    parser_star = subparsers.add_parser('solarsystem', help='named solar system body')
+    parser_star.add_argument('name', help='name of planet or moon')
+
+
+def make_target_from_args(
+        args: Namespace,
+        mount: TelescopeMount,
+        mount_model: MountModel,
+        meridian_side: MeridianSide
+    ) -> Target:
+    """Construct the appropriate target based on the program arguments provided.
+
+    Args:
+        args: Set of program arguments.
+        mount_model: Instance of MountModel.
+        meridian_side: Desired side of mount-relative meridian.
+    """
+    # Create a PyEphem Body object corresonding to the TLE file
+    if args.target_type == 'tle':
+        print('In TLE file mode: \'{}\'.'.format(args.file))
+        tle = []
+        with open(args.file) as tlefile:
+            for line in tlefile:
+                tle.append(line)
+        target = PyEphemTarget(
+            target=ephem.readtle(tle[0], tle[1], tle[2]),
+            location=mount_model.location,
+            mount_model=mount_model,
+            meridian_side=meridian_side,
+        )
+
+    elif args.target_type == 'camera':
+        print('In camera mode')
+        camera = cameras.make_camera_from_args(args, profile='track')
+        target = CameraTarget(
+            camera=camera,
+            mount=mount,
+            mount_model=mount_model,
+        )
+
+    # Create a PyEphem Body object corresonding to the given fixed coordinates
+    elif args.target_type == 'coord-eq':
+        print('In fixed equatorial coordinate mode: (RA {}, dec {}).'.format(args.ra, args.dec))
+        target = PyEphemTarget(
+            target=ephem.FixedBody(_ra=np.radians(args.ra), _dec=np.radians(args.dec)),
+            location=mount_model.location,
+            mount_model=mount_model,
+            meridian_side=meridian_side,
+        )
+
+    elif args.target_type == 'coord-topo':
+        print('In fixed topocentric coordinate mode: (AZ {}, ALT {}).'.format(args.az, args.alt))
+        target = FixedTopocentricTarget(
+            SkyCoord(args.az * u.deg, args.alt * u.deg, frame='altaz'),
+            mount_model,
+            meridian_side
+        )
+
+    # Get the PyEphem Body object corresonding to the given named star
+    elif args.target_type == 'star':
+        print('In named star mode: \'{}\''.format(args.name))
+        target = PyEphemTarget(
+            target=ephem.star(args.name),
+            location=mount_model.location,
+            mount_model=mount_model,
+            meridian_side=meridian_side,
+        )
+
+    # Get the PyEphem Body object corresonding to the given named solar system body
+    elif args.target_type == 'solarsystem':
+        print('In named solar system body mode: \'{}\''.format(args.name))
+        ss_objs = [name for _, _, name in ephem._libastro.builtin_planets()]
+        if args.name in ss_objs:
+            body_type = getattr(ephem, args.name)
+            target = PyEphemTarget(
+                target=body_type(),
+                location=mount_model.location,
+                mount_model=mount_model,
+                meridian_side=meridian_side,
+            )
+        else:
+            raise Exception(
+                'The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name)
+            )
+
+    elif args.target_type == 'overhead-pass':
+        target = OverheadPassTarget(mount_model, meridian_side)
+
+    else:
+        raise ValueError(f'Invalid target-type {args.target_type}')
+
+    return target
