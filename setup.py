@@ -74,7 +74,7 @@ setup(
             'align = track.align:main',
             'gamepad = track.gamepad_control:main',
             'object_position = track.object_position:main',
-            'track = track.track:main',
+            'track = track.__main__:main',
         ],
     },
 )
