@@ -659,17 +659,21 @@ def add_program_arguments(parser: ArgParser) -> None:
     Args:
         parser: The instance of ArgParser to which this function will add arguments.
     """
-    parser.add_argument(
+    mount_group = parser.add_argument_group(
+        title='Mount Options',
+        description='Options that apply to telescope mounts',
+    )
+    mount_group.add_argument(
         '--mount-type',
         help='select mount type (nexstar or gemini)',
         default='gemini'
     )
-    parser.add_argument(
+    mount_group.add_argument(
         '--mount-path',
         help='serial device node or hostname for mount command interface',
         default='/dev/ttyACM0'
     )
-    parser.add_argument(
+    mount_group.add_argument(
         '--meridian-side',
         help='side of meridian for equatorial mounts to prefer',
         default=MeridianSide.WEST.name.lower(),

@@ -105,7 +105,11 @@ def add_program_arguments(parser: ArgParser) -> None:
     Args:
         parser: The instance of ArgParser to which this function will add arguments.
     """
-    parser.add_argument(
+    laser_group = parser.add_argument_group(
+        title='Laser Pointer Options',
+        description='Options that apply to laser pointers',
+    )
+    laser_group.add_argument(
         '--laser-ftdi-serial',
         help='serial number of laser pointer FTDI device',
     )

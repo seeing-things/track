@@ -835,14 +835,18 @@ def add_program_arguments(parser: ArgParser, profile: str) -> None:
         parser: The instance of ArgParser to which this function will add arguments.
         profile: 'track' or 'align' to indicate which set of arguments to add.
     """
-    parser.add_argument(
+    camera_group = parser.add_argument_group(
+        title='General Camera Options',
+        description='Options that apply to all cameras',
+    )
+    camera_group.add_argument(
         '--camera-type',
         help='type of camera',
         default='zwo',
         choices=['zwo',
                  'webcam'],
     )
-    parser.add_argument(
+    camera_group.add_argument(
         '--camera-pixel-scale',
         help='camera pixel scale in arcseconds per pixel',
         required=True,

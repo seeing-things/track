@@ -136,23 +136,27 @@ def add_program_arguments(parser: ArgParser) -> None:
     Args:
         parser: The instance of ArgParser to which this function will add arguments.
     """
-    parser.add_argument(
+    telem_group = parser.add_argument_group(
+        title='Telemetry Logger Options',
+        description='Options that apply to telemetry logging',
+    )
+    telem_group.add_argument(
         '--telem-enable',
         help='enable logging of telemetry to database',
         action='store_true'
     )
-    parser.add_argument(
+    telem_group.add_argument(
         '--telem-db-host',
         help='hostname of InfluxDB database server',
         default='localhost'
     )
-    parser.add_argument(
+    telem_group.add_argument(
         '--telem-db-port',
         help='port number of InfluxDB database server',
         default=8086,
         type=int
     )
-    parser.add_argument(
+    telem_group.add_argument(
         '--telem-period',
         help='telemetry sampling period in seconds',
         default=1.0,
