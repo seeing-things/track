@@ -2,7 +2,9 @@ from abc import ABC, abstractmethod
 import os
 import time
 import threading
+import traceback
 import influxdb
+from influxdb.exceptions import InfluxDBClientError, InfluxDBServerError
 import datetime
 from configargparse import Namespace
 from track.config import ArgParser
@@ -118,12 +120,9 @@ class TelemLogger:
             try:
                 for name, source in self.sources.items():
                     self._post_point(name, source.get_telem_channels())
-            except Exception as e:
-                print('Failed to post telemetry to database, logger shutting down: ' + str(e))
-                import traceback
+            except (InfluxDBClientError, InfluxDBServerError) as e:
+                print('Failed to post telemetry to database: ' + str(e))
                 traceback.print_exc()
-                self.running = False
-                return
             elapsed_time = time.time() - start_time
             sleep_time = self.period - elapsed_time
             if sleep_time > 0.0:
