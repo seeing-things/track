@@ -45,19 +45,27 @@ setup(
     install_requires=[
         'appdirs>=1.4',
         'astropy>=4.0',
+        'astropy-healpix>=0.4',
         'bs4>=0.0.1',
         'click>=7.0',
         'ConfigArgParse==0.12.0',
         'ephem>=3.7',
+        'gps>=3.19',
         'inputs>=0.1',
         'lxml',  # parser for bs4
+        'matplotlib>=2.1',
         'MonthDelta>=1.0b',
         'numpy',
-        'point @ https://github.com/seeing-things/point/tarball/master#egg=point-0.4.1',
+        'pandas',
+        'point @ https://github.com/seeing-things/point/tarball/master',
         'requests',
+        'scipy',
     ],
 
     extras_require={
+        'asi-camera': [
+            'asi>=0.1',  # https://github.com/seeing-things/zwo
+        ],
         'telemetry': [
             'influxdb>=5.0.0',
         ],
@@ -65,7 +73,7 @@ setup(
             'pyftdi>=0.29',
         ],
         'webcam': [
-            'v4l2 @ https://github.com/seeing-things/python-v4l2/tarball/master#egg=v4l2-0.2.2',
+            'v4l2 @ https://github.com/seeing-things/python-v4l2/tarball/master',
         ],
     },
 
