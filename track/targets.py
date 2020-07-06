@@ -503,6 +503,77 @@ class CameraTarget(Target, TelemSource):
         return chans
 
 
+class SensorFusionTarget(Target):
+
+    def __init__(
+        self,
+        camera_target: CameraTarget,
+        blind_target: Target
+    ):
+        self.camera_target = camera_target
+        self.blind_target = blind_target
+
+    # TODO: Update docstring
+    # TODO: Add lru_cache (make sure to clear cache when process_sensor_data() is called)
+    def get_position(self, t: Time) -> TargetPosition:
+        """Get the apparent position of the target for the specified time.
+
+        Args:
+            t: The time for which the position should correspond, if possible. For some targets
+                the position can be found at this exact time. For others it may not be possible to
+                predict the position in the past or in the future. The `time` field of the return
+                tuple will be populated to indicate the actual time that corresponds to the return
+                value's position.
+
+        Returns:
+            The target position as an instance of TargetPosition.
+
+        Raises:
+            IndeterminatePosition if the target position cannot be determined.
+        """
+        position_target_blind = self.blind_target.get_position(t)
+
+        # TODO: Maybe the bias terms should be a separation and position angle in mount frame
+        # rather than encoder bias terms? Should be roughly equivalent. Could store both of these
+        # as a single complex value such that it's easy to apply the leaky integrator filter to
+        # them.
+        position_target_enc = MountEncoderPositions(
+            position_target_blind.enc.encdoer_0 + self.bias_enc_0,  # TODO: Do we need to turn these back into Longitude?
+            position_target_blind.enc.encdoer_1 + self.bias_enc_1,
+        )
+
+        return TargetPosition(
+            t,
+            self.model.encoders_to_topocentric(position_target_enc),
+            position_target_enc
+        )
+
+    # TODO: update docstring
+    def process_sensor_data(self) -> None:
+        """Get and process data from any sensors associated with this target type.
+
+        This method will be called once near the beginning of the control cycle. Reading of sensor
+        data and processing of that data into intermediate state should be done in this method. The
+        code should be optimized such that calls to get_position() are as fast as practical. If no
+        sensors are associated with this target type there is no need to override this default
+        no-op implementation.
+        """
+        self.camera_target.process_sensor_data()
+
+        # update leaky integrator filter for bias terms
+        # TODO: We need to modify the CameraTarget such that it produces an estimate of the bias
+        # terms in addition to an absolute target position.
+        # TODO: Need to decide what coordinate system these bias terms live in. We don't know
+        # whether the bias terms will be more stationary in one frame versus another, so for now
+        # we should probably pick the coordinate system that will minimize the total number of
+        # transformations between coordinate systems both in this class but also in the camera
+        # and TLE targets.
+        alpha = 0.001
+        self.bias_enc_0 = (1 - alpha)*self.bias_enc_0 + alpha*self.camera_target.?
+        self.bias_enc_1 = (1 - alpha)*self.bias_enc_1 + alpha*self.camera_target.?
+
+
+
 def add_program_arguments(parser: ArgParser) -> None:
     """Add program arguments relevant to targets.
 
