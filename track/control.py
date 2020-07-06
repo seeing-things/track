@@ -454,7 +454,7 @@ class Tracker(TelemSource):
         self._target = new_target
         self.controller.target = new_target
 
-    def register_callback(self, callback: Callable[[Tracker], bool]) -> None:
+    def register_callback(self, callback: Callable[["Tracker"], bool]) -> None:
         """Register a callback function.
 
         Registers a callback function to be called once per control loop iteration. The callback
