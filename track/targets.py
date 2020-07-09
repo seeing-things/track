@@ -332,11 +332,44 @@ class CameraTarget(Target, TelemSource):
         self._telem_mutex = threading.Lock()
         self._telem_chans = {}
 
+    def camera_to_directional_offset(
+            self,
+            target_x: Angle,
+            target_y: Angle,
+            mount_meridian_side: MeridianSide,
+            telem_chans: Optional[Dict] = None
+        ) -> Tuple[Angle, Angle]:
+        # TODO: Finish this docstring
+        """Transform from a position in camera frame to a magnitude and position angle
+
+        Args:
+            target_x:
+
+        """
+
+        # angular separation and direction from center of camera frame to target
+        target_position_cam = target_x.deg + 1j*target_y.deg
+        target_offset_magnitude = Angle(np.abs(target_position_cam) * u.deg)
+        target_direction_cam = Angle(np.angle(target_position_cam) * u.rad)
+
+        # Find the position angle from the mount's position to the target's position
+        target_position_angle = self.mount_model.guide_cam_orientation - target_direction_cam
+        if mount_meridian_side == MeridianSide.EAST:
+            # camera orientation flips when crossing the pole
+            target_position_angle += 180*u.deg
+
+        if telem_chans is not None:
+            telem_chans['error_mag'] = target_offset_magnitude.deg
+            telem_chans['target_direction_cam'] = target_direction_cam.deg
+            telem_chans['target_position_angle'] = target_position_angle.deg
+
+        return target_offset_magnitude, target_position_angle
+
     def _camera_to_mount_position(
             self,
             target_x: Angle,
             target_y: Angle,
-            telem_chans: Optional[Dict] = None,
+            telem: Optional[Dict] = None,
         ) -> UnitSphericalRepresentation:
         """Transform from target position in camera frame to position in mount frame
 
@@ -349,33 +382,27 @@ class CameraTarget(Target, TelemSource):
             Target position in mount frame
         """
 
-        # angular separation and direction from center of camera frame to target
-        target_position_cam = target_x.deg + 1j*target_y.deg
-        target_offset_magnitude = Angle(np.abs(target_position_cam) * u.deg)
-        target_direction_cam = Angle(np.angle(target_position_cam) * u.rad)
-
         # Current position of mount is assumed to be the position of the center of the camera frame
         mount_enc_positions = self.mount.get_position()
         mount_coord, mount_meridian_side = self.mount_model.encoder_to_spherical(
             mount_enc_positions
         )
 
-        # Find the position of the target relative to the mount position
-        target_position_angle = self.mount_model.guide_cam_orientation - target_direction_cam
-        if mount_meridian_side == MeridianSide.EAST:
-            # camera orientation flips when crossing the pole
-            target_position_angle += 180*u.deg
+        target_offset_magnitude, target_position_angle = self.camera_to_directional_offset(
+            target_x,
+            target_y,
+            mount_meridian_side,
+            telem_chans,
+        )
+
         target_coord = SkyCoord(mount_coord).directional_offset_by(
             position_angle=target_position_angle,
             separation=target_offset_magnitude
         ).represent_as(UnitSphericalRepresentation)
 
-        if telem_chans is not None:
-            telem_chans['error_mag'] = target_offset_magnitude.deg
-            telem_chans['target_direction_cam'] = target_direction_cam.deg
-            telem_chans['target_position_angle'] = target_position_angle.deg
+        if telem is not None:
             for axis in self.mount.AxisName:
-                telem_chans[f'mount_enc_{axis}'] = mount_enc_positions[axis].deg
+                telem[f'mount_enc_{axis}'] = mount_enc_positions[axis].deg
 
         return target_coord
 
@@ -392,7 +419,8 @@ class CameraTarget(Target, TelemSource):
             keypoint: A keypoint defining a position in a camera frame.
 
         Returns:
-            A tuple with (x_position, y_position) with units of pixels.
+            A tuple containing the (X, Y) position of the target with units of pixels where the
+            origin is the center of the camera frame.
         """
         keypoint_x_px = keypoint.pt[0] - self.frame_center_px[0]
         keypoint_y_px = self.frame_center_px[1] - keypoint.pt[1]
@@ -431,6 +459,49 @@ class CameraTarget(Target, TelemSource):
             raise self.IndeterminatePosition('No target detected in most recent frame')
         return self.target_position
 
+    def process_camera_frame(self, telem: Optional[Dict]) -> Optional[Tuple[Angle, Angle]]:
+        """Get frame from camera and find target using computer vision
+
+        Args:
+            telem: Dict into which telemetry channels will be added
+
+        Returns:
+            Tuple containing the position of the target within the camera frame where the first
+            element is the X position and the second is the Y position and the origin is the center
+            of the camera frame.
+        """
+        # This time isn't going to be exceptionally accurate, but unfortunately most cameras do not
+        # provide a means of determining the exact time when the frame was captured by the sensor.
+        # There are probably ways to estimate the frame time more accurately but this is likely
+        # good enough.
+        target_time = Time.now()
+        frame = self.camera.get_frame(timeout=self.camera_timeout)
+
+        if frame is None:
+            raise self.IndeterminatePosition('Timeout waiting for frame from camera')
+
+        keypoints = find_features(frame)
+
+        if not keypoints:
+            self.preview_window.show_annotated_frame(frame)
+            raise self.IndeterminatePosition('No target detected in most recent frame')
+
+        # assume that the target is the keypoint nearest the center of the camera frame
+        target_keypoint = self._keypoint_nearest_center_frame(keypoints)
+
+        self.preview_window.show_annotated_frame(frame, keypoints, target_keypoint)
+
+        # convert target position units from pixels to degrees
+        target_x_px, target_y_px = self._get_keypoint_xy(target_keypoint)
+        target_x = Angle(target_x_px * self.camera.pixel_scale * self.camera.binning * u.deg)
+        target_y = Angle(target_y_px * self.camera.pixel_scale * self.camera.binning * u.deg)
+
+        if telem is not None:
+            telem['target_cam_x'] = target_x.deg
+            telem['target_cam_y'] = target_y.deg
+
+        return target_x, target_y
+
     def process_sensor_data(self) -> None:
         """Process a new camera frame and cache the computed target position in this object.
 
@@ -442,38 +513,12 @@ class CameraTarget(Target, TelemSource):
            frame and to mount encoder positions. These are cached in this object.
         """
         telem = {}
-
-        frame = self.camera.get_frame(timeout=self.camera_timeout)
-        # This time isn't going to be exceptionally accurate, but unfortunately most cameras do not
-        # provide a means of determining the exact time when the frame was captured by the sensor.
-        # There are probably ways to estimate the frame time more accurately but this is likely
-        # good enough.
-        target_time = Time.now()
-
-        if frame is None:
+        try:
+            target_x, target_y = self.process_camera_frame(telem)
+        except self.IndeterminatePosition:
             self.target_position = None
             self._set_telem_channels()
             return
-
-        keypoints = find_features(frame)
-
-        if not keypoints:
-            self.target_position = None
-            self.preview_window.show_annotated_frame(frame)
-            self._set_telem_channels()
-            return
-
-        # assume that the target is the keypoint nearest the center of the camera frame
-        target_keypoint = self._keypoint_nearest_center_frame(keypoints)
-
-        self.preview_window.show_annotated_frame(frame, keypoints, target_keypoint)
-
-        # convert target position units from pixels to degrees
-        target_x_px, target_y_px = self._get_keypoint_xy(target_keypoint)
-        target_x = Angle(target_x_px * self.camera.pixel_scale * self.camera.binning * u.deg)
-        target_y = Angle(target_y_px * self.camera.pixel_scale * self.camera.binning * u.deg)
-        telem['target_cam_x'] = target_x.deg
-        telem['target_cam_y'] = target_y.deg
 
         # transform to world coordinates
         position_mount = self._camera_to_mount_position(target_x, target_y, telem)
@@ -512,6 +557,7 @@ class SensorFusionTarget(Target):
     ):
         self.camera_target = camera_target
         self.blind_target = blind_target
+        self.blind_target_bias = 0.0
 
     # TODO: Update docstring
     # TODO: Add lru_cache (make sure to clear cache when process_sensor_data() is called)
@@ -531,16 +577,17 @@ class SensorFusionTarget(Target):
         Raises:
             IndeterminatePosition if the target position cannot be determined.
         """
+
+        # TODO: We really only want the topocentric position of the target since we will be re-
+        # computing the mount encoder positions here and discarding the ones returned by this
+        # call
         position_target_blind = self.blind_target.get_position(t)
 
-        # TODO: Maybe the bias terms should be a separation and position angle in mount frame
-        # rather than encoder bias terms? Should be roughly equivalent. Could store both of these
-        # as a single complex value such that it's easy to apply the leaky integrator filter to
-        # them.
-        position_target_enc = MountEncoderPositions(
-            position_target_blind.enc.encdoer_0 + self.bias_enc_0,  # TODO: Do we need to turn these back into Longitude?
-            position_target_blind.enc.encdoer_1 + self.bias_enc_1,
-        )
+        # transform blind topo position to mount frame
+
+        # apply directional offset using estimated bias terms
+
+        # transform the offset mount coordinate to mount encoder and topo frames
 
         return TargetPosition(
             t,
@@ -558,7 +605,16 @@ class SensorFusionTarget(Target):
         sensors are associated with this target type there is no need to override this default
         no-op implementation.
         """
-        self.camera_target.process_sensor_data()
+        target_x, target_y = self.camera_target.process_camera_frame()
+
+        target_offset_magnitude, target_position_angle = self.camera_to_directional_offset(
+            target_x,
+            target_y,
+            mount_meridian_side, # TODO: Where does this come from?
+            telem_chans,
+        )
+
+        target_offset = target_offset_magnitude.deg * np.exp(1j*target_position_angle.rad)
 
         # update leaky integrator filter for bias terms
         # TODO: We need to modify the CameraTarget such that it produces an estimate of the bias
@@ -569,9 +625,7 @@ class SensorFusionTarget(Target):
         # transformations between coordinate systems both in this class but also in the camera
         # and TLE targets.
         alpha = 0.001
-        self.bias_enc_0 = (1 - alpha)*self.bias_enc_0 + alpha*self.camera_target.?
-        self.bias_enc_1 = (1 - alpha)*self.bias_enc_1 + alpha*self.camera_target.?
-
+        self.blind_target_bias = (1 - alpha)*self.blind_target_bias + alpha*target_offset
 
 
 def add_program_arguments(parser: ArgParser) -> None:
