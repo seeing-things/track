@@ -9,7 +9,7 @@ import os
 import sys
 import click
 import astropy.units as u
-from astropy.coordinates import Latitude
+from astropy.coordinates import Latitude, Longitude
 import track
 from track import laser, mounts, targets, telem
 from track.control import Tracker
