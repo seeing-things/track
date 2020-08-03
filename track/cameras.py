@@ -885,7 +885,7 @@ def add_program_arguments(parser: ArgParser, profile: str) -> None:
         required=True,
         type=float
     )
-    parser.add_argument(
+    camera_group.add_argument(
         '--camera-frame-dump-dir',
         help='directory to save camera frames as files on disk',
         type=str,
