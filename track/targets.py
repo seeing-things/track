@@ -218,6 +218,8 @@ class PyEphemTarget(Target):
         self.mount_model = mount_model
         self.meridian_side = meridian_side
 
+        self.offset = 0.0
+
 
     @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
     def get_position(self, t: Time) -> TargetPosition:
@@ -225,8 +227,35 @@ class PyEphemTarget(Target):
         self.observer.date = ephem.Date(t.datetime)
         self.target.compute(self.observer)
         position_topo = SkyCoord(self.target.az * u.rad, self.target.alt * u.rad, frame='altaz')
+        if self.offset != 0.0:
+            position_topo = position_topo.directional_offset_by(
+                position_angle=np.angle(self.offset)*u.rad,
+                separation=np.abs(self.offset)*u.deg,
+            )
         position_enc = self.mount_model.topocentric_to_encoders(position_topo, self.meridian_side)
         return TargetPosition(t, position_topo, position_enc)
+
+
+    def nudge(self, direction: str) -> None:
+
+        if direction is not None:
+            self.get_position.cache_clear()
+
+            # nudge one arcminute in some direction
+            if direction == 'up':
+                self.offset += 1j*(1/60)
+            elif direction == 'down':
+                self.offset -= 1j*(1/60)
+            elif direction == 'left':
+                self.offset -= 1/60
+            elif direction == 'right':
+                self.offset += 1/60
+            else:
+                print('Invalid direction passed to nudge')
+
+    def nudge_clear(self) -> None:
+        self.get_position.cache_clear()
+        self.offset = 0.0
 
 
 class CameraTarget(Target, TelemSource):

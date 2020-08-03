@@ -20,6 +20,22 @@ from track.mounts import MeridianSide
 def main():
     """See module docstring"""
 
+    def target_nudge(stick, state):
+        if stick == 'updown':
+            if state == -1:
+                target.nudge('up')
+            elif state == 1:
+                target.nudge('down')
+        elif stick == 'leftright':
+            if state == -1:
+                target.nudge('left')
+            elif state == 1:
+                target.nudge('right')
+
+    def target_nudge_clear(state):
+        if state == 1:
+            target.nudge_clear()
+
     def gamepad_callback(tracker: Tracker) -> bool:
         """Callback for gamepad control.
 
@@ -82,16 +98,18 @@ def main():
     # Create object with base type TelescopeMount
     mount = mounts.make_mount_from_args(args)
 
+    target = targets.make_target_from_args(
+        args,
+        mount,
+        mount_model,
+        MeridianSide[args.meridian_side.upper()]
+    )
+
     telem_sources = {}
     tracker = Tracker(
         mount=mount,
         mount_model=mount_model,
-        target=targets.make_target_from_args(
-            args,
-            mount,
-            mount_model,
-            MeridianSide[args.meridian_side.upper()]
-        ),
+        target=target,
     )
     telem_sources['tracker'] = tracker
 
@@ -106,6 +124,12 @@ def main():
         game_pad = Gamepad()
         if laser_pointer is not None:
             game_pad.register_callback('BTN_SOUTH', laser_pointer.set)
+
+        # D-pad adjusts target position
+        game_pad.register_callback('ABS_HAT0Y', lambda state: target_nudge('updown', state))
+        game_pad.register_callback('ABS_HAT0X', lambda state: target_nudge('leftright', state))
+        game_pad.register_callback('BTN_SOUTH', target_nudge_clear)
+
         tracker.register_callback(gamepad_callback)
         telem_sources['gamepad'] = game_pad
         print('Gamepad found and registered.')
