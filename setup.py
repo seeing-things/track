@@ -82,6 +82,7 @@ setup(
             'align = track.align:main',
             'gamepad = track.gamepad_control:main',
             'object_position = track.object_position:main',
+            'skyplot = track.skyplot:main',
             'track = track.__main__:main',
         ],
     },
