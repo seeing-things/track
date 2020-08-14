@@ -695,6 +695,7 @@ def load_stored_model(
 
 
 def load_default_model(
+        mount_pole_az: Longitude = Longitude(0*u.deg),
         mount_pole_alt: Latitude = Latitude(90*u.deg),
         guide_cam_orientation: Longitude = Longitude(0*u.deg),
         location: Optional[EarthLocation] = None,
@@ -717,9 +718,9 @@ def load_default_model(
     """
     return MountModel(
         ModelParamSet(ModelParameters(
-            axis_0_offset=Angle(0*u.deg),
+            axis_0_offset=Angle(mount_pole_az),
             axis_1_offset=Angle(0*u.deg),
-            pole_rot_axis_az=Angle(90*u.deg),
+            pole_rot_axis_az=mount_pole_az + Angle(90*u.deg),
             pole_rot_angle=Angle((90.0 - mount_pole_alt.deg)*u.deg),
             camera_tilt=Angle(0*u.deg),
         ),
