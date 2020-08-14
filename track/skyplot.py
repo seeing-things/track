@@ -23,6 +23,7 @@ from astropy import units as u
 from astropy.coordinates import Longitude, UnitSphericalRepresentation, EarthLocation
 from influxdb import InfluxDBClient
 import track
+from track.gps_client import GPSValues, GPSMargins, GPS
 from track.mounts import MountEncoderPositions, MeridianSide
 from track.model import MountModel
 
@@ -302,6 +303,9 @@ def plot_reachable_zone(
         axis_0_west_limit: Western limit on axis 0 in degrees from the meridian.
         axis_0_east_limit: Eastern limit on axis 0 in degrees from the meridian.
     """
+    if axis_0_west_limit < 90 or axis_0_east_limit < 90:
+        # current logic would not shade the correct regions of the polar plot
+        raise ValueError('Axis limits less than 90 degrees from meridian are not supported')
 
     # convert from arg values to encoder position angles
     axis_0_west_limit = 180 - axis_0_west_limit
@@ -423,7 +427,51 @@ def main():
             'current time will be used.'
         ),
         type=str)
+    parser.add_argument(
+        '--axis-west-limit',
+        help='western limit for the right ascension axis in degrees from the meridian',
+        default=110,
+        type=float)
+    parser.add_argument(
+        '--axis-east-limit',
+        help='eastern limit for the right ascension axis in degrees from the meridian',
+        default=110,
+        type=float)
+    custom_model_group = parser.add_argument_group(
+        title='Custom Mount Model Options',
+        description=('Set all of these to use a custom mount model instead of a stored model. '
+            'If no GPS is connected, also set the Observer Location Options.'),
+    )
+    custom_model_group.add_argument(
+        '--mount-pole-az',
+        help='azimuth of the mount pole',
+        type=float)
+    custom_model_group.add_argument(
+        '--mount-pole-alt',
+        help='altitude of the mount pole',
+        type=float)
+    observer_group = parser.add_argument_group(
+        title='Observer Location Options',
+        description='Set all of these to indicate observer location with a custom mount model',
+    )
+    observer_group.add_argument(
+        '--lat',
+        help='latitude of observer (+N)',
+        type=float,
+    )
+    observer_group.add_argument(
+        '--lon',
+        help='longitude of observer (+E)',
+        type=float,
+    )
+    observer_group.add_argument(
+        '--elevation',
+        help='elevation of observer (m)',
+        type=float
+    )
     args = parser.parse_args()
+    custom_model_args = (args.mount_pole_az, args.mount_pole_alt)
+    observer_args = (args.lat, args.lon, args.elevation)
 
     if args.time_start is not None:
         time_start = dateutil.parser.parse(args.time_start)
@@ -432,10 +480,63 @@ def main():
         time_start = datetime.utcnow()
     time_stop = time_start + timedelta(days=1)
 
-    mount_model = track.model.load_stored_model(max_age=None)
+
+
+    if all(arg is None for arg in custom_model_args):
+        if any(arg is not None for arg in observer_args):
+            parser.error('Observer location options require the custom mount model args to be set')
+        mount_model = track.model.load_stored_model(max_age=None)
+    elif any(arg is None for arg in custom_model_args):
+        parser.error("Must give all args in the custom mount model group or none of them.")
+    else:
+        # Get location of observer from arguments or from GPS
+        if all(arg is not None for arg in observer_args):
+            print('Observer location specified by program args. This will override GPS.')
+            location = EarthLocation(
+                lat=args.lat*u.deg,
+                lon=args.lon*u.deg,
+                height=args.elevation*u.m
+            )
+        elif any(arg is not None for arg in observer_args):
+            parser.error("Must give all observer location args or none of them.")
+        else:
+            print('Attempting to get location from GPS...', end='', flush=True)
+            with GPS() as g:
+                location = g.get_location(
+                    timeout=10.0,
+                    need_3d=True,
+                    err_max=GPSValues(
+                        lat=100.0,
+                        lon=100.0,
+                        alt=100.0,
+                        track=np.inf,
+                        speed=np.inf,
+                        climb=np.inf,
+                        time=0.01
+                    ),
+                    margins=GPSMargins(speed=np.inf, climb=np.inf, time=1.0)
+                )
+                print(
+                    'success: '
+                    f'lat: {location.lat:.5f}, '
+                    f'lon: {location.lon:.5f}, '
+                    f'altitude: {location.height:.2f}'
+                )
+
+        mount_model = track.model.load_default_model(
+            mount_pole_az=Longitude(args.mount_pole_az*u.deg),
+            mount_pole_alt=Longitude(args.mount_pole_alt*u.deg),
+            location=location,
+        )
+
 
     ax = make_sky_plot()
-    plot_reachable_zone(ax, mount_model)
+    plot_reachable_zone(
+        ax,
+        mount_model,
+        axis_0_west_limit=args.axis_west_limit,
+        axis_0_east_limit=args.axis_east_limit
+    )
 
     if args.tle_filename:
         print('Searching for first pass within the following time range:')
