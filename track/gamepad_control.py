@@ -19,7 +19,7 @@ def main():
     laser.add_program_arguments(parser)
     args = parser.parse_args()
 
-    mount = mounts.make_mount_from_args(args)
+    mount = mounts.make_mount_from_args(args, use_multiprocessing=False)
 
     game_pad = track.Gamepad()
 

@@ -660,11 +660,13 @@ def add_program_arguments(parser: ArgParser) -> None:
     )
 
 
-def make_mount_from_args(args: Namespace) -> TelescopeMount:
+def make_mount_from_args(args: Namespace, use_multiprocessing: bool = True) -> TelescopeMount:
     """Construct the appropriate TelescopeMount instance based on the program arguments provided.
 
     Args:
         args: Set of program arguments.
+        use_multiprocessing: Passed to the LosmandyGeminiMount constructor only. Ignored for other
+            mount types.
     """
     if args.mount_type == 'nexstar':
         return NexStarMount(
@@ -674,7 +676,8 @@ def make_mount_from_args(args: Namespace) -> TelescopeMount:
     elif args.mount_type == 'gemini':
         return LosmandyGeminiMount(
             device_name=args.mount_path,
-            bypass_position_limits=args.bypass_position_limits
+            bypass_position_limits=args.bypass_position_limits,
+            use_multiprocessing=use_multiprocessing,
         )
     else:
         raise ValueError(f'Invalid mount-type: {args.mount_type}')
