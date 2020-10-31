@@ -15,7 +15,7 @@ just roll our own solution that provides exactly what we need in a lightweight a
 from abc import ABC, abstractmethod
 import enum
 from enum import IntEnum
-from typing import NamedTuple, Tuple
+from typing import NamedTuple, Tuple, Optional
 import time
 import numpy as np
 from astropy import units as u
@@ -166,6 +166,20 @@ class TelescopeMount(ABC):
         """
 
 
+    @abstractmethod
+    def axis_limits(self, axis: int) -> Optional[Tuple[Longitude, Longitude]]:
+        """Get the encoder position limits for a mount axis.
+
+        Args:
+            axis: The index of the axis to retrieve limits for. Same conventions as used by
+                `slew()`.
+
+        Returns:
+            A tuple with a pair of encoder positions corresponding to the lower and upper limits on
+            this axis range of motion. If no limits apply to this axis None is returned instead.
+        """
+
+
     def predict(
             self,
             times_from_start: np.ndarray,
@@ -306,8 +320,8 @@ class NexStarMount(TelescopeMount):
                 parent class.
         """
         self.mount = point.NexStar(device_name)
-        self.alt_min_limit = alt_min_limit
-        self.alt_max_limit = alt_max_limit
+        self.alt_min_limit = Longitude(alt_min_limit*u.deg, wrap_angle=180*u.deg)
+        self.alt_max_limit = Longitude(alt_max_limit*u.deg, wrap_angle=180*u.deg)
         self.bypass_position_limits = bypass_position_limits
         self.max_slew_rate = max_slew_rate
         self._slew_accel = slew_accel
@@ -347,7 +361,7 @@ class NexStarMount(TelescopeMount):
         (az, alt) = self.mount.get_azalt()
         self.cached_position = MountEncoderPositions(
             Longitude(az*u.deg),
-            Longitude(alt*u.deg),
+            Longitude(alt*u.deg, wrap_angle=180*u.deg),
         )
         self.cached_position_time = time.time()
         return self.cached_position
@@ -389,8 +403,8 @@ class NexStarMount(TelescopeMount):
         if axis == self.AxisName.ALTITUDE and not self.bypass_position_limits:
             position = self.get_position(0.25)
             # pylint: disable=bad-continuation
-            if ((position[self.AxisName.ALTITUDE].deg >= self.alt_max_limit and rate > 0.0) or
-                (position[self.AxisName.ALTITUDE].deg <= self.alt_min_limit and rate < 0.0)):
+            if ((position[self.AxisName.ALTITUDE] >= self.alt_max_limit and rate > 0.0) or
+                (position[self.AxisName.ALTITUDE] <= self.alt_min_limit and rate < 0.0)):
                 rate = 0.0
 
         # slew_var argument units are arcseconds per second
@@ -443,6 +457,14 @@ class NexStarMount(TelescopeMount):
             MountEncoderPositions: Contains the encoder positions that should not be crossed.
         """
         return MountEncoderPositions(None, Longitude(-90*u.deg, wrap_angle=180*u.deg))
+
+
+    def axis_limits(self, axis: int) -> Optional[Tuple[Longitude, Longitude]]:
+        """This mount only has limits on the altitude axis"""
+        if axis == 0:
+            return None
+        else:
+            return self.alt_min_limit, self.alt_max_limit
 
 
 class LosmandyGeminiMount(TelescopeMount):
@@ -521,8 +543,8 @@ class LosmandyGeminiMount(TelescopeMount):
         if self.mount.startup_check() != point.gemini_commands.G2StartupStatus.DONE_EQUATORIAL:
             raise RuntimeError('Gemini has not completed startup!')
 
-        self.ra_west_limit = ra_west_limit
-        self.ra_east_limit = ra_east_limit
+        self.ra_west_limit = Longitude((180 - self.ra_west_limit)*u.deg)
+        self.ra_east_limit = Longitude((180 + self.ra_east_limit)*u.deg)
         self.bypass_position_limits = bypass_position_limits
         self.max_slew_rate = max_slew_rate
         self._slew_accel = slew_accel
@@ -588,8 +610,8 @@ class LosmandyGeminiMount(TelescopeMount):
         if axis == self.AxisName.RIGHT_ASCENSION and not self.bypass_position_limits:
             pra = self.get_position(0.25)[self.AxisName.RIGHT_ASCENSION.value]
             # pylint: disable=bad-continuation
-            if ((pra.deg < 180 - self.ra_west_limit and rate < 0.0) or
-                (pra.deg > 180 + self.ra_east_limit and rate > 0.0)):
+            if ((pra < self.ra_west_limit and rate < 0.0) or
+                (pra > self.ra_east_limit and rate > 0.0)):
                 rate = 0.0
 
         self.mount.slew(axis.short_name(), rate)
@@ -625,6 +647,14 @@ class LosmandyGeminiMount(TelescopeMount):
             MountEncoderPositions: Contains the encoder positions that should not be crossed.
         """
         return MountEncoderPositions(Longitude(0*u.deg), Longitude(0*u.deg))
+
+
+    def axis_limits(self, axis: int) -> Optional[Tuple[Longitude, Longitude]]:
+        """This mount only has limits on the right ascension axis"""
+        if axis == 0:
+            return self.ra_west_limit, self.ra_east_limit
+        else:
+            return None
 
 
 def add_program_arguments(parser: ArgParser, meridian_side_required=False) -> None:
