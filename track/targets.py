@@ -75,6 +75,30 @@ class Target(ABC):
         """
 
 
+class FixedMountEncodersTarget(Target):
+    """A target at fixed mount encoder positions.
+
+    Targets of this type remain at fixed mount encoder positions. This is similar to the
+    `FixedTopocentricTarget` class except that it avoids numerical precision issues for positions
+    near the mount pole, if the particular encoder position of the first axis (typically the right
+    ascension or azimuth axis) is important.
+    """
+
+    def __init__(self, enc: MountEncoderPositions, mount_model: MountModel):
+        """Construct an instance of FixedMountEncodersTarget.
+
+        Args:
+            enc: A set of mount encoder positions.
+            mount_model: An instance of class MountModel for coordinate system conversions.
+        """
+        self.position_enc = enc
+        self.position_topo = mount_model.encoders_to_topocentric(enc)
+
+    def get_position(self, t: Optional[Time] = None) -> TargetPosition:
+        """Since the position is fixed the t argument is ignored"""
+        return TargetPosition(t, self.position_topo, self.position_enc)
+
+
 class FixedTopocentricTarget(Target):
     """A target at a fixed topocentric position.
 

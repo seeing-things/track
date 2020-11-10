@@ -19,7 +19,7 @@ import sys
 import time
 import pickle
 from datetime import datetime
-from typing import List, Optional, NamedTuple
+from typing import List, Optional
 import numpy as np
 import pandas as pd
 import click
@@ -30,29 +30,62 @@ from astropy.time import Time
 from astropy.coordinates import SkyCoord, EarthLocation, Angle, Longitude
 import track
 from track import cameras, mounts, telem
-from track.control import Tracker
+from track.control import Tracker, smallest_allowed_error
 from track.config import DATA_PATH
-from track.model import ModelParamSet
-from track.mounts import MeridianSide
-from track.targets import FixedTopocentricTarget
+from track.model import ModelParamSet, MountModel
+from track.mounts import MeridianSide, MountEncoderPositions, TelescopeMount
+from track.targets import FixedMountEncodersTarget
 from track.gps_client import GPSValues, GPSMargins, GPS
+from track.tsp import Destination, solve_route
 
 
-class Position(NamedTuple):
-    """A position for use in alignment procedure
+class Position(Destination):
+    """A position for use in alignment procedure"""
 
-    Attributes:
-        position: SkyCoord in topocentric "altaz" frame.
-        meridian_side: Side of meridian mount should use for this position.
-    """
-    position: SkyCoord
-    meridian_side: MeridianSide
+    def __init__(
+            self,
+            encoder_positions: MountEncoderPositions,
+            mount: TelescopeMount,
+        ):
+        """
+        Args:
+            encoder_positions: Mount encoder positions corresponding to this sky position
+            mount: Instance of TelescopeMount
+        """
+        self.encoder_positions = encoder_positions
+        self.mount = mount
+
+    def distance_to(self, other_destination: "Position") -> int:
+        """Returns the cost of moving the mount from this position to another position
+
+        Assumes that the slew rate is the same for all mount axes.
+
+        Args:
+            other_destination: Another instance of this class
+
+        Returns:
+            An integer value representing the cost.
+        """
+        smallest_encoder_errors = []
+        for axis, encoder_position in enumerate(self.encoder_positions):
+            smallest_encoder_errors.append(smallest_allowed_error(
+                encoder_position.deg,
+                other_destination.encoder_positions[axis].deg,
+                self.mount.no_cross_encoder_positions()[axis].deg
+            ))
+        max_error_mag = np.max(np.abs(smallest_encoder_errors))
+
+        # scale by 1000 to minimize precision loss when quantizing to integer
+        return int(1000 * max_error_mag)
+
 
 
 def generate_positions(
         min_positions: int,
+        mount_model: MountModel,
+        mount: TelescopeMount,
         min_altitude: Angle = 0.0*u.deg,
-        meridian_side: Optional[MeridianSide] = None
+        meridian_side: Optional[MeridianSide] = None,
     ) -> List[Position]:
     """Generate a list of equally spaced positions on the sky to search.
 
@@ -100,7 +133,12 @@ def generate_positions(
             if alt < min_altitude:
                 continue
 
-            positions.append(Position(SkyCoord(az, alt, frame='altaz'), side))
+            position_topo = SkyCoord(az, alt, frame='altaz')
+            encoder_positions = mount_model.topocentric_to_encoders(position_topo, side)
+            positions.append(Position(
+                encoder_positions=encoder_positions,
+                mount=mount,
+            ))
 
         if len(positions) >= min_positions:
             break
@@ -237,9 +275,24 @@ def main():
         meridian_side = None
     positions = generate_positions(
         min_positions=args.min_positions,
+        mount_model=starter_mount_model,
+        mount=mount,
         min_altitude=Angle(args.min_alt*u.deg),
         meridian_side=meridian_side
     )
+
+    # add the park position to the start of the list to serve as the "depot" in the route
+    park_encoder_positions = mount.get_position()
+    positions.insert(0, Position(
+        encoder_positions=park_encoder_positions,
+        mount=mount,
+    ))
+
+    # use travelling salesman solver to sort positions in the order that will take the least time
+    positions = solve_route(positions)
+
+    # mount is already at the starting position so don't need to go there
+    del positions[0]
 
     # directory in which to place observation data for debugging purposes
     observations_dir = os.path.join(
@@ -254,14 +307,15 @@ def main():
         num_solutions = 0
         for idx, position in enumerate(positions):
 
-            print(f'Moving to position {idx + 1} of {len(positions)}: '
-                  f'Az: {position.position.az.deg:.2f}, Alt: {position.position.alt.deg:.2f}')
-
-            target = FixedTopocentricTarget(
-                position.position,
+            target = FixedMountEncodersTarget(
+                position.encoder_positions,
                 starter_mount_model,
-                position.meridian_side
             )
+
+            pos = target.get_position()
+            print(f'Moving to position {idx + 1} of {len(positions)}: '
+                  f'Az: {pos.topo.az.deg:.2f}, Alt: {pos.topo.alt.deg:.2f}')
+
             tracker = Tracker(
                 mount=mount,
                 mount_model=starter_mount_model,
