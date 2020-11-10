@@ -318,8 +318,13 @@ class PyEphemTarget(Target):
                 self.offset += 1/60
             else:
                 print('Invalid direction passed to nudge')
+                return
+
+            print(f'target position nudged one arcminute {direction}')
+            print(f'current target position offset: {60*self.offset} arcminutes')
 
     def nudge_clear(self) -> None:
+        print('Target position offset cleared')
         self.get_position.cache_clear()
         self.offset = 0.0
 
