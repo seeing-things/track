@@ -3,6 +3,7 @@
 from typing import Dict, List, Optional, Tuple, NamedTuple
 from abc import ABC, abstractmethod
 from functools import lru_cache
+import dateutil
 from math import inf
 import threading
 import numpy as np
@@ -182,6 +183,38 @@ class OverheadPassTarget(Target):
         position_topo = self.position_start.directional_offset_by(self.position_angle, separation)
         position_enc = self.mount_model.topocentric_to_encoders(position_topo, self.meridian_side)
 
+        return TargetPosition(t, position_topo, position_enc)
+
+
+class FlightclubLaunchTrajectoryTarget(Target):
+
+    def __init__(
+            self,
+            filename: str,
+            time_t0: Time,
+            mount_model: MountModel,
+            meridian_side: MeridianSide,
+        ):
+        self.time_t0 = time_t0
+        self.mount_model = mount_model
+        self.meridian_side = meridian_side
+
+        data = np.loadtxt(filename, delimiter=',', skiprows=1)
+        self.times_from_t0 = data[:,0]
+        self.alt = data[:,1]
+        self.az = data[:,2]
+
+    @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
+    def get_position(self, t: Time) -> TargetPosition:
+        """Get apparent position of this target"""
+
+        # use linear interpolation between available trajectory data points
+        time_from_t0 = (t - self.time_t0).to_value('sec')
+        position_az = np.interp(time_from_t0, self.times_from_t0, self.az)
+        position_alt = np.interp(time_from_t0, self.times_from_t0, self.alt)
+
+        position_topo = SkyCoord(position_az * u.deg, position_alt * u.deg, frame='altaz')
+        position_enc = self.mount_model.topocentric_to_encoders(position_topo, self.meridian_side)
         return TargetPosition(t, position_topo, position_enc)
 
 
@@ -454,6 +487,14 @@ def add_program_arguments(parser: ArgParser) -> None:
     """
     subparsers = parser.add_subparsers(title='target types', dest='target_type')
 
+    parser_flightclub = subparsers.add_parser('flightclub', help='Flightclub.io trajectory CSV file')
+    parser_flightclub.add_argument('file', help='filename of CSV file')
+    parser_flightclub.add_argument(
+        'time_t0',
+        help='Launch T0 in UTC. Many natural language date formats are supported.',
+        type=str,
+    )
+
     parser_tle = subparsers.add_parser('tle', help='TLE file')
     parser_tle.add_argument('file', help='filename of two-line element (TLE) target ephemeris')
 
@@ -490,8 +531,20 @@ def make_target_from_args(
         mount_model: Instance of MountModel.
         meridian_side: Desired side of mount-relative meridian.
     """
+    if args.target_type == 'flightclub':
+        print(f'In Flight Club trajectory mode using {args.file}')
+        time_t0 = dateutil.parser.parse(args.time_t0)
+        time_t0.replace(tzinfo=dateutil.tz.tzutc())
+        print(f'T0 interpreted as {time_t0}Z')
+        target = FlightclubLaunchTrajectoryTarget(
+            filename=args.file,
+            time_t0=Time(time_t0),
+            mount_model=mount_model,
+            meridian_side=meridian_side,
+        )
+
     # Create a PyEphem Body object corresonding to the TLE file
-    if args.target_type == 'tle':
+    elif args.target_type == 'tle':
         print('In TLE file mode: \'{}\'.'.format(args.file))
         tle = []
         with open(args.file) as tlefile:
