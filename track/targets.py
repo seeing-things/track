@@ -392,7 +392,7 @@ class CameraTarget(Target, TelemSource):
             target_x,
             target_y,
             mount_meridian_side,
-            telem_chans,
+            telem,
         )
 
         target_coord = SkyCoord(mount_coord).directional_offset_by(
@@ -459,16 +459,18 @@ class CameraTarget(Target, TelemSource):
             raise self.IndeterminatePosition('No target detected in most recent frame')
         return self.target_position
 
-    def process_camera_frame(self, telem: Optional[Dict]) -> Optional[Tuple[Angle, Angle]]:
+    def process_camera_frame(self, telem: Optional[Dict]) -> Tuple[Time, Angle, Angle]:
         """Get frame from camera and find target using computer vision
 
         Args:
             telem: Dict into which telemetry channels will be added
 
         Returns:
-            Tuple containing the position of the target within the camera frame where the first
-            element is the X position and the second is the Y position and the origin is the center
-            of the camera frame.
+            Tuple containing:
+            - The approximate time that the camera frame was captured.
+            - The position of the target within the camera frame where the first element is the X
+              position and the second is the Y position and the origin is the center of the camera
+              frame.
         """
         # This time isn't going to be exceptionally accurate, but unfortunately most cameras do not
         # provide a means of determining the exact time when the frame was captured by the sensor.
@@ -500,7 +502,7 @@ class CameraTarget(Target, TelemSource):
             telem['target_cam_x'] = target_x.deg
             telem['target_cam_y'] = target_y.deg
 
-        return target_x, target_y
+        return target_time, target_x, target_y
 
     def process_sensor_data(self) -> None:
         """Process a new camera frame and cache the computed target position in this object.
@@ -514,7 +516,7 @@ class CameraTarget(Target, TelemSource):
         """
         telem = {}
         try:
-            target_x, target_y = self.process_camera_frame(telem)
+            target_time, target_x, target_y = self.process_camera_frame(telem)
         except self.IndeterminatePosition:
             self.target_position = None
             self._set_telem_channels()
@@ -551,10 +553,16 @@ class CameraTarget(Target, TelemSource):
 class SensorFusionTarget(Target):
 
     def __init__(
-        self,
-        camera_target: CameraTarget,
-        blind_target: Target
-    ):
+            self,
+            model: MountModel,
+            # TODO: make consistent with CameraTarget which allows None
+            # (should that feature be moved out of these Target classes?)
+            meridian_side: Optional[MeridianSide] = None,
+            camera_target: CameraTarget,
+            blind_target: Target
+        ):
+        self.model = model
+        self.meridian_side = meridian_side
         self.camera_target = camera_target
         self.blind_target = blind_target
         self.blind_target_bias = 0.0
@@ -580,19 +588,27 @@ class SensorFusionTarget(Target):
 
         # TODO: We really only want the topocentric position of the target since we will be re-
         # computing the mount encoder positions here and discarding the ones returned by this
-        # call
+        # call. Ideally we would find a way to prevent the blind_target object from doing this
+        # unnecessary conversion step.
         position_target_blind = self.blind_target.get_position(t)
 
         # transform blind topo position to mount frame
+        position_target_blind_sph = self.model.topocentric_to_spherical(position_target_blind.topo)
 
         # apply directional offset using estimated bias terms
+        position_target_fused_sph = SkyCoord(position_target_sph).directional_offset_by(
+            position_angle=np.angle(self.blind_target_bias)*u.rad,
+            separation=np.abs(self.blind_target_bias)*u.deg
+        ).represent_as(UnitSphericalRepresentation)
 
         # transform the offset mount coordinate to mount encoder and topo frames
-
         return TargetPosition(
-            t,
-            self.model.encoders_to_topocentric(position_target_enc),
-            position_target_enc
+            time=t,
+            position_topo=self.model.spherical_to_topocentric(position_target_fused_sph),
+            position_enc=self.model.spherical_to_encoder(
+                position_target_fused_sph,
+                meridian_side=self.meridian_side
+            )
         )
 
     # TODO: update docstring
@@ -610,7 +626,10 @@ class SensorFusionTarget(Target):
         target_offset_magnitude, target_position_angle = self.camera_to_directional_offset(
             target_x,
             target_y,
-            mount_meridian_side, # TODO: Where does this come from?
+            mount_meridian_side, # TODO: Where does this come from? I think this needs to be the
+            # meridian side the mount is actually on, rather than the meridian side that is desired.
+            # See CameraTarget for an example. Kinda obnoxious if we need to query the mount position
+            # just to do this... X(
             telem_chans,
         )
 
