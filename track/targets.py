@@ -202,7 +202,7 @@ class FlightclubLaunchTrajectoryTarget(Target):
         data = np.loadtxt(filename, delimiter=',', skiprows=1)
         self.times_from_t0 = data[:,0]
         self.alt = data[:,1]
-        self.az = data[:,2]
+        self.az = np.degrees(np.unwrap(np.radians(data[:,2])))
 
     @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
     def get_position(self, t: Time) -> TargetPosition:
