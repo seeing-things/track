@@ -11,6 +11,7 @@ import time
 import selectors
 import inputs
 import numpy as np
+import click
 from track.telem import TelemSource
 
 class Gamepad(TelemSource):
@@ -79,9 +80,15 @@ class Gamepad(TelemSource):
         self.int_limit = int_limit
         self.callbacks = {}
         self.state = {'ABS_X': 0, 'ABS_Y': 0, 'ABS_RX': 0, 'ABS_RY': 0}
-        if len(inputs.devices.gamepads) < 1:
+        num_gamepads_found = len(inputs.devices.gamepads)
+        if num_gamepads_found < 1:
             raise RuntimeError('No gamepads found')
-        self.gamepad = inputs.devices.gamepads[0]
+        elif num_gamepads_found > 1:
+            print(f'Found {num_gamepads_found} gamepads:')
+            for idx, gamepad in enumerate(inputs.devices.gamepads):
+                print(f'{idx:2d}: {gamepad.name}')
+            selected_index = click.prompt('Which one?', default=0)
+        self.gamepad = inputs.devices.gamepads[selected_index]
         self.input_thread = threading.Thread(target=self.__get_input, name='Gamepad: input thread')
         self.integrator_thread = threading.Thread(
             target=self.__integrator,
