@@ -52,7 +52,7 @@ def main():
     parser = track.ArgParser()
     targets.add_program_arguments(parser)
     laser.add_program_arguments(parser)
-    mounts.add_program_arguments(parser)
+    mounts.add_program_arguments(parser, meridian_side_required=True)
     telem.add_program_arguments(parser)
     args = parser.parse_args()
 

@@ -627,11 +627,13 @@ class LosmandyGeminiMount(TelescopeMount):
         return MountEncoderPositions(Longitude(0*u.deg), Longitude(0*u.deg))
 
 
-def add_program_arguments(parser: ArgParser) -> None:
+def add_program_arguments(parser: ArgParser, meridian_side_required=False) -> None:
     """Add program arguments for all mounts.
 
     Args:
         parser: The instance of ArgParser to which this function will add arguments.
+        meridian_side_required: When True, the meridian-side command line argument will be set as
+            required. When False the same argument is optional.
     """
     mount_group = parser.add_argument_group(
         title='Mount Options',
@@ -655,7 +657,7 @@ def add_program_arguments(parser: ArgParser) -> None:
     mount_group.add_argument(
         '--meridian-side',
         help='side of meridian for equatorial mounts to prefer',
-        default=MeridianSide.WEST.name.lower(),
+        required=meridian_side_required,
         choices=tuple(m.name.lower() for m in MeridianSide),
     )
 
