@@ -510,6 +510,7 @@ def add_program_arguments(parser: ArgParser) -> None:
         parser: The instance of ArgParser to which this function will add arguments.
     """
     subparsers = parser.add_subparsers(title='target types', dest='target_type')
+    subparsers.required = True
 
     parser_flightclub = subparsers.add_parser('flightclub', help='Flightclub.io trajectory CSV file')
     parser_flightclub.add_argument('file', help='filename of CSV file')
