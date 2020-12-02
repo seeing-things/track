@@ -11,7 +11,7 @@ import click
 import astropy.units as u
 from astropy.coordinates import Latitude, Longitude
 import track
-from track import laser, mounts, targets, telem
+from track import laser, mounts, ntp, targets, telem
 from track.control import Tracker
 from track.gamepad import Gamepad
 from track.mounts import MeridianSide
@@ -53,6 +53,7 @@ def main():
     targets.add_program_arguments(parser)
     laser.add_program_arguments(parser)
     mounts.add_program_arguments(parser, meridian_side_required=True)
+    ntp.add_program_arguments(parser)
     telem.add_program_arguments(parser)
     args = parser.parse_args()
 
@@ -61,6 +62,15 @@ def main():
     # over.
     os.sched_setscheduler(0, os.SCHED_RR, os.sched_param(11))
 
+    # Check if system clock is synchronized to GPS
+    if args.check_time_sync:
+        try:
+            ntp.check_ntp_status()
+        except ntp.NTPCheckFailure as e:
+            print('NTP check failed: ' + str(e))
+            if not click.confirm('Continue anyway?', default=True):
+                print('Aborting')
+                sys.exit(2)
 
     # Load a MountModel object
     try:

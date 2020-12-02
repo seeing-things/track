@@ -29,7 +29,7 @@ from astropy.io import fits
 from astropy.time import Time
 from astropy.coordinates import SkyCoord, EarthLocation, Angle, Longitude
 import track
-from track import cameras, mounts, telem
+from track import cameras, mounts, ntp, telem
 from track.control import Tracker, smallest_allowed_error
 from track.config import DATA_PATH
 from track.model import ModelParamSet, MountModel
@@ -220,8 +220,19 @@ def main():
     )
     mounts.add_program_arguments(parser)
     cameras.add_program_arguments(parser, profile='align')
+    ntp.add_program_arguments(parser)
     telem.add_program_arguments(parser)
     args = parser.parse_args()
+
+    # Check if system clock is synchronized to GPS
+    if args.check_time_sync:
+        try:
+            ntp.check_ntp_status()
+        except ntp.NTPCheckFailure as e:
+            print('NTP check failed: ' + str(e))
+            if not click.confirm('Continue anyway?', default=True):
+                print('Aborting')
+                sys.exit(2)
 
     mount = mounts.make_mount_from_args(args)
 
