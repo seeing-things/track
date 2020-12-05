@@ -88,6 +88,8 @@ class Gamepad(TelemSource):
             for idx, gamepad in enumerate(inputs.devices.gamepads):
                 print(f'{idx:2d}: {gamepad.name}')
             selected_index = click.prompt('Which one?', default=0)
+        else:
+            selected_index = 0
         self.gamepad = inputs.devices.gamepads[selected_index]
         self.input_thread = threading.Thread(target=self.__get_input, name='Gamepad: input thread')
         self.integrator_thread = threading.Thread(
