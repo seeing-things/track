@@ -3,6 +3,7 @@
 """program for testing plate solving with guidescope camera"""
 
 import time
+from datetime import datetime
 import numpy as np
 import asi
 import cv2
@@ -28,7 +29,7 @@ def main():
 
     frame_count = 0
     while True:
-        print('frame {:06d}'.format(frame_count))
+        print(f'Frame {frame_count:06d} at {datetime.now()}...', end='', flush=True)
         frame_count += 1
         frame = camera.get_frame()
         cv2.imshow('camera', frame)
@@ -48,7 +49,7 @@ def main():
             print('No solution found')
             continue
 
-        print('Found solution at ({}) in {} seconds'.format(sc.to_string('decimal'), elapsed))
+        print(f'Found solution at ({sc.to_string("decimal")}) in {elapsed} seconds')
 
 
 if __name__ == "__main__":
