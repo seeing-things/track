@@ -62,6 +62,7 @@ confidence=
 disable=
     bad-continuation,
     no-else-return,
+    no-else-raise,
     too-few-public-methods,
     too-many-arguments,
     too-many-branches,
