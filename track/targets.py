@@ -339,12 +339,18 @@ class CameraTarget(Target, TelemSource):
             mount_meridian_side: MeridianSide,
             telem_chans: Optional[Dict] = None
         ) -> Tuple[Angle, Angle]:
-        # TODO: Finish this docstring
         """Transform from a position in camera frame to a magnitude and position angle
 
         Args:
-            target_x:
+            target_x: Target position in camera's x-axis
+            target_y: Target position in camera's y-axis
+            mount_meridian_side: The mount's meridian side at the time when the camera frame was
+                captured
+            telem_chans: Dict to be populated with new telemetry channels
 
+        Returns:
+            A tuple containing the target position offset magnitude and angle in the mount-relative
+            frame, as would be passed to `SkyCoord.directional_offset_by()`.
         """
 
         # angular separation and direction from center of camera frame to target
@@ -383,6 +389,17 @@ class CameraTarget(Target, TelemSource):
         """
 
         # Current position of mount is assumed to be the position of the center of the camera frame
+        # FIXME: This isn't going to be very accurate since we are not getting the mount position
+        # as close in time as possible to when the camera frame was captured. What we *really* need
+        # are a couple of things:
+        # 1. A reasonable estimate of the actual time when the camera frame was captured (not just
+        #    when the function to get the frame data returns, since there is hidden latency there)
+        # 2. A way to get the mount's position corresponding to that past time. We have the ability
+        #    to predict future mount positions but not a way to go back and get past positions
+        #    (and interpolate between them). Maybe it would be reasonable for the mount to cache
+        #    past positions in a limited-length deque with timestamps to make this past position
+        #    lookup possible. Maybe add another argument to `get_position()` to specify the desired
+        #    past time.
         mount_enc_positions = self.mount.get_position()
         mount_coord, mount_meridian_side = self.mount_model.encoder_to_spherical(
             mount_enc_positions
@@ -554,30 +571,25 @@ class SensorFusionTarget(Target):
 
     def __init__(
             self,
+            blind_target: Target,
+            camera_target: CameraTarget,
             model: MountModel,
             # TODO: make consistent with CameraTarget which allows None
             # (should that feature be moved out of these Target classes?)
             meridian_side: Optional[MeridianSide] = None,
-            camera_target: CameraTarget,
-            blind_target: Target
         ):
+        self.blind_target = blind_target
+        self.camera_target = camera_target
         self.model = model
         self.meridian_side = meridian_side
-        self.camera_target = camera_target
-        self.blind_target = blind_target
         self.blind_target_bias = 0.0
 
-    # TODO: Update docstring
     # TODO: Add lru_cache (make sure to clear cache when process_sensor_data() is called)
     def get_position(self, t: Time) -> TargetPosition:
         """Get the apparent position of the target for the specified time.
 
         Args:
-            t: The time for which the position should correspond, if possible. For some targets
-                the position can be found at this exact time. For others it may not be possible to
-                predict the position in the past or in the future. The `time` field of the return
-                tuple will be populated to indicate the actual time that corresponds to the return
-                value's position.
+            t: The time for which the position should correspond.
 
         Returns:
             The target position as an instance of TargetPosition.
@@ -596,7 +608,7 @@ class SensorFusionTarget(Target):
         position_target_blind_sph = self.model.topocentric_to_spherical(position_target_blind.topo)
 
         # apply directional offset using estimated bias terms
-        position_target_fused_sph = SkyCoord(position_target_sph).directional_offset_by(
+        position_target_fused_sph = SkyCoord(position_target_blind_sph).directional_offset_by(
             position_angle=np.angle(self.blind_target_bias)*u.rad,
             separation=np.abs(self.blind_target_bias)*u.deg
         ).represent_as(UnitSphericalRepresentation)
@@ -613,17 +625,13 @@ class SensorFusionTarget(Target):
 
     # TODO: update docstring
     def process_sensor_data(self) -> None:
-        """Get and process data from any sensors associated with this target type.
+        """Get camera frame and update blind target bias terms.
 
-        This method will be called once near the beginning of the control cycle. Reading of sensor
-        data and processing of that data into intermediate state should be done in this method. The
-        code should be optimized such that calls to get_position() are as fast as practical. If no
-        sensors are associated with this target type there is no need to override this default
-        no-op implementation.
+        This method is where the sensor fusion magic happens.
         """
         target_x, target_y = self.camera_target.process_camera_frame()
 
-        target_offset_magnitude, target_position_angle = self.camera_to_directional_offset(
+        target_offset_mag, target_position_angle = self.camera_target.camera_to_directional_offset(
             target_x,
             target_y,
             mount_meridian_side, # TODO: Where does this come from? I think this needs to be the
@@ -633,16 +641,9 @@ class SensorFusionTarget(Target):
             telem_chans,
         )
 
-        target_offset = target_offset_magnitude.deg * np.exp(1j*target_position_angle.rad)
+        target_offset = target_offset_mag.deg * np.exp(1j*target_position_angle.rad)
 
         # update leaky integrator filter for bias terms
-        # TODO: We need to modify the CameraTarget such that it produces an estimate of the bias
-        # terms in addition to an absolute target position.
-        # TODO: Need to decide what coordinate system these bias terms live in. We don't know
-        # whether the bias terms will be more stationary in one frame versus another, so for now
-        # we should probably pick the coordinate system that will minimize the total number of
-        # transformations between coordinate systems both in this class but also in the camera
-        # and TLE targets.
         alpha = 0.001
         self.blind_target_bias = (1 - alpha)*self.blind_target_bias + alpha*target_offset
 
