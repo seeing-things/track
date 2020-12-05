@@ -15,10 +15,10 @@ just roll our own solution that provides exactly what we need in a lightweight a
 from abc import ABC, abstractmethod
 import enum
 from enum import IntEnum
-from typing import NamedTuple, Tuple
-import time
+from typing import NamedTuple, Optional, Tuple
 import numpy as np
 from astropy import units as u
+from astropy.time import Time
 from astropy.coordinates import Longitude
 from configargparse import Namespace
 from track.config import ArgParser
@@ -51,9 +51,12 @@ class MountEncoderPositions(NamedTuple):
         encoder_1: The axis further from the base of the mount but closer to the optical tube. For
             an equatorial mount this is usually the declination axis. For az-alt mounts this is
             usually the altitude axis.
+        time: An optional field that indicates the time when the mount encoders are at these
+            encoder positions.
     """
     encoder_0: Longitude
     encoder_1: Longitude
+    time: Optional[Time] = None
 
 
 class TelescopeMount(ABC):
@@ -340,17 +343,20 @@ class NexStarMount(TelescopeMount):
             is the altitude axis.
         """
         if self.cached_position is not None:
-            time_since_cached = time.time() - self.cached_position_time
+            time_since_cached = (Time.now() - self.cached_position.time).to_value('sec')
             if time_since_cached < max_cache_age:
                 return self.cached_position
 
         (az, alt) = self.mount.get_azalt()
-        self.cached_position = MountEncoderPositions(
+        current_time = Time.now()
+        current_position = MountEncoderPositions(
             Longitude(az*u.deg),
             Longitude(alt*u.deg),
+            current_time,
         )
-        self.cached_position_time = time.time()
-        return self.cached_position
+        self.cached_position = current_position
+
+        return current_position
 
 
     def slew(self, axis: int, rate: float) -> None:
@@ -527,7 +533,6 @@ class LosmandyGeminiMount(TelescopeMount):
         self.max_slew_rate = max_slew_rate
         self._slew_accel = slew_accel
         self.cached_position = None
-        self.cached_position_time = None
 
 
     @property
@@ -535,7 +540,10 @@ class LosmandyGeminiMount(TelescopeMount):
         return self._slew_accel
 
 
-    def get_position(self, max_cache_age: float = 0.0) -> MountEncoderPositions:
+    def get_position(
+            self,
+            max_cache_age: float = 0.0,
+        ) -> MountEncoderPositions:
         """Gets the current position of the mount.
 
         Gets the current position coordinates of the mount. The positions returned are as reported
@@ -552,17 +560,20 @@ class LosmandyGeminiMount(TelescopeMount):
             An instance of MountEncoderPositions.
         """
         if self.cached_position is not None:
-            time_since_cached = time.time() - self.cached_position_time
+            time_since_cached = (Time.now() - self.cached_position.time).to_value('sec')
             if time_since_cached < max_cache_age:
                 return self.cached_position
 
         enq = self.mount.enq_macro()
-        self.cached_position = MountEncoderPositions(
+        current_time = Time.now()
+        current_position = MountEncoderPositions(
             Longitude(enq['pra'] * 180.0 / 1152000 * u.deg),  # motor ticks to degrees
             Longitude(enq['pdec'] * 180.0 / 1152000 * u.deg),  # motor ticks to degrees
+            current_time
         )
-        self.cached_position_time = time.time()
-        return self.cached_position
+        self.cached_position = current_position
+
+        return current_position
 
 
     def slew(self, axis: int, rate: float) -> None:
