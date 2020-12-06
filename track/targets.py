@@ -586,7 +586,7 @@ class SensorFusionTarget(Target):
             # TODO: make consistent with CameraTarget which allows None
             # (should that feature be moved out of these Target classes?)
             meridian_side: Optional[MeridianSide] = None,
-            filter_gain: float = 1e-2
+            filter_gain: float = 5e-2
         ):
         self.blind_target = blind_target
         self.camera_target = camera_target
@@ -599,7 +599,10 @@ class SensorFusionTarget(Target):
         self._telem_mutex = threading.Lock()
         self._telem_chans = {}
 
-    @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
+    # Cache results to avoid re-computing unnecessarily. Strictly the cache should be cleared each
+    # time the `blind_target_bias` member variable is updated but this is intentionally ignored to
+    # reduce computational load. The ill effects of this seem to be minimal.
+    @lru_cache(maxsize=128)
     def get_position(self, t: Time) -> TargetPosition:
         """Get the apparent position of the target for the specified time.
 
@@ -630,10 +633,10 @@ class SensorFusionTarget(Target):
 
         # transform the offset mount coordinate to mount encoder and topo frames
         return TargetPosition(
-            time=t,
-            position_topo=self.model.spherical_to_topocentric(position_target_fused_sph),
-            position_enc=self.model.spherical_to_encoder(
-                position_target_fused_sph,
+            t,
+            self.model.spherical_to_topocentric(position_target_fused_sph),
+            self.model.spherical_to_encoder(
+                coord=position_target_fused_sph,
                 meridian_side=self.meridian_side
             )
         )
@@ -648,11 +651,15 @@ class SensorFusionTarget(Target):
         """
         telem = {}
 
-        target_x, target_y = self.camera_target.process_camera_frame()
+        try:
+            _, target_x, target_y = self.camera_target.process_camera_frame(telem)
+        except Target.IndeterminatePosition:
+            self._set_telem_channels()
+            return
 
         # get meridian side of the mount
         mount_position = self.mount.get_position(max_cache_age=0.2)
-        mount_meridian_side = self.model.encoders_to_meridian_side(mount_position)
+        mount_meridian_side = self.model.encoder_to_meridian_side(mount_position)
 
         target_offset_mag, target_position_angle = self.camera_target.camera_to_directional_offset(
             target_x,
@@ -665,13 +672,6 @@ class SensorFusionTarget(Target):
 
         # update bias term integrator
         self.blind_target_bias += self.filter_gain * target_offset
-
-        # clear get_position() cache because changing the bias invalidates old results
-        # TODO: Is this actually necessary? Maybe we *want* `get_position()` to continue using the
-        # cached values even if they are stale. This would reduce CPU load, probably significantly,
-        # and it may not matter since the bias is expected to evolve slowly and the old values
-        # will be obsolete very soon.
-        # self.get_position.cache_clear()
 
         telem['target_offset_mag'] = target_offset_mag.deg
         telem['target_offset_position_angle'] = target_position_angle.deg
