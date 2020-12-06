@@ -567,24 +567,31 @@ class CameraTarget(Target, TelemSource):
         return chans
 
 
-class SensorFusionTarget(Target):
+class SensorFusionTarget(Target, TelemSource):
 
     def __init__(
             self,
             blind_target: Target,
             camera_target: CameraTarget,
+            mount: TelescopeMount,
             model: MountModel,
             # TODO: make consistent with CameraTarget which allows None
             # (should that feature be moved out of these Target classes?)
             meridian_side: Optional[MeridianSide] = None,
+            filter_gain: float = 1e-2
         ):
         self.blind_target = blind_target
         self.camera_target = camera_target
+        self.mount = mount
         self.model = model
         self.meridian_side = meridian_side
         self.blind_target_bias = 0.0
+        self.filter_gain = filter_gain
 
-    # TODO: Add lru_cache (make sure to clear cache when process_sensor_data() is called)
+        self._telem_mutex = threading.Lock()
+        self._telem_chans = {}
+
+    @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
     def get_position(self, t: Time) -> TargetPosition:
         """Get the apparent position of the target for the specified time.
 
@@ -623,29 +630,62 @@ class SensorFusionTarget(Target):
             )
         )
 
-    # TODO: update docstring
     def process_sensor_data(self) -> None:
         """Get camera frame and update blind target bias terms.
 
-        This method is where the sensor fusion magic happens.
+        This method gets a new camera frame, estimates the position of the target in the frame,
+        transforms this into a complex value that represents the residual error in pointing, and
+        processes this error to generate a bias term that is used to adjust the target predicted
+        position used for pointing.
         """
+        telem = {}
+
         target_x, target_y = self.camera_target.process_camera_frame()
+
+        # get meridian side of the mount
+        mount_position = self.mount.get_position(max_cache_age=0.2)
+        mount_meridian_side = self.model.encoders_to_meridian_side(mount_position)
 
         target_offset_mag, target_position_angle = self.camera_target.camera_to_directional_offset(
             target_x,
             target_y,
-            mount_meridian_side, # TODO: Where does this come from? I think this needs to be the
-            # meridian side the mount is actually on, rather than the meridian side that is desired.
-            # See CameraTarget for an example. Kinda obnoxious if we need to query the mount position
-            # just to do this... X(
-            telem_chans,
+            mount_meridian_side,
+            telem,
         )
 
         target_offset = target_offset_mag.deg * np.exp(1j*target_position_angle.rad)
 
-        # update leaky integrator filter for bias terms
-        alpha = 0.001
-        self.blind_target_bias = (1 - alpha)*self.blind_target_bias + alpha*target_offset
+        # update bias term integrator
+        self.blind_target_bias += self.filter_gain * target_offset
+
+        # clear get_position() cache because changing the bias invalidates old results
+        # TODO: Is this actually necessary? Maybe we *want* `get_position()` to continue using the
+        # cached values even if they are stale. This would reduce CPU load, probably significantly,
+        # and it may not matter since the bias is expected to evolve slowly and the old values
+        # will be obsolete very soon.
+        # self.get_position.cache_clear()
+
+        telem['target_offset_mag'] = target_offset_mag.deg
+        telem['target_offset_position_angle'] = target_position_angle.deg
+        telem['blind_target_bias_mag'] = np.abs(self.blind_target_bias)
+        telem['blind_target_bias_angle'] = np.degrees(np.angle(self.blind_target_bias))
+        self._set_telem_channels(telem)
+
+    def _set_telem_channels(self, chans: Optional[Dict] = None) -> None:
+        """Set telemetry dict polled by telemetry thread"""
+        self._telem_mutex.acquire()
+        self._telem_chans = {}
+        if chans is not None:
+            self._telem_chans.update(chans)
+        self._telem_mutex.release()
+
+    def get_telem_channels(self):
+        """Called by telemetry polling thread -- see TelemSource abstract base class"""
+        # Protect dict copy with mutex since this method is called from another thread
+        self._telem_mutex.acquire()
+        chans = self._telem_chans.copy()
+        self._telem_mutex.release()
+        return chans
 
 
 def add_program_arguments(parser: ArgParser) -> None:
