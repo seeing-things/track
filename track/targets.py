@@ -1,19 +1,19 @@
 """targets for use in telescope tracking control loop"""
 
-from typing import Dict, List, Optional, Tuple, NamedTuple
-from abc import ABC, abstractmethod
-from functools import lru_cache
-import dateutil
 from math import inf
+from typing import Dict, List, Optional, Tuple, NamedTuple
+from abc import abstractmethod
+from functools import lru_cache
 import threading
+import dateutil
 import numpy as np
+from configargparse import Namespace
 from astropy.coordinates import Angle, EarthLocation, SkyCoord, AltAz, Longitude
 from astropy.coordinates.representation import UnitSphericalRepresentation
 from astropy.time import Time
 from astropy import units as u
 import ephem
 import cv2
-from configargparse import Namespace
 from track import cameras
 from track.config import ArgParser
 from track.cameras import Camera
@@ -219,6 +219,7 @@ class OverheadPassTarget(Target):
 
 
 class FlightclubLaunchTrajectoryTarget(Target):
+    """A target that follows a trajectory predicted by a flightclub.io simulation"""
 
     def __init__(
             self,
@@ -232,9 +233,9 @@ class FlightclubLaunchTrajectoryTarget(Target):
         self.meridian_side = meridian_side
 
         data = np.loadtxt(filename, delimiter=',', skiprows=1)
-        self.times_from_t0 = data[:,0]
-        self.alt = data[:,1]
-        self.az = np.degrees(np.unwrap(np.radians(data[:,2])))
+        self.times_from_t0 = data[:, 0]
+        self.alt = data[:, 1]
+        self.az = np.degrees(np.unwrap(np.radians(data[:, 2])))
 
     @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
     def get_position(self, t: Time) -> TargetPosition:
@@ -576,6 +577,7 @@ class CameraTarget(Target):
 
 
 class SensorFusionTarget(Target):
+    """Uses sensor fusion to combine data from a `CameraTarget` and another `Target`"""
 
     def __init__(
             self,
@@ -716,7 +718,10 @@ def add_program_arguments(parser: ArgParser) -> None:
     subparsers = parser.add_subparsers(title='target types', dest='target_type')
     subparsers.required = True
 
-    parser_flightclub = subparsers.add_parser('flightclub', help='Flightclub.io trajectory CSV file')
+    parser_flightclub = subparsers.add_parser(
+        'flightclub',
+        help='Flightclub.io trajectory CSV file'
+    )
     parser_flightclub.add_argument('file', help='filename of CSV file')
     parser_flightclub.add_argument(
         'time_t0',
@@ -829,6 +834,7 @@ def make_target_from_args(
     # Get the PyEphem Body object corresonding to the given named solar system body
     elif args.target_type == 'solarsystem':
         print('In named solar system body mode: \'{}\''.format(args.name))
+        # pylint: disable=protected-access
         ss_objs = [name for _, _, name in ephem._libastro.builtin_planets()]
         if args.name in ss_objs:
             body_type = getattr(ephem, args.name)
