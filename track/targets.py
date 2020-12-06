@@ -694,6 +694,17 @@ def add_program_arguments(parser: ArgParser) -> None:
     Args:
         parser: The instance of ArgParser to which this function will add arguments.
     """
+    target_group = parser.add_argument_group(
+        title='General Target Options',
+        description='Options that apply to all targets',
+    )
+
+    target_group.add_argument(
+        '--fuse',
+        help='use sensor fusion of selected target with camera',
+        action='store_true',
+    )
+
     subparsers = parser.add_subparsers(title='target types', dest='target_type')
     subparsers.required = True
 
@@ -708,8 +719,8 @@ def add_program_arguments(parser: ArgParser) -> None:
     parser_tle = subparsers.add_parser('tle', help='TLE file')
     parser_tle.add_argument('file', help='filename of two-line element (TLE) target ephemeris')
 
-    parser_camera = subparsers.add_parser('camera', help='camera')
-    cameras.add_program_arguments(parser_camera, profile='track')
+    subparsers.add_parser('camera', help='follows bright target detected in camera')
+    cameras.add_program_arguments(parser, profile='track')
 
     parser_coord_eq = subparsers.add_parser('coord-eq', help='fixed equatorial coordinate')
     parser_coord_eq.add_argument('ra', help='right ascension [deg]', type=float)
@@ -725,7 +736,7 @@ def add_program_arguments(parser: ArgParser) -> None:
     parser_solarsystem = subparsers.add_parser('solarsystem', help='named solar system body')
     parser_solarsystem.add_argument('name', help='name of planet or moon')
 
-    parser_overhead_pass = subparsers.add_parser('overhead-pass', help='simulated overhead pass')
+    subparsers.add_parser('overhead-pass', help='simulated overhead pass')
 
 
 def make_target_from_args(
@@ -741,6 +752,9 @@ def make_target_from_args(
         mount_model: Instance of MountModel.
         meridian_side: Desired side of mount-relative meridian.
     """
+    if args.target_type == 'camera' and args.fuse:
+        raise ValueError('Cannot fuse camera target with itself')
+
     if args.target_type == 'flightclub':
         print(f'In Flight Club trajectory mode using {args.file}')
         time_t0 = dateutil.parser.parse(args.time_t0)
@@ -826,5 +840,22 @@ def make_target_from_args(
 
     else:
         raise ValueError(f'Invalid target-type {args.target_type}')
+
+    if args.fuse:
+        print('Sensor fusion with camera enabled')
+        blind_target = target
+        camera = cameras.make_camera_from_args(args, profile='track')
+        camera_target = CameraTarget(
+            camera=camera,
+            mount=mount,
+            mount_model=mount_model,
+        )
+        target = SensorFusionTarget(
+            blind_target=blind_target,
+            camera_target=camera_target,
+            mount=mount,
+            model=mount_model,
+            meridian_side=meridian_side,
+        )
 
     return target
