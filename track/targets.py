@@ -585,9 +585,7 @@ class SensorFusionTarget(Target):
             camera_target: CameraTarget,
             mount: TelescopeMount,
             model: MountModel,
-            # TODO: make consistent with CameraTarget which allows None
-            # (should that feature be moved out of these Target classes?)
-            meridian_side: Optional[MeridianSide] = None,
+            meridian_side: MeridianSide,
             filter_gain: float = 5e-2
         ):
         self.blind_target = blind_target
