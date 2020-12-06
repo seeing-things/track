@@ -93,15 +93,19 @@ def main():
     mount = mounts.make_mount_from_args(args)
 
     telem_sources = {}
+
+    target = targets.make_target_from_args(
+        args,
+        mount,
+        mount_model,
+        MeridianSide[args.meridian_side.upper()]
+    )
+    telem_sources['target'] = target
+
     tracker = Tracker(
         mount=mount,
         mount_model=mount_model,
-        target=targets.make_target_from_args(
-            args,
-            mount,
-            mount_model,
-            MeridianSide[args.meridian_side.upper()]
-        ),
+        target=target,
     )
     telem_sources['tracker'] = tracker
 

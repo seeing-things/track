@@ -36,7 +36,7 @@ class TargetPosition(NamedTuple):
     enc: MountEncoderPositions
 
 
-class Target(ABC):
+class Target(TelemSource):
     """Abstract base class providing a common interface for targets to be tracked."""
 
     class IndeterminatePosition(Exception):
@@ -73,6 +73,14 @@ class Target(ABC):
         sensors are associated with this target type there is no need to override this default
         no-op implementation.
         """
+
+    def get_telem_channels(self) -> dict:
+        """Called by telemetry polling thread to get a dict of telem channels.
+
+        This default implementation returns an empty dict. Override to return a non-empty set of
+        channels.
+        """
+        return {}
 
 
 class FixedMountEncodersTarget(Target):
@@ -286,7 +294,7 @@ class PyEphemTarget(Target):
         return TargetPosition(t, position_topo, position_enc)
 
 
-class CameraTarget(Target, TelemSource):
+class CameraTarget(Target):
     """Target based on computer vision detection of objects in a guide camera.
 
     This class identifies a target in a camera frame using computer vision. The target position in
@@ -558,7 +566,7 @@ class CameraTarget(Target, TelemSource):
             self._telem_chans.update(chans)
         self._telem_mutex.release()
 
-    def get_telem_channels(self):
+    def get_telem_channels(self) -> dict:
         """Called by telemetry polling thread -- see TelemSource abstract base class"""
         # Protect dict copy with mutex since this method is called from another thread
         self._telem_mutex.acquire()
@@ -567,7 +575,7 @@ class CameraTarget(Target, TelemSource):
         return chans
 
 
-class SensorFusionTarget(Target, TelemSource):
+class SensorFusionTarget(Target):
 
     def __init__(
             self,
@@ -679,7 +687,7 @@ class SensorFusionTarget(Target, TelemSource):
             self._telem_chans.update(chans)
         self._telem_mutex.release()
 
-    def get_telem_channels(self):
+    def get_telem_channels(self) -> dict:
         """Called by telemetry polling thread -- see TelemSource abstract base class"""
         # Protect dict copy with mutex since this method is called from another thread
         self._telem_mutex.acquire()
