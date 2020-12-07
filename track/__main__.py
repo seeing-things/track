@@ -76,7 +76,7 @@ def main():
     try:
         mount_model = track.model.load_stored_model()
     except track.model.StaleParametersException:
-        if click.confirm('Stored alignment parameters are stale. Use anyway?', default=False):
+        if click.confirm('Stored alignment parameters are stale. Use anyway?', default=True):
             mount_model = track.model.load_stored_model(max_age=None)
         elif args.target_type == 'camera':
             if click.confirm('Use a default set of alignment parameters instead?', default=True):
