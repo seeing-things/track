@@ -586,7 +586,8 @@ class SensorFusionTarget(Target):
             mount: TelescopeMount,
             model: MountModel,
             meridian_side: MeridianSide,
-            filter_gain: float = 5e-2
+            filter_gain: float = 5e-2,
+            bias_mag_limit: Angle = 1.0*u.deg,
         ):
         self.blind_target = blind_target
         self.camera_target = camera_target
@@ -595,6 +596,7 @@ class SensorFusionTarget(Target):
         self.meridian_side = meridian_side
         self.blind_target_bias = 0.0
         self.filter_gain = filter_gain
+        self.bias_mag_limit = bias_mag_limit
 
         self._telem_mutex = threading.Lock()
         self._telem_chans = {}
@@ -673,6 +675,12 @@ class SensorFusionTarget(Target):
 
         # update bias term integrator
         self.blind_target_bias += self.filter_gain * target_offset
+
+        # saturate bias magnitude so that it doesn't go off the rails
+        if np.abs(self.blind_target_bias) > self.bias_mag_limit.deg:
+            self.blind_target_bias = self.bias_mag_limit.deg * np.exp(
+                1j*np.angle(self.blind_target_bias)
+            )
 
         telem['target_offset_mag'] = target_offset_mag.deg
         telem['target_offset_position_angle'] = target_position_angle.deg
