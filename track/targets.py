@@ -616,10 +616,9 @@ class SensorFusionTarget(Target):
             IndeterminatePosition if the target position cannot be determined.
         """
 
-        # TODO: We really only want the topocentric position of the target since we will be re-
-        # computing the mount encoder positions here and discarding the ones returned by this
-        # call. Ideally we would find a way to prevent the blind_target object from doing this
-        # unnecessary conversion step.
+        # Only the topocentric position of the target is needed here since the mount encoder
+        # positions will be re-computed later in this method. A potential optimization is to find
+        # a way to prevent the blind target from generating this unused output.
         position_target_blind = self.blind_target.get_position(t)
 
         # transform blind topo position to mount frame
