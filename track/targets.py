@@ -653,7 +653,9 @@ class SensorFusionTarget(Target):
         try:
             _, target_x, target_y = self.camera_target.process_camera_frame(telem)
         except Target.IndeterminatePosition:
-            self._set_telem_channels()
+            telem['blind_target_bias_mag'] = np.abs(self.blind_target_bias)
+            telem['blind_target_bias_angle'] = np.degrees(np.angle(self.blind_target_bias))
+            self._set_telem_channels(telem)
             return
 
         # get meridian side of the mount
