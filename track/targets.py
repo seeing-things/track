@@ -589,6 +589,22 @@ class SensorFusionTarget(Target):
             filter_gain: float = 5e-2,
             bias_mag_limit: Angle = 1.0*u.deg,
         ):
+        """Construct an instance of SensorFusionTarget
+
+        Args:
+            blind_target: A `Target` that is not `CameraTarget`. This should predict the position
+                of the target with enough accuracy that the target is visible in the camera.
+            camera_target: An instance of `CameraTarget`. When the target is detected by the camera
+                the bias in the blind target will be estimated and removed.
+            mount: Provides an interface to the mount.
+            model: Mount alignment model.
+            meridian_side: Side of mount meridian to use.
+            filter_gain: The gain of the integrator filter applied to the target offset detected by
+                camera. The output of the integrator is the estimate of the blind target bias.
+            bias_mag_limit: The magnitude of the blind target bias estimate is limited to this
+                value to prevent it from growing excessively large.
+        """
+
         self.blind_target = blind_target
         self.camera_target = camera_target
         self.mount = mount
