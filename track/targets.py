@@ -1,19 +1,19 @@
 """targets for use in telescope tracking control loop"""
 
-from typing import Dict, List, Optional, Tuple, NamedTuple
-from abc import ABC, abstractmethod
-from functools import lru_cache
-import dateutil
 from math import inf
+from typing import Dict, List, Optional, Tuple, NamedTuple
+from abc import abstractmethod
+from functools import lru_cache
 import threading
+import dateutil
 import numpy as np
+from configargparse import Namespace
 from astropy.coordinates import Angle, EarthLocation, SkyCoord, AltAz, Longitude
 from astropy.coordinates.representation import UnitSphericalRepresentation
 from astropy.time import Time
 from astropy import units as u
 import ephem
 import cv2
-from configargparse import Namespace
 from track import cameras
 from track.config import ArgParser
 from track.cameras import Camera
@@ -36,7 +36,7 @@ class TargetPosition(NamedTuple):
     enc: MountEncoderPositions
 
 
-class Target(ABC):
+class Target(TelemSource):
     """Abstract base class providing a common interface for targets to be tracked."""
 
     class IndeterminatePosition(Exception):
@@ -73,6 +73,14 @@ class Target(ABC):
         sensors are associated with this target type there is no need to override this default
         no-op implementation.
         """
+
+    def get_telem_channels(self) -> dict:
+        """Called by telemetry polling thread to get a dict of telem channels.
+
+        This default implementation returns an empty dict. Override to return a non-empty set of
+        channels.
+        """
+        return {}
 
 
 class FixedMountEncodersTarget(Target):
@@ -211,6 +219,7 @@ class OverheadPassTarget(Target):
 
 
 class FlightclubLaunchTrajectoryTarget(Target):
+    """A target that follows a trajectory predicted by a flightclub.io simulation"""
 
     def __init__(
             self,
@@ -224,9 +233,9 @@ class FlightclubLaunchTrajectoryTarget(Target):
         self.meridian_side = meridian_side
 
         data = np.loadtxt(filename, delimiter=',', skiprows=1)
-        self.times_from_t0 = data[:,0]
-        self.alt = data[:,1]
-        self.az = np.degrees(np.unwrap(np.radians(data[:,2])))
+        self.times_from_t0 = data[:, 0]
+        self.alt = data[:, 1]
+        self.az = np.degrees(np.unwrap(np.radians(data[:, 2])))
 
     @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
     def get_position(self, t: Time) -> TargetPosition:
@@ -286,7 +295,7 @@ class PyEphemTarget(Target):
         return TargetPosition(t, position_topo, position_enc)
 
 
-class CameraTarget(Target, TelemSource):
+class CameraTarget(Target):
     """Target based on computer vision detection of objects in a guide camera.
 
     This class identifies a target in a camera frame using computer vision. The target position in
@@ -332,11 +341,50 @@ class CameraTarget(Target, TelemSource):
         self._telem_mutex = threading.Lock()
         self._telem_chans = {}
 
+    def camera_to_directional_offset(
+            self,
+            target_x: Angle,
+            target_y: Angle,
+            mount_meridian_side: MeridianSide,
+            telem_chans: Optional[Dict] = None
+        ) -> Tuple[Angle, Angle]:
+        """Transform from a position in camera frame to a magnitude and position angle
+
+        Args:
+            target_x: Target position in camera's x-axis
+            target_y: Target position in camera's y-axis
+            mount_meridian_side: The mount's meridian side at the time when the camera frame was
+                captured
+            telem_chans: Dict to be populated with new telemetry channels
+
+        Returns:
+            A tuple containing the target position offset magnitude and angle in the mount-relative
+            frame, as would be passed to `SkyCoord.directional_offset_by()`.
+        """
+
+        # angular separation and direction from center of camera frame to target
+        target_position_cam = target_x.deg + 1j*target_y.deg
+        target_offset_magnitude = Angle(np.abs(target_position_cam) * u.deg)
+        target_direction_cam = Angle(np.angle(target_position_cam) * u.rad)
+
+        # Find the position angle from the mount's position to the target's position
+        target_position_angle = self.mount_model.guide_cam_orientation - target_direction_cam
+        if mount_meridian_side == MeridianSide.EAST:
+            # camera orientation flips when crossing the pole
+            target_position_angle += 180*u.deg
+
+        if telem_chans is not None:
+            telem_chans['error_mag'] = target_offset_magnitude.deg
+            telem_chans['target_direction_cam'] = target_direction_cam.deg
+            telem_chans['target_position_angle'] = target_position_angle.deg
+
+        return target_offset_magnitude, target_position_angle
+
     def _camera_to_mount_position(
             self,
             target_x: Angle,
             target_y: Angle,
-            telem_chans: Optional[Dict] = None,
+            telem: Optional[Dict] = None,
         ) -> UnitSphericalRepresentation:
         """Transform from target position in camera frame to position in mount frame
 
@@ -349,33 +397,38 @@ class CameraTarget(Target, TelemSource):
             Target position in mount frame
         """
 
-        # angular separation and direction from center of camera frame to target
-        target_position_cam = target_x.deg + 1j*target_y.deg
-        target_offset_magnitude = Angle(np.abs(target_position_cam) * u.deg)
-        target_direction_cam = Angle(np.angle(target_position_cam) * u.rad)
-
         # Current position of mount is assumed to be the position of the center of the camera frame
+        # FIXME: This isn't going to be very accurate since we are not getting the mount position
+        # as close in time as possible to when the camera frame was captured. What we *really* need
+        # are a couple of things:
+        # 1. A reasonable estimate of the actual time when the camera frame was captured (not just
+        #    when the function to get the frame data returns, since there is hidden latency there)
+        # 2. A way to get the mount's position corresponding to that past time. We have the ability
+        #    to predict future mount positions but not a way to go back and get past positions
+        #    (and interpolate between them). Maybe it would be reasonable for the mount to cache
+        #    past positions in a limited-length deque with timestamps to make this past position
+        #    lookup possible. Maybe add another argument to `get_position()` to specify the desired
+        #    past time.
         mount_enc_positions = self.mount.get_position()
         mount_coord, mount_meridian_side = self.mount_model.encoder_to_spherical(
             mount_enc_positions
         )
 
-        # Find the position of the target relative to the mount position
-        target_position_angle = self.mount_model.guide_cam_orientation - target_direction_cam
-        if mount_meridian_side == MeridianSide.EAST:
-            # camera orientation flips when crossing the pole
-            target_position_angle += 180*u.deg
+        target_offset_magnitude, target_position_angle = self.camera_to_directional_offset(
+            target_x,
+            target_y,
+            mount_meridian_side,
+            telem,
+        )
+
         target_coord = SkyCoord(mount_coord).directional_offset_by(
             position_angle=target_position_angle,
             separation=target_offset_magnitude
         ).represent_as(UnitSphericalRepresentation)
 
-        if telem_chans is not None:
-            telem_chans['error_mag'] = target_offset_magnitude.deg
-            telem_chans['target_direction_cam'] = target_direction_cam.deg
-            telem_chans['target_position_angle'] = target_position_angle.deg
+        if telem is not None:
             for axis in self.mount.AxisName:
-                telem_chans[f'mount_enc_{axis}'] = mount_enc_positions[axis].deg
+                telem[f'mount_enc_{axis}'] = mount_enc_positions[axis].deg
 
         return target_coord
 
@@ -392,7 +445,8 @@ class CameraTarget(Target, TelemSource):
             keypoint: A keypoint defining a position in a camera frame.
 
         Returns:
-            A tuple with (x_position, y_position) with units of pixels.
+            A tuple containing the (X, Y) position of the target with units of pixels where the
+            origin is the center of the camera frame.
         """
         keypoint_x_px = keypoint.pt[0] - self.frame_center_px[0]
         keypoint_y_px = self.frame_center_px[1] - keypoint.pt[1]
@@ -431,6 +485,51 @@ class CameraTarget(Target, TelemSource):
             raise self.IndeterminatePosition('No target detected in most recent frame')
         return self.target_position
 
+    def process_camera_frame(self, telem: Optional[Dict]) -> Tuple[Time, Angle, Angle]:
+        """Get frame from camera and find target using computer vision
+
+        Args:
+            telem: Dict into which telemetry channels will be added
+
+        Returns:
+            Tuple containing:
+            - The approximate time that the camera frame was captured.
+            - The position of the target within the camera frame where the first element is the X
+              position and the second is the Y position and the origin is the center of the camera
+              frame.
+        """
+        # This time isn't going to be exceptionally accurate, but unfortunately most cameras do not
+        # provide a means of determining the exact time when the frame was captured by the sensor.
+        # There are probably ways to estimate the frame time more accurately but this is likely
+        # good enough.
+        target_time = Time.now()
+        frame = self.camera.get_frame(timeout=self.camera_timeout)
+
+        if frame is None:
+            raise self.IndeterminatePosition('Timeout waiting for frame from camera')
+
+        keypoints = find_features(frame)
+
+        if not keypoints:
+            self.preview_window.show_annotated_frame(frame)
+            raise self.IndeterminatePosition('No target detected in most recent frame')
+
+        # assume that the target is the keypoint nearest the center of the camera frame
+        target_keypoint = self._keypoint_nearest_center_frame(keypoints)
+
+        self.preview_window.show_annotated_frame(frame, keypoints, target_keypoint)
+
+        # convert target position units from pixels to degrees
+        target_x_px, target_y_px = self._get_keypoint_xy(target_keypoint)
+        target_x = Angle(target_x_px * self.camera.pixel_scale * self.camera.binning * u.deg)
+        target_y = Angle(target_y_px * self.camera.pixel_scale * self.camera.binning * u.deg)
+
+        if telem is not None:
+            telem['target_cam_x'] = target_x.deg
+            telem['target_cam_y'] = target_y.deg
+
+        return target_time, target_x, target_y
+
     def process_sensor_data(self) -> None:
         """Process a new camera frame and cache the computed target position in this object.
 
@@ -442,38 +541,12 @@ class CameraTarget(Target, TelemSource):
            frame and to mount encoder positions. These are cached in this object.
         """
         telem = {}
-
-        frame = self.camera.get_frame(timeout=self.camera_timeout)
-        # This time isn't going to be exceptionally accurate, but unfortunately most cameras do not
-        # provide a means of determining the exact time when the frame was captured by the sensor.
-        # There are probably ways to estimate the frame time more accurately but this is likely
-        # good enough.
-        target_time = Time.now()
-
-        if frame is None:
+        try:
+            target_time, target_x, target_y = self.process_camera_frame(telem)
+        except self.IndeterminatePosition:
             self.target_position = None
             self._set_telem_channels()
             return
-
-        keypoints = find_features(frame)
-
-        if not keypoints:
-            self.target_position = None
-            self.preview_window.show_annotated_frame(frame)
-            self._set_telem_channels()
-            return
-
-        # assume that the target is the keypoint nearest the center of the camera frame
-        target_keypoint = self._keypoint_nearest_center_frame(keypoints)
-
-        self.preview_window.show_annotated_frame(frame, keypoints, target_keypoint)
-
-        # convert target position units from pixels to degrees
-        target_x_px, target_y_px = self._get_keypoint_xy(target_keypoint)
-        target_x = Angle(target_x_px * self.camera.pixel_scale * self.camera.binning * u.deg)
-        target_y = Angle(target_y_px * self.camera.pixel_scale * self.camera.binning * u.deg)
-        telem['target_cam_x'] = target_x.deg
-        telem['target_cam_y'] = target_y.deg
 
         # transform to world coordinates
         position_mount = self._camera_to_mount_position(target_x, target_y, telem)
@@ -494,7 +567,126 @@ class CameraTarget(Target, TelemSource):
             self._telem_chans.update(chans)
         self._telem_mutex.release()
 
-    def get_telem_channels(self):
+    def get_telem_channels(self) -> dict:
+        """Called by telemetry polling thread -- see TelemSource abstract base class"""
+        # Protect dict copy with mutex since this method is called from another thread
+        self._telem_mutex.acquire()
+        chans = self._telem_chans.copy()
+        self._telem_mutex.release()
+        return chans
+
+
+class SensorFusionTarget(Target):
+    """Uses sensor fusion to combine data from a `CameraTarget` and another `Target`"""
+
+    def __init__(
+            self,
+            blind_target: Target,
+            camera_target: CameraTarget,
+            mount: TelescopeMount,
+            model: MountModel,
+            meridian_side: MeridianSide,
+            filter_gain: float = 5e-2
+        ):
+        self.blind_target = blind_target
+        self.camera_target = camera_target
+        self.mount = mount
+        self.model = model
+        self.meridian_side = meridian_side
+        self.blind_target_bias = 0.0
+        self.filter_gain = filter_gain
+
+        self._telem_mutex = threading.Lock()
+        self._telem_chans = {}
+
+    # Cache results to avoid re-computing unnecessarily. Strictly the cache should be cleared each
+    # time the `blind_target_bias` member variable is updated but this is intentionally ignored to
+    # reduce computational load. The ill effects of this seem to be minimal.
+    @lru_cache(maxsize=128)
+    def get_position(self, t: Time) -> TargetPosition:
+        """Get the apparent position of the target for the specified time.
+
+        Args:
+            t: The time for which the position should correspond.
+
+        Returns:
+            The target position as an instance of TargetPosition.
+
+        Raises:
+            IndeterminatePosition if the target position cannot be determined.
+        """
+
+        # Only the topocentric position of the target is needed here since the mount encoder
+        # positions will be re-computed later in this method. A potential optimization is to find
+        # a way to prevent the blind target from generating this unused output.
+        position_target_blind = self.blind_target.get_position(t)
+
+        # transform blind topo position to mount frame
+        position_target_blind_sph = self.model.topocentric_to_spherical(position_target_blind.topo)
+
+        # apply directional offset using estimated bias terms
+        position_target_fused_sph = SkyCoord(position_target_blind_sph).directional_offset_by(
+            position_angle=np.angle(self.blind_target_bias)*u.rad,
+            separation=np.abs(self.blind_target_bias)*u.deg
+        ).represent_as(UnitSphericalRepresentation)
+
+        # transform the offset mount coordinate to mount encoder and topo frames
+        return TargetPosition(
+            t,
+            self.model.spherical_to_topocentric(position_target_fused_sph),
+            self.model.spherical_to_encoder(
+                coord=position_target_fused_sph,
+                meridian_side=self.meridian_side
+            )
+        )
+
+    def process_sensor_data(self) -> None:
+        """Get camera frame and update blind target bias terms.
+
+        This method gets a new camera frame, estimates the position of the target in the frame,
+        transforms this into a complex value that represents the residual error in pointing, and
+        processes this error to generate a bias term that is used to adjust the target predicted
+        position used for pointing.
+        """
+        telem = {}
+
+        try:
+            _, target_x, target_y = self.camera_target.process_camera_frame(telem)
+        except Target.IndeterminatePosition:
+            self._set_telem_channels()
+            return
+
+        # get meridian side of the mount
+        mount_position = self.mount.get_position(max_cache_age=0.2)
+        mount_meridian_side = self.model.encoder_to_meridian_side(mount_position)
+
+        target_offset_mag, target_position_angle = self.camera_target.camera_to_directional_offset(
+            target_x,
+            target_y,
+            mount_meridian_side,
+            telem,
+        )
+
+        target_offset = target_offset_mag.deg * np.exp(1j*target_position_angle.rad)
+
+        # update bias term integrator
+        self.blind_target_bias += self.filter_gain * target_offset
+
+        telem['target_offset_mag'] = target_offset_mag.deg
+        telem['target_offset_position_angle'] = target_position_angle.deg
+        telem['blind_target_bias_mag'] = np.abs(self.blind_target_bias)
+        telem['blind_target_bias_angle'] = np.degrees(np.angle(self.blind_target_bias))
+        self._set_telem_channels(telem)
+
+    def _set_telem_channels(self, chans: Optional[Dict] = None) -> None:
+        """Set telemetry dict polled by telemetry thread"""
+        self._telem_mutex.acquire()
+        self._telem_chans = {}
+        if chans is not None:
+            self._telem_chans.update(chans)
+        self._telem_mutex.release()
+
+    def get_telem_channels(self) -> dict:
         """Called by telemetry polling thread -- see TelemSource abstract base class"""
         # Protect dict copy with mutex since this method is called from another thread
         self._telem_mutex.acquire()
@@ -509,10 +701,24 @@ def add_program_arguments(parser: ArgParser) -> None:
     Args:
         parser: The instance of ArgParser to which this function will add arguments.
     """
+    target_group = parser.add_argument_group(
+        title='General Target Options',
+        description='Options that apply to all targets',
+    )
+
+    target_group.add_argument(
+        '--fuse',
+        help='use sensor fusion of selected target with camera',
+        action='store_true',
+    )
+
     subparsers = parser.add_subparsers(title='target types', dest='target_type')
     subparsers.required = True
 
-    parser_flightclub = subparsers.add_parser('flightclub', help='Flightclub.io trajectory CSV file')
+    parser_flightclub = subparsers.add_parser(
+        'flightclub',
+        help='Flightclub.io trajectory CSV file'
+    )
     parser_flightclub.add_argument('file', help='filename of CSV file')
     parser_flightclub.add_argument(
         'time_t0',
@@ -523,8 +729,8 @@ def add_program_arguments(parser: ArgParser) -> None:
     parser_tle = subparsers.add_parser('tle', help='TLE file')
     parser_tle.add_argument('file', help='filename of two-line element (TLE) target ephemeris')
 
-    parser_camera = subparsers.add_parser('camera', help='camera')
-    cameras.add_program_arguments(parser_camera, profile='track')
+    subparsers.add_parser('camera', help='follows bright target detected in camera')
+    cameras.add_program_arguments(parser, profile='track')
 
     parser_coord_eq = subparsers.add_parser('coord-eq', help='fixed equatorial coordinate')
     parser_coord_eq.add_argument('ra', help='right ascension [deg]', type=float)
@@ -540,7 +746,7 @@ def add_program_arguments(parser: ArgParser) -> None:
     parser_solarsystem = subparsers.add_parser('solarsystem', help='named solar system body')
     parser_solarsystem.add_argument('name', help='name of planet or moon')
 
-    parser_overhead_pass = subparsers.add_parser('overhead-pass', help='simulated overhead pass')
+    subparsers.add_parser('overhead-pass', help='simulated overhead pass')
 
 
 def make_target_from_args(
@@ -556,6 +762,9 @@ def make_target_from_args(
         mount_model: Instance of MountModel.
         meridian_side: Desired side of mount-relative meridian.
     """
+    if args.target_type == 'camera' and args.fuse:
+        raise ValueError('Cannot fuse camera target with itself')
+
     if args.target_type == 'flightclub':
         print(f'In Flight Club trajectory mode using {args.file}')
         time_t0 = dateutil.parser.parse(args.time_t0)
@@ -622,6 +831,7 @@ def make_target_from_args(
     # Get the PyEphem Body object corresonding to the given named solar system body
     elif args.target_type == 'solarsystem':
         print('In named solar system body mode: \'{}\''.format(args.name))
+        # pylint: disable=protected-access
         ss_objs = [name for _, _, name in ephem._libastro.builtin_planets()]
         if args.name in ss_objs:
             body_type = getattr(ephem, args.name)
@@ -641,5 +851,22 @@ def make_target_from_args(
 
     else:
         raise ValueError(f'Invalid target-type {args.target_type}')
+
+    if args.fuse:
+        print('Sensor fusion with camera enabled')
+        blind_target = target
+        camera = cameras.make_camera_from_args(args, profile='track')
+        camera_target = CameraTarget(
+            camera=camera,
+            mount=mount,
+            mount_model=mount_model,
+        )
+        target = SensorFusionTarget(
+            blind_target=blind_target,
+            camera_target=camera_target,
+            mount=mount,
+            model=mount_model,
+            meridian_side=meridian_side,
+        )
 
     return target

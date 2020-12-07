@@ -337,6 +337,27 @@ class MountModel:
         return self.apply_camera_tilt(spherical_coord, meridian_side), meridian_side
 
 
+    def encoder_to_meridian_side(
+            self,
+            encoder_positions: MountEncoderPositions
+        ) -> MeridianSide:
+        """Get meridian side from mount encoder positions.
+
+        This is a subset of `encoders_to_spherical` where only the meridian side is returned.
+
+        Args:
+            encoder_positions: Set of mount encoder positions.
+
+        Returns:
+            The meridian side corresponding to the encoder positions.
+        """
+
+        # apply encoder offset
+        encoder_1_position = Longitude(encoder_positions[1] - self.model_params.axis_1_offset)
+
+        return MeridianSide.EAST if encoder_1_position < 180*u.deg else MeridianSide.WEST
+
+
     def spherical_to_encoder(
             self,
             coord: UnitSphericalRepresentation,
