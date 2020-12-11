@@ -1,6 +1,6 @@
 """computer vision algorithms for identifying targets in a camera frame"""
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import numpy as np
 import cv2
 
@@ -71,7 +71,14 @@ def find_features(frame: np.ndarray) -> List[cv2.KeyPoint]:
 class PreviewWindow:
     """Generates an annotated camera frame for display in an OpenCV window"""
 
-    def __init__(self, frame_width: int, frame_height: int, crosshairs_gap_to_height: float = 0.1):
+    def __init__(
+            self,
+            frame_width: int,
+            frame_height: int,
+            crosshairs_gap_to_height: float = 0.1,
+            target_position_desired: Optional[Tuple[float, float]] = None,
+            set_target_position_desired_on_click: bool = False,
+        ):
         """Constructs an instance of PreviewWindow.
 
         Args:
@@ -79,6 +86,12 @@ class PreviewWindow:
             frame_height: Frame height in pixels.
             crosshairs_gap_to_height: Ratio of the diameter of the gap in the crosshairs to the
                 frame height.
+            target_position_desired: Desired position of the target within the camera frame as a
+                tuple where the first value is the X position in pixels from the left and the
+                second value is the Y position in pixels from the top. If None the center of the
+                frame is used by default.
+            set_target_position_desired_on_click: Allow the desired position of the target within
+                the camera frame to be updated by mouse click on the preview window.
         """
         self.frame_width = int(frame_width)
         self.frame_height = int(frame_height)
@@ -86,6 +99,24 @@ class PreviewWindow:
         self.gap_px = int(crosshairs_gap_to_height / 2 * self.frame_height)
         cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
         cv2.resizeWindow('frame', frame_width, frame_height)
+
+        if target_position_desired is None:
+            self.target_position_desired = self.frame_center_px
+        else:
+            self.target_position_desired = target_position_desired
+        if set_target_position_desired_on_click:
+            cv2.setMouseCallback('frame', self.mouse_callback)
+
+    def mouse_callback(self, event, x, y, flags, userdata):
+        """OpenCV mouse event callback to set desired target position in the frame
+
+        See OpenCV High-level GUI documentation for description of arguments
+        E.g., for version 3.2.0: https://docs.opencv.org/3.2.0/d7/dfc/group__highgui.html
+        """
+
+        if flags & cv2.EVENT_FLAG_LBUTTON:  # left mouse button is down
+            if 0 <= x < self.frame_width and 0 <= y < self.frame_height:
+                self.target_position_desired = (x, y)
 
     def show_annotated_frame(
             self,
@@ -101,7 +132,7 @@ class PreviewWindow:
             target_keypoint: The keypoint identified as the target.
         """
 
-        frame_annotated = frame.copy()
+        frame_annotated = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
 
         # add grey crosshairs, leaving a gap in the middle so the crosshairs don't obscure objects
         # at the center of the frame
@@ -132,6 +163,15 @@ class PreviewWindow:
             (self.frame_width - 1, self.frame_center_px[1]),  # right
             (100, 100, 100),
             1
+        )
+
+        # add cross at desired position of the target
+        cv2.drawMarker(
+            frame_annotated,
+            (int(self.target_position_desired[0]), int(self.target_position_desired[1])),
+            (0, 0, 255),
+            cv2.MARKER_CROSS,
+            20,
         )
 
         if keypoints is not None:
