@@ -119,11 +119,18 @@ class ModelParamSet(NamedTuple):
         timestamp: Unix timestamp giving the approximate time that this set of model parameters
             was generated. Used only to check if the model parameters are stale; not used in any
             MountModel calculations.
+        guide_cam_align_error: This is a complex value that indicates the position of the center of
+            the main OTA camera frame in the guidescope camera frame. The complex plane is oriented
+            such that the positive real axis is the camera frame's positive X axis and the positive
+            imaginary axis is the camera frame's positive Y axis. The origin is the center of the
+            guidescope camera frame. This needs to be last and have a default value of 0 for
+            backward compatibility.
     """
     model_params: ModelParameters
     guide_cam_orientation: Longitude
     location: EarthLocation
     timestamp: Optional[float]
+    guide_cam_align_error: Angle = Angle(0*u.deg)
 
 
 def tip_axis(
