@@ -728,6 +728,7 @@ def load_default_model(
     camera without blind pointing.
 
     Args:
+        mount_pole_az: Azimuth of the mount's pole.
         mount_pole_alt: Altitude of the mount's pole above the horizon. Default value corresponds
             to mount pole facing zenith which is true for an azimuth-altitude mount.
         guide_cam_orientation: See ModelParamSet documentation.
