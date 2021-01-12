@@ -7,15 +7,56 @@ import unittest
 import numpy as np
 from numpy.testing import assert_allclose
 from astropy import units as u
-from astropy.coordinates import Angle, UnitSphericalRepresentation, SkyCoord
+from astropy.coordinates import Angle, UnitSphericalRepresentation, SkyCoord, Longitude
 from track.mounts import MeridianSide, MountEncoderPositions
-from track.model import MountModel, ModelParamSet, ModelParameters
+from track.model import MountModel, ModelParamSet, ModelParameters, apply_guide_cam_alignment_error
 
 
 def assertSphericalClose(us1, us2):
     """Check that two UnitSphericalRepresentation objects are nearly equal"""
     assert_allclose(us1.lon.deg, us2.lon.deg)
     assert_allclose(us1.lat.deg, us2.lat.deg)
+
+
+class TestModelParamSet(unittest.TestCase):
+    """Collection of unit tests for `track.model.ModelParamSet` and associated functions"""
+
+    def test_apply_guide_cam_alignment_error(self):
+        """Apply, then remove a guide cam alignment error and check that initial and final match"""
+
+        for _ in range(20):
+            original_param_set = ModelParamSet(ModelParameters(
+                    axis_0_offset=Angle(np.random.uniform(0.0, 360.0)*u.deg),
+                    axis_1_offset=Angle(np.random.uniform(0.0, 360.0)*u.deg),
+                    pole_rot_axis_az=Angle(np.random.uniform(0.0, 360.0)*u.deg),
+                    pole_rot_angle=Angle(np.random.uniform(-180.0, 180.0)*u.deg),
+                    camera_tilt=Angle(np.random.uniform(-10.0, 10.0)*u.deg),
+                ),
+                guide_cam_orientation=Longitude(np.random.uniform(0.0, 360.0)*u.deg),
+                location=None,
+                timestamp=None,
+            )
+
+            align_error = Angle(
+                (np.random.uniform(-5.0, 5.0) + 1j*np.random.uniform(-5.0, 5.0)) * u.deg
+            )
+
+            transformed_param_set = apply_guide_cam_alignment_error(
+                old_params=original_param_set,
+                guide_cam_align_error=align_error
+            )
+
+            restored_param_set = apply_guide_cam_alignment_error(
+                old_params=transformed_param_set,
+                guide_cam_align_error=Angle(0*u.deg)
+            )
+
+            assert_allclose(restored_param_set.guide_cam_align_error.deg, 0.0)
+
+            original_model_params = original_param_set.model_params
+            restored_model_params = restored_param_set.model_params
+            for orig, restored in zip(original_model_params, restored_model_params):
+                assert_allclose(orig.deg, restored.deg)
 
 
 class TestMountModel(unittest.TestCase):
