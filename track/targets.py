@@ -326,6 +326,11 @@ class CameraTarget(Target):
         self.camera_timeout = camera_timeout
         self.mount = mount
         self.mount_model = mount_model
+        self.guide_cam_align_error = mount_model.model_param_set.guide_cam_align_error
+        self.guide_cam_align_error_px = (
+            self.guide_cam_align_error.deg
+            / (self.camera.pixel_scale * self.camera.binning)
+        )
 
         if meridian_side is not None:
             self.meridian_side = meridian_side
@@ -362,10 +367,13 @@ class CameraTarget(Target):
             frame, as would be passed to `SkyCoord.directional_offset_by()`.
         """
 
-        # angular separation and direction from center of camera frame to target
-        target_position_cam = target_x.deg + 1j*target_y.deg
-        target_offset_magnitude = Angle(np.abs(target_position_cam) * u.deg)
-        target_direction_cam = Angle(np.angle(target_position_cam) * u.rad)
+        # position of target relative to center of camera frame
+        target_position_cam = target_x + 1j*target_y
+
+        # angular separation and direction from approximate center of main OTA camera to target
+        target_position_main_ota = target_position_cam - self.guide_cam_align_error
+        target_offset_magnitude = np.abs(target_position_main_ota)
+        target_direction_cam = np.angle(target_position_main_ota)
 
         # Find the position angle from the mount's position to the target's position
         target_position_angle = self.mount_model.guide_cam_orientation - target_direction_cam
@@ -453,17 +461,29 @@ class CameraTarget(Target):
         return keypoint_x_px, keypoint_y_px
 
 
-    def _keypoint_nearest_center_frame(self, keypoints: List[cv2.KeyPoint]) -> cv2.KeyPoint:
-        """Find the keypoint closes to the center of the frame from a list of keypoints"""
+    def _keypoint_nearest_desired_target_position(
+            self,
+            keypoints: List[cv2.KeyPoint]
+        ) -> cv2.KeyPoint:
+        """Find the keypoint closest to the desired target position from a list of keypoints
+
+        Args:
+            keypoints: List of keypoints to filter.
+
+        Returns:
+            A single keypoint that is nearest to the position in the guide camera frame
+            corresponding to the assumed center of the main OTA camera frame.
+        """
         min_dist = None
         target_keypoint = None
         for keypoint in keypoints:
             keypoint_x_px, keypoint_y_px = self._get_keypoint_xy(keypoint)
-            keypoint_dist_from_center_px = np.abs(keypoint_x_px + 1j*keypoint_y_px)
+            keypoint_px = keypoint_x_px + 1j*keypoint_y_px
+            keypoint_dist_from_desired_px = np.abs(keypoint_px - self.guide_cam_align_error_px)
 
-            if min_dist is None or keypoint_dist_from_center_px < min_dist:
+            if min_dist is None or keypoint_dist_from_desired_px < min_dist:
                 target_keypoint = keypoint
-                min_dist = keypoint_dist_from_center_px
+                min_dist = keypoint_dist_from_desired_px
 
         return target_keypoint
 
@@ -515,7 +535,7 @@ class CameraTarget(Target):
             raise self.IndeterminatePosition('No target detected in most recent frame')
 
         # assume that the target is the keypoint nearest the center of the camera frame
-        target_keypoint = self._keypoint_nearest_center_frame(keypoints)
+        target_keypoint = self._keypoint_nearest_desired_target_position(keypoints)
 
         self.preview_window.show_annotated_frame(frame, keypoints, target_keypoint)
 

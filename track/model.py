@@ -236,6 +236,7 @@ class MountModel:
         Args:
             model_param_set: Set of model parameters to use in calculations.
         """
+        self.model_param_set = model_param_set
         self.model_params = model_param_set.model_params
         self.guide_cam_orientation = model_param_set.guide_cam_orientation
         self.location = model_param_set.location
