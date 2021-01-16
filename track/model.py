@@ -201,17 +201,17 @@ def apply_guide_cam_alignment_error(
     error_diff = guide_cam_align_error - old_params.guide_cam_align_error
 
     # remove any camera rotation such that the real axis is parallel to axis 1 of the mount
-    align_error_rotated = error_diff * np.exp(1j*old_params.guide_cam_orientation.rad)
+    align_error_rotated = error_diff * np.exp(-1j*old_params.guide_cam_orientation.rad)
 
     # all parameters other than the ones specified here will remain unchanged
     return old_params._replace(
         model_params=old_params.model_params._replace(
 
             # real axis error corresponds to an axis 1 encoder offset
-            axis_1_offset=old_params.model_params.axis_1_offset - align_error_rotated.real,
+            axis_1_offset=old_params.model_params.axis_1_offset + align_error_rotated.real,
 
             # imaginary axis error corresponds to a camera tilt out of plane
-            camera_tilt=old_params.model_params.camera_tilt + align_error_rotated.imag
+            camera_tilt=old_params.model_params.camera_tilt - align_error_rotated.imag
         ),
         guide_cam_align_error=guide_cam_align_error
     )
