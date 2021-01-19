@@ -22,6 +22,8 @@ from track.model import MountModel
 from track.mounts import MeridianSide, MountEncoderPositions, TelescopeMount
 from track.telem import TelemSource
 
+from track.model import apply_guide_cam_alignment_error, save_default_param_set
+
 
 class TargetPosition(NamedTuple):
     """Position of a target at a specific time.
@@ -339,12 +341,37 @@ class CameraTarget(Target):
 
         frame_height, frame_width = camera.frame_shape
         self.frame_center_px = (frame_width / 2.0, frame_height / 2.0)
-        self.preview_window = PreviewWindow(frame_width, frame_height)
+
+        # FIXME: Should really have methods in the Camera class to convert between positions defined
+        # by angles relative to center of frame and pixels measured from top-left corner so this
+        # sort of math isn't replicated a bunch of places
+        guide_cam_align_error = mount_model.model_param_set.guide_cam_align_error
+        guide_cam_align_error_px = guide_cam_align_error.deg / (camera.pixel_scale * camera.binning)
+        target_desired_x_px = guide_cam_align_error_px.real + (frame_width / 2)
+        target_desired_y_px = (frame_height / 2) - guide_cam_align_error_px.imag
+
+        self.preview_window = PreviewWindow(
+            frame_width=frame_width,
+            frame_height=frame_height,
+            target_position_desired=(target_desired_x_px, target_desired_y_px),
+            set_target_position_desired_on_click=True,
+            callback=self.callback,
+        )
 
         self.target_position = None
 
         self._telem_mutex = threading.Lock()
         self._telem_chans = {}
+
+    def callback(self, target_x, target_y):
+        target_x_px = target_x - self.preview_window.frame_center_px[0]
+        target_y_px = self.preview_window.frame_center_px[1] - target_y
+        target_x = Angle(target_x_px * self.camera.pixel_scale * self.camera.binning * u.deg)
+        target_y = Angle(target_y_px * self.camera.pixel_scale * self.camera.binning * u.deg)
+        guide_cam_align_error = target_x + 1j*target_y
+        new_param_set = apply_guide_cam_alignment_error(self.mount_model.model_param_set, guide_cam_align_error)
+        save_default_param_set(new_param_set)
+        print('Saved new model parameter set. Restart to apply.')
 
     def camera_to_directional_offset(
             self,

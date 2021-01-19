@@ -76,7 +76,8 @@ class PreviewWindow:
             frame_width: int,
             frame_height: int,
             target_position_desired: Optional[Tuple[float, float]] = None,
-            set_target_position_desired_on_click: bool = False
+            set_target_position_desired_on_click: bool = False,
+            callback=None,
         ):
         """Constructs an instance of PreviewWindow.
 
@@ -96,6 +97,8 @@ class PreviewWindow:
         cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
         cv2.resizeWindow('frame', frame_width, frame_height)
 
+        self.callback = callback
+
         if target_position_desired is None:
             self.target_position_desired = self.frame_center_px
         else:
@@ -113,6 +116,7 @@ class PreviewWindow:
         if flags & cv2.EVENT_FLAG_LBUTTON:  # left mouse button is down
             if 0 <= x < self.frame_width and 0 <= y < self.frame_height:
                 self.target_position_desired = (x, y)
+                self.callback(x, y)
 
     def show_annotated_frame(
             self,
