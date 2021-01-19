@@ -664,6 +664,12 @@ class SensorFusionTarget(Target):
         self._telem_mutex = threading.Lock()
         self._telem_chans = {}
 
+    def nudge(self, direction: str) -> None:
+        self.blind_target.nudge(direction)
+
+    def nudge_clear(self) -> None:
+        self.blind_target.nudge_clear()
+
     # Cache results to avoid re-computing unnecessarily. Strictly the cache should be cleared each
     # time the `blind_target_bias` member variable is updated but this is intentionally ignored to
     # reduce computational load. The ill effects of this seem to be minimal.
