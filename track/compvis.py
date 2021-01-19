@@ -104,6 +104,7 @@ class PreviewWindow:
         else:
             self.target_position_desired = target_position_desired
         if set_target_position_desired_on_click:
+            self.clicked = False
             cv2.setMouseCallback('frame', self.mouse_callback)
 
     def mouse_callback(self, event, x, y, flags, userdata):
@@ -115,6 +116,7 @@ class PreviewWindow:
 
         if flags & cv2.EVENT_FLAG_LBUTTON:  # left mouse button is down
             if 0 <= x < self.frame_width and 0 <= y < self.frame_height:
+                self.clicked = True
                 self.target_position_desired = (x, y)
                 self.callback(x, y)
 
