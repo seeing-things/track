@@ -56,6 +56,7 @@ setup(
         'matplotlib>=2.1',
         'MonthDelta>=1.0b',
         'numpy',
+        'opencv-python',
         'ortools',
         'pandas',
         'point @ https://github.com/seeing-things/point/tarball/master',
