@@ -587,7 +587,7 @@ class SensorFusionTarget(Target):
             model: MountModel,
             meridian_side: MeridianSide,
             filter_gain: float = 5e-2,
-            bias_mag_limit: Angle = 1.0*u.deg,
+            bias_mag_limit: Angle = Angle(1.0*u.deg),
         ):
         """Construct an instance of SensorFusionTarget
 
