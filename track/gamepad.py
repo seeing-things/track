@@ -115,6 +115,8 @@ class Gamepad(TelemSource):
     def stop(self):
         """Stops the threads from running."""
         self.running = False
+        self.input_thread.join()
+        self.integrator_thread.join()
 
     def get_proportional(self):
         """Returns a tuple containing the instantaneous x/y values."""
