@@ -461,5 +461,12 @@ def main():
         if args.telem_enable:
             telem_logger.stop()
 
+        # remove observations directory if it is empty
+        try:
+            os.rmdir(observations_dir)
+        except OSError, NameError:
+            pass
+
+
 if __name__ == "__main__":
     main()
