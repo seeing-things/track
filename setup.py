@@ -44,6 +44,7 @@ setup(
 
     install_requires=[
         'appdirs>=1.4',
+        'asi>=0.1',  # https://github.com/seeing-things/zwo
         'astropy>=4.0',
         'astropy-healpix>=0.4',
         'bs4>=0.0.1',
@@ -51,6 +52,7 @@ setup(
         'ConfigArgParse==0.12.0',
         'ephem>=3.7',
         'gps>=3.19',
+        'influxdb>=5.0.0',  # telemetry database client for InfluxDB 1.0
         'inputs>=0.1',
         'lxml',  # parser for bs4
         'matplotlib>=2.1',
@@ -60,24 +62,11 @@ setup(
         'ortools',
         'pandas',
         'point @ https://github.com/seeing-things/point/tarball/master',
+        'pyftdi>=0.49',  # for laser pointer control
         'requests',
         'scipy',
+        'v4l2 @ https://github.com/seeing-things/python-v4l2/tarball/master',  # webcam support
     ],
-
-    extras_require={
-        'asi-camera': [
-            'asi>=0.1',  # https://github.com/seeing-things/zwo
-        ],
-        'telemetry': [
-            'influxdb>=5.0.0',
-        ],
-        'laser': [
-            'pyftdi>=0.49',
-        ],
-        'webcam': [
-            'v4l2 @ https://github.com/seeing-things/python-v4l2/tarball/master',
-        ],
-    },
 
     entry_points={
         'console_scripts':[
