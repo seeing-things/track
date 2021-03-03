@@ -54,7 +54,7 @@ def main():
     laser.add_program_arguments(parser)
     mounts.add_program_arguments(parser, meridian_side_required=True)
     ntp.add_program_arguments(parser)
-    telem.add_program_arguments(parser)
+    telem.add_program_arguments(parser, synchronous=True)
     args = parser.parse_args()
 
     # Set priority of this thread to realtime. Do this before constructing objects since priority
@@ -92,6 +92,7 @@ def main():
     # Create object with base type TelescopeMount
     mount = mounts.make_mount_from_args(args)
 
+    telem_logger = telem.make_telem_logger_from_args(args)
     telem_sources = {}
 
     target = targets.make_target_from_args(
@@ -106,6 +107,7 @@ def main():
         mount=mount,
         mount_model=mount_model,
         target=target,
+        telem_logger=telem_logger,
     )
     telem_sources['tracker'] = tracker
 
@@ -126,9 +128,8 @@ def main():
     except RuntimeError:
         print('No gamepads found.')
 
-    if args.telem_enable:
-        telem_logger = telem.make_telem_logger_from_args(args, telem_sources)
-        telem_logger.start()
+    if telem_logger is not None:
+        telem_logger.register_sources(telem_sources)
 
     try:
         tracker.run()
@@ -141,11 +142,6 @@ def main():
             print('Mount safed successfully!')
         else:
             print('Warning: Mount may be in an unsafe state!')
-
-        try:
-            telem_logger.stop()
-        except UnboundLocalError:
-            pass
 
         try:
             game_pad.stop()

@@ -16,7 +16,7 @@ from astropy.time import Time, TimeDelta
 from track.model import MountModel
 from track.mounts import TelescopeMount, MountEncoderPositions
 from track.targets import Target
-from track.telem import TelemSource
+from track.telem import TelemLogger, TelemSource
 
 
 def separation(sc1: SkyCoord, sc2: SkyCoord) -> Angle:
@@ -414,6 +414,7 @@ class Tracker(TelemSource):
             mount_model: MountModel,
             target: Target,
             control_loop_period: float = 0.1,
+            telem_logger: Optional[TelemLogger] = None,
         ):
         """Constructs a Tracker object.
 
@@ -422,6 +423,9 @@ class Tracker(TelemSource):
             mount_model: Alignment model for converting to/from mount encoder positions.
             target: The target to track.
             control_loop_period: Target control loop period in seconds.
+            telem_logger: Telemetry logger object. If provided, the `poll_sources()` method will
+                be called on it once per control cycle such that telemetry is polled synchronously
+                in the same thread.
         """
         self.axes = list(mount.AxisName)
         self.controller = ModelPredictiveController(
@@ -434,6 +438,7 @@ class Tracker(TelemSource):
         self.mount = mount
         self.mount_model = mount_model
         self.target = target
+        self.telem_logger = telem_logger
         self.num_iterations = 0
         self.callback = None
 
@@ -599,6 +604,11 @@ class Tracker(TelemSource):
         if rate_command_time_error is not None:
             self._telem_chans['rate_command_time_error'] = rate_command_time_error.sec
         self._telem_mutex.release()
+
+        # If no reference to a logger exists there may still be a logger elsewhere that is polling
+        # telemetry from this object asynchronously.
+        if self.telem_logger is not None:
+            self.telem_logger.poll_sources()
 
         self.num_iterations += 1
         return stop_reason

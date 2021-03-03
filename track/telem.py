@@ -8,6 +8,7 @@ import time
 import threading
 import toml
 import traceback
+from typing import Optional
 from configargparse import Namespace
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import WriteOptions
@@ -56,8 +57,8 @@ class TelemLogger:
         self,
         influx_config_filename: str,
         bucket: str = 'telem',
-        period: float = 1.0,
-        sources: dict = {}
+        period: Optional[float] = None,
+        sources: Optional[dict] = None,
     ):
         """Inits a TelemLogger object.
 
@@ -68,14 +69,20 @@ class TelemLogger:
             influx_config_filename: Filename of the InfluxDB CLI configuration file, typically
                 $HOME/.influxdbv2/configs which is created by running `influx setup`.
             bucket: Name of bucket in database to write to.
-            period: Telemetry will be sampled at this interval in seconds.
+            period: Telemetry will be sampled asynchronously at this interval in seconds if set to
+                a positive value. If None this object will only poll sources for telemetry when
+                `poll_sources()` is called.
             sources: Dict of TelemSource objects to be polled for telemetry. Keys will be used as
                 the measurement names in the database. Values should be objects of type
                 TelemSource.
         """
         self.bucket = bucket
         self.period = period
-        self.sources = sources
+
+        if sources is not None:
+            self.sources = sources
+        else:
+            self.sources = {}
 
         # Can't use `InfluxDBClient.from_config_file()` here because `influx setup` generates a
         # TOML formatted config file, but the Python client expects a .ini file. Because of course.
@@ -98,17 +105,53 @@ class TelemLogger:
             )
         )
 
-        self.thread = threading.Thread(target=self._worker_thread, name='TelemLogger: worker thread')
-        self.running = False
+        if self.period is not None:
+            self.thread = threading.Thread(
+                target=self._worker_thread,
+                name='TelemLogger: worker thread'
+            )
+            self.running = False
 
     def start(self) -> None:
-        """Start sampling telemetry."""
-        self.running = True
-        self.thread.start()
+        """Start sampling telemetry asynchronously.
+
+        Raises:
+            RuntimeError if no period was defined.
+        """
+        if self.period is not None:
+            self.running = True
+            self.thread.start()
+        else:
+            raise RuntimeError('No period was defined')
 
     def stop(self) -> None:
-        """Stop sampling telemetry."""
-        self.running = False
+        """Stop sampling telemetry asynchronously.
+
+        Raises:
+            RuntimeError if no period was defined.
+        """
+        if self.period is not None:
+            self.running = False
+        else:
+            raise RuntimeError('No period was defined')
+
+    def register_sources(self, sources: dict) -> None:
+        """Register one or more telemetry source object such that it is polled by this logger.
+
+        Note that this adds to any sources already registered. Existing sources are not removed
+        unless there are key collisions.
+
+        Args:
+            sources: Dict of TelemSource objects to be polled for telemetry. Keys will be used as
+                the measurement names in the database. Values should be objects of type
+                TelemSource.
+        """
+        self.sources.update(sources)
+
+    def poll_sources(self) -> None:
+        """Poll all registered `TelemSource` objects and post to the database"""
+        for name, source in self.sources.items():
+            self._post_point(name, source.get_telem_channels())
 
     def _post_point(self, name: str, channels: dict) -> None:
         """Write a sample of telemetry channels to the database.
@@ -148,8 +191,7 @@ class TelemLogger:
                 return
             start_time = time.time()
             try:
-                for name, source in self.sources.items():
-                    self._post_point(name, source.get_telem_channels())
+                self.poll_sources()
             except InfluxDBError as e:
                 print('Failed to post telemetry to database: ' + str(e))
                 traceback.print_exc()
@@ -159,11 +201,13 @@ class TelemLogger:
                 time.sleep(sleep_time)
 
 
-def add_program_arguments(parser: ArgParser) -> None:
+def add_program_arguments(parser: ArgParser, synchronous: bool = False) -> None:
     """Add program arguments relevant to telemetry.
 
     Args:
         parser: The instance of ArgParser to which this function will add arguments.
+        synchronous: If True, the assumption is that telemetry will only be polled synchronously.
+            In this case the telem-period program argument is omitted.
     """
     telem_group = parser.add_argument_group(
         title='Telemetry Logger Options',
@@ -179,23 +223,33 @@ def add_program_arguments(parser: ArgParser) -> None:
         help='filename of InfluxDB CLI config file',
         default=str(pathlib.Path.home().joinpath('.influxdbv2/configs'))
     )
-    telem_group.add_argument(
-        '--telem-period',
-        help='telemetry sampling period in seconds',
-        default=1.0,
-        type=float
-    )
+    if not synchronous:
+        telem_group.add_argument(
+            '--telem-period',
+            help='telemetry sampling period in seconds',
+            default=1.0,
+            type=float
+        )
 
 
-def make_telem_logger_from_args(args: Namespace, sources: dict = {}) -> TelemLogger:
+def make_telem_logger_from_args(
+        args: Namespace,
+        sources: Optional[dict] = None
+    ) -> Optional[TelemLogger]:
     """Construct a TelemLogger based on the program arguments provided.
 
     Args:
         args: Set of program arguments.
         sources: Dict of TelemSources to be passed to TelemLogger constructor.
+
+    Returns:
+        An instance of TelemLogger if the `--telem-enable` flag is set, otherwise returns None.
     """
-    return TelemLogger(
-        influx_config_filename=args.telem_influxdb_configfile,
-        period=args.telem_period,
-        sources=sources,
-    )
+    if args.telem_enable:
+        return TelemLogger(
+            influx_config_filename=args.telem_influxdb_configfile,
+            period=(args.telem_period if 'telem_period' in args else None),
+            sources=sources,
+        )
+    else:
+        return None
