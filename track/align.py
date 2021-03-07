@@ -310,6 +310,7 @@ def main():
         DATA_PATH,
         'alignment_' + datetime.utcnow().isoformat(timespec='seconds').replace(':', '')
     )
+    os.makedirs(DATA_PATH, exist_ok=True)
     os.mkdir(observations_dir)
 
     # pylint: disable=broad-except
