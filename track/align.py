@@ -464,7 +464,7 @@ def main():
         # remove observations directory if it is empty
         try:
             os.rmdir(observations_dir)
-        except OSError, NameError:
+        except (OSError, NameError):
             pass
 
 
