@@ -8,7 +8,7 @@ import time
 import threading
 import toml
 import traceback
-from typing import Optional
+from typing import Dict, List, Optional
 from configargparse import Namespace
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import WriteOptions
@@ -24,15 +24,15 @@ class TelemSource(ABC):
     """
 
     @abstractmethod
-    def get_telem_channels(self) -> dict:
-        """Get telemetry channels.
+    def get_telem_points(self) -> List[Point]:
+        """Get telemetry points.
 
-        Gets telemetry information from the object. Zero or more channels of telemetry are
-        produced. For each channel a single value is obtained which represents the state of that
-        channel at the moment the function is called.
+        Gets zero or more telemetry points from this object for the purpose of writing them to the
+        database. Any points returned in a call to this method should not be returned again in a
+        subsequent call.
 
         Returns:
-            A dict with telemetry data. Keys are channel names.
+            A list of zero or more Point objects.
         """
 
 
@@ -58,7 +58,7 @@ class TelemLogger:
         influx_config_filename: str,
         bucket: str = 'telem',
         period: Optional[float] = None,
-        sources: Optional[dict] = None,
+        sources: Optional[Dict[str, TelemSource]] = None,
     ):
         """Inits a TelemLogger object.
 
@@ -72,12 +72,14 @@ class TelemLogger:
             period: Telemetry will be sampled asynchronously at this interval in seconds if set to
                 a positive value. If None this object will only poll sources for telemetry when
                 `poll_sources()` is called.
-            sources: Dict of TelemSource objects to be polled for telemetry. Keys will be used as
-                the measurement names in the database. Values should be objects of type
-                TelemSource.
+            sources: Dict of TelemSource objects to be polled for telemetry. Values should be
+                objects of type TelemSource. Keys are only used to prevent registering the same
+                object more than once.
         """
         self.bucket = bucket
         self.period = period
+
+        print(f'period: {self.period} s')
 
         if sources is not None:
             self.sources = sources
@@ -135,50 +137,34 @@ class TelemLogger:
         else:
             raise RuntimeError('No period was defined')
 
-    def register_sources(self, sources: dict) -> None:
+    def register_sources(self, sources: Dict[str, TelemSource]) -> None:
         """Register one or more telemetry source object such that it is polled by this logger.
 
         Note that this adds to any sources already registered. Existing sources are not removed
         unless there are key collisions.
 
         Args:
-            sources: Dict of TelemSource objects to be polled for telemetry. Keys will be used as
-                the measurement names in the database. Values should be objects of type
-                TelemSource.
+            sources: Dict of TelemSource objects to be polled for telemetry. Values should be
+                objects of type TelemSource. Keys are only used to prevent registering the same
+                object more than once.
         """
         self.sources.update(sources)
 
     def poll_sources(self) -> None:
         """Poll all registered `TelemSource` objects and post to the database"""
-        for name, source in self.sources.items():
-            self._post_point(name, source.get_telem_channels())
+        for source in self.sources.values():
+            for point in source.get_telem_points():
+                # tag point with the class name of the object that generated it
+                point.tag('class', type(source).__name__)
+                self.write_api.write(bucket=self.bucket, record=point)
 
-    def _post_point(self, name: str, channels: dict) -> None:
-        """Write a sample of telemetry channels to the database.
-
-        Writes one sample from one or more telemetry channels to the database. A single timestamp
-        generated from the current system time is applied to all channels. The channels are added
-        as fields of a single point in the named measurement.
+    def post_points(self, points: List[Point]) -> None:
+        """Write points to the database.
 
         Args:
-            name: Name of this collection of channels. This corresponds to the measurement name in
-                the InfluxDB database.
-            channels: A dict containing the telemetry samples. The keys give the channel names,
-                which become field names in the InfluxDB measurement. If empty nothing is written
-                to the database.
+            points: A list of zero or more Point objects to be written to the database.
         """
-        if not channels:
-            return
-
-        point = Point.from_dict(
-            dictionary={
-                'measurement': name,
-                'fields': channels,
-                'time': datetime.utcnow(),
-            },
-            write_precision=WritePrecision.NS,
-        )
-        self.write_api.write(bucket=self.bucket, record=point)
+        self.write_api.write(bucket=self.bucket, record=points)
 
     def _worker_thread(self) -> None:
         """Gathers telemetry and posts to database once per sample period."""

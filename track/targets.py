@@ -14,13 +14,14 @@ from astropy.time import Time
 from astropy import units as u
 import ephem
 import cv2
+from influxdb_client import Point
 from track import cameras
 from track.config import ArgParser
 from track.cameras import Camera
 from track.compvis import find_features, PreviewWindow
 from track.model import MountModel
 from track.mounts import MeridianSide, MountEncoderPositions, TelescopeMount
-from track.telem import TelemSource
+from track.telem import TelemSource, TelemLogger
 
 
 class TargetPosition(NamedTuple):
@@ -74,13 +75,13 @@ class Target(TelemSource):
         no-op implementation.
         """
 
-    def get_telem_channels(self) -> dict:
-        """Called by telemetry polling thread to get a dict of telem channels.
+    def get_telem_points(self) -> List[Point]:
+        """Called by telemetry polling thread to get a list of telemetry points.
 
-        This default implementation returns an empty dict. Override to return a non-empty set of
-        channels.
+        This default implementation returns an empty list. Override to return a non-empty set of
+        points.
         """
-        return {}
+        return []
 
 
 class FixedMountEncodersTarget(Target):
@@ -309,6 +310,7 @@ class CameraTarget(Target):
             mount_model: MountModel,
             meridian_side: Optional[MeridianSide] = None,
             camera_timeout: float = inf,
+            telem_logger: Optional[TelemLogger] = None,
         ):
         """Construct an instance of CameraTarget
 
@@ -321,11 +323,14 @@ class CameraTarget(Target):
                 invoked.
             camera_timeout: How long to wait for a frame from the camera in seconds on calls to
                 `compute_error()`. If `inf`, `compute_error()` will block indefinitely.
+            telem_logger: Optional instance of `TelemLogger` to which telemetry points will be
+                written.
         """
         self.camera = camera
         self.camera_timeout = camera_timeout
         self.mount = mount
         self.mount_model = mount_model
+        self.telem_logger = telem_logger
         self.guide_cam_align_error = mount_model.model_param_set.guide_cam_align_error
         self.guide_cam_align_error_px = (
             self.guide_cam_align_error.deg
@@ -342,9 +347,6 @@ class CameraTarget(Target):
         self.preview_window = PreviewWindow(frame_width, frame_height)
 
         self.target_position = None
-
-        self._telem_mutex = threading.Lock()
-        self._telem_chans = {}
 
     def camera_to_directional_offset(
             self,
@@ -392,14 +394,12 @@ class CameraTarget(Target):
             self,
             target_x: Angle,
             target_y: Angle,
-            telem: Optional[Dict] = None,
         ) -> UnitSphericalRepresentation:
         """Transform from target position in camera frame to position in mount frame
 
         Args:
             target_x: Target position in camera's x-axis
             target_y: Target position in camera's y-axis
-            telem_chans: Dict to be populated with new telemetry channels
 
         Returns:
             Target position in mount frame
@@ -434,9 +434,27 @@ class CameraTarget(Target):
             separation=target_offset_magnitude
         ).represent_as(UnitSphericalRepresentation)
 
-        if telem is not None:
-            for axis in self.mount.AxisName:
-                telem[f'mount_enc_{axis}'] = mount_enc_positions[axis].deg
+        if self.telem_logger is not None:
+            # TODO: What all should be piled into a single Point / measurement? Dump all the
+            # processed steps along with the original sensor readings? Or just the processed stuff?
+            # Should the processed stuff be broken up? What if fields have a heterogeneous set of
+            # units?
+            # The answer may depend somewhat on what I want to do with this data and how it gets
+            # packaged into Pandas dataframe(s).
+            p = Point('camera_to_mount_position')
+            for axis, enc_pos in enumerate(mount_enc_positions):
+                p.field(f'mount_enc_{axis}', enc_pos.deg)
+            p.field('target_offset_magnitude', target_offset_magnitude.deg)
+            p.field('target_position_angle', target_position_angle.deg)
+            p.field('target_in_mount_frame_lat', target_coord.lat.deg)
+            p.field('target_in_mount_frame_lon', target_coord.lon.deg)
+            p.tag('units', 'degrees')
+            p.tag('class', type(self).__name__)
+            # TODO: Is this the right timestamp to use here? The processed coordinates use both
+            # camera sensor and mount encoder readings as inputs so neither of those timestamps
+            # are really appropriate since they won't be from the exact same instant
+            p.time(datetime.utcnow())
+            self.telem_logger.post_points(p)
 
         return target_coord
 
@@ -505,7 +523,7 @@ class CameraTarget(Target):
             raise self.IndeterminatePosition('No target detected in most recent frame')
         return self.target_position
 
-    def process_camera_frame(self, telem: Optional[Dict]) -> Tuple[Time, Angle, Angle]:
+    def process_camera_frame(self) -> Tuple[Time, Angle, Angle]:
         """Get frame from camera and find target using computer vision
 
         Args:
@@ -544,9 +562,14 @@ class CameraTarget(Target):
         target_x = Angle(target_x_px * self.camera.pixel_scale * self.camera.binning * u.deg)
         target_y = Angle(target_y_px * self.camera.pixel_scale * self.camera.binning * u.deg)
 
-        if telem is not None:
-            telem['target_cam_x'] = target_x.deg
-            telem['target_cam_y'] = target_y.deg
+        if self.telem_logger is not None:
+            p = Point('target_camera_position')
+            p.field('x', target_x.deg)
+            p.field('y', target_y.deg)
+            p.tag('units', 'degrees')
+            p.tag('class', type(self).__name__)
+            p.time(target_time.to_datetime())
+            self.telem_logger.post_points(p)
 
         return target_time, target_x, target_y
 
@@ -560,12 +583,10 @@ class CameraTarget(Target):
         4) The centroid position of the target blob is transformed from camera frame to topocentric
            frame and to mount encoder positions. These are cached in this object.
         """
-        telem = {}
         try:
-            target_time, target_x, target_y = self.process_camera_frame(telem)
+            target_time, target_x, target_y = self.process_camera_frame()
         except self.IndeterminatePosition:
             self.target_position = None
-            self._set_telem_channels()
             return
 
         # transform to world coordinates
@@ -587,9 +608,9 @@ class CameraTarget(Target):
             self._telem_chans.update(chans)
         self._telem_mutex.release()
 
-    def get_telem_channels(self) -> dict:
-        """Called by telemetry polling thread -- see TelemSource abstract base class"""
-        # Protect dict copy with mutex since this method is called from another thread
+    def get_telem_points(self) -> List[Point]:
+        """Called by telemetry logger. See `TelemSource` abstract base class."""
+        # Protect dict copy with mutex since this method may be called from another thread
         self._telem_mutex.acquire()
         chans = self._telem_chans.copy()
         self._telem_mutex.release()
