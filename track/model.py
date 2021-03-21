@@ -558,7 +558,6 @@ def residuals(
     res = observations.apply(
         residual,
         axis='columns',
-        reduce=False,
         args=(ModelParameters.from_ndarray(param_array),)
     ).separation
     return res.apply(lambda res_angle: res_angle.deg)
