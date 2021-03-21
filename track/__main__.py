@@ -93,15 +93,14 @@ def main():
     mount = mounts.make_mount_from_args(args)
 
     telem_logger = telem.make_telem_logger_from_args(args)
-    telem_sources = {}
 
     target = targets.make_target_from_args(
         args,
         mount,
         mount_model,
-        MeridianSide[args.meridian_side.upper()]
+        MeridianSide[args.meridian_side.upper()],
+        telem_logger=telem_logger,
     )
-    telem_sources['target'] = target
 
     tracker = Tracker(
         mount=mount,
@@ -109,7 +108,6 @@ def main():
         target=target,
         telem_logger=telem_logger,
     )
-    telem_sources['tracker'] = tracker
 
     try:
         laser_pointer = laser.make_laser_from_args(args)
@@ -117,6 +115,7 @@ def main():
         print('Could not connect to laser pointer FTDI device.')
         laser_pointer = None
 
+    telem_sources = {}
     try:
         # Create gamepad object and register callback
         game_pad = Gamepad()
