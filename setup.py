@@ -72,7 +72,7 @@ setup(
             'influxdb>=5.0.0',
         ],
         'laser': [
-            'pyftdi>=0.29',
+            'pyftdi>=0.49',
         ],
         'webcam': [
             'v4l2 @ https://github.com/seeing-things/python-v4l2/tarball/master',
