@@ -38,7 +38,7 @@ def find_features(frame: np.ndarray) -> List[cv2.KeyPoint]:
     )
 
     # outer contours only
-    _, contours, _ = cv2.findContours(
+    contours, _ = cv2.findContours(
         thresh,
         cv2.RETR_EXTERNAL,
         cv2.CHAIN_APPROX_NONE
@@ -56,9 +56,9 @@ def find_features(frame: np.ndarray) -> List[cv2.KeyPoint]:
         if moms['m00'] > 0.0:
             center = np.array([moms['m10'] / moms['m00'], moms['m01'] / moms['m00']])
         else:
-            # if the contour is so small that the internal area is 0 any random pixel in the
-            # contour should be close enough
-            center = contour[0][0]
+            # If the contour is so small that the internal area is 0 any random pixel in the
+            # contour should be close enough. Must cast to float to make `cv2.KeyPoint()` happy.
+            center = contour[0][0].astype(np.float64)
 
         # find the maximum distance between the center and the contour
         radius = np.max(np.linalg.norm(center - contour, axis=2))
