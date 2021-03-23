@@ -164,21 +164,20 @@ def make_sky_plot() -> matplotlib.axes.Axes:
     ]
 
     theta_labels = []
-    for chunk in range(0, 7):
+    for chunk in range(0, 8):
         label_angle = chunk*45.0
         while label_angle >= 360.0:
             label_angle -= 360.0
         if chunk == 0:
-            theta_labels.append('N ' + '\n' + str(label_angle) + degree_sign
-                                + ' Az')
+            theta_labels.append(f'N\n{label_angle:.0f}{degree_sign} Az')
         elif chunk == 2:
-            theta_labels.append('E' + '\n' + str(label_angle) + degree_sign)
+            theta_labels.append(f'E\n{label_angle:.0f}{degree_sign}')
         elif chunk == 4:
-            theta_labels.append('S' + '\n' + str(label_angle) + degree_sign)
+            theta_labels.append(f'S\n{label_angle:.0f}{degree_sign}')
         elif chunk == 6:
-            theta_labels.append('W' + '\n' + str(label_angle) + degree_sign)
+            theta_labels.append(f'W\n{label_angle:.0f}{degree_sign}')
         else:
-            theta_labels.append(str(label_angle) + degree_sign)
+            theta_labels.append(f'{label_angle:.0f}{degree_sign}')
 
     # Set ticks and labels.
     ax.set_rgrids(range(1, 106, 15), r_labels, angle=-45)
