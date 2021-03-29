@@ -2,12 +2,52 @@
 from codecs import open
 from os import path
 from setuptools import setup, find_packages
+from setuptools.command.install import install
+from setuptools.command.develop import develop
 
 here = path.abspath(path.dirname(__file__))
 
 # Get the long description from the README file
 with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
+
+
+def download_iers():
+    """Download fresh Astropy IERS data
+
+    Runs the Astropy code that downloads fresh International Earth Rotation and Reference Systems
+    (IERS) data, which is how Astropy learns about Earth's polar motion and rotation rate since
+    this evolves in an unpredictable manner at the fine-grained level. We probably don't need ultra
+    fresh IERS data but it certainly won't hurt to download fresh data during installation. The
+    data is downloaded outside of the package itself since track is often run when internet is not
+    accessible and we don't want the software to pause in order to download things in the middle of
+    execution. It is safer to assume internet is available during installation than during runtime.
+
+    Note that this can't be run before astropy is installed.
+
+    See the following for more info:
+    https://docs.astropy.org/en/stable/utils/iers.html
+    https://docs.astropy.org/en/stable/api/astropy.utils.iers.IERS_Auto.html
+    https://docs.astropy.org/en/stable/api/astropy.utils.iers.LeapSeconds.html
+    """
+    from astropy.utils import iers
+    iers.IERS_Auto().open()
+    iers.LeapSeconds.auto_open()
+
+
+class PostDevelopCommand(develop):
+    """Download fresh IERS data after installing in develop mode"""
+    def run(self):
+        develop.run(self)
+        download_iers()
+
+
+class PostInstallCommand(install):
+    """Download fresh IERS data after installing"""
+    def run(self):
+        install.run(self)
+        download_iers()
+
 
 setup(
     name='track',
@@ -77,5 +117,10 @@ setup(
             'startracker = track.startracker:main',
             'track = track.__main__:main',
         ],
+    },
+
+    cmdclass={
+        'develop': PostDevelopCommand,
+        'install': PostInstallCommand,
     },
 )
