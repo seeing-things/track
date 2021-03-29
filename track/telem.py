@@ -79,8 +79,6 @@ class TelemLogger:
         self.bucket = bucket
         self.period = period
 
-        print(f'period: {self.period} s')
-
         if sources is not None:
             self.sources = sources
         else:
