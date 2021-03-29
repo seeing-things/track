@@ -71,16 +71,19 @@ def find_features(frame: np.ndarray) -> List[cv2.KeyPoint]:
 class PreviewWindow:
     """Generates an annotated camera frame for display in an OpenCV window"""
 
-    def __init__(self, frame_width, frame_height):
+    def __init__(self, frame_width: int, frame_height: int, crosshairs_gap_to_height: float = 0.1):
         """Constructs an instance of PreviewWindow.
 
         Args:
             frame_width: Frame width in pixels.
             frame_height: Frame height in pixels.
+            crosshairs_gap_to_height: Ratio of the diameter of the gap in the crosshairs to the
+                frame height.
         """
-        self.frame_width = frame_width
-        self.frame_height = frame_height
-        self.frame_center_px = (frame_width / 2.0, frame_height / 2.0)
+        self.frame_width = int(frame_width)
+        self.frame_height = int(frame_height)
+        self.frame_center_px = (self.frame_width // 2, self.frame_height // 2)
+        self.gap_px = int(crosshairs_gap_to_height / 2 * self.frame_height)
         cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
         cv2.resizeWindow('frame', frame_width, frame_height)
 
@@ -100,18 +103,33 @@ class PreviewWindow:
 
         frame_annotated = frame.copy()
 
-        # add grey crosshairs
+        # add grey crosshairs, leaving a gap in the middle so the crosshairs don't obscure objects
+        # at the center of the frame
         cv2.line(
             frame_annotated,
-            (int(self.frame_center_px[0]), 0),
-            (int(self.frame_center_px[0]), self.frame_height - 1),
+            (self.frame_center_px[0], 0),  # top
+            (self.frame_center_px[0], self.frame_center_px[1] - self.gap_px),  # near middle
             (100, 100, 100),
             1
         )
         cv2.line(
             frame_annotated,
-            (0, int(self.frame_center_px[1])),
-            (self.frame_width - 1, int(self.frame_center_px[1])),
+            (self.frame_center_px[0], self.frame_center_px[1] + self.gap_px),  # near middle
+            (self.frame_center_px[0], self.frame_height - 1),  # bottom
+            (100, 100, 100),
+            1
+        )
+        cv2.line(
+            frame_annotated,
+            (0, self.frame_center_px[1]),  # left
+            (self.frame_center_px[0] - self.gap_px, self.frame_center_px[1]),  # near middle
+            (100, 100, 100),
+            1
+        )
+        cv2.line(
+            frame_annotated,
+            (self.frame_center_px[0] + self.gap_px, self.frame_center_px[1]),  # near middle
+            (self.frame_width - 1, self.frame_center_px[1]),  # right
             (100, 100, 100),
             1
         )
