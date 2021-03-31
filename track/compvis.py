@@ -107,6 +107,7 @@ class PreviewWindow:
         if set_target_position_desired_on_click:
             cv2.setMouseCallback('frame', self.mouse_callback)
 
+    # pylint: disable=unused-argument
     def mouse_callback(self, event, x, y, flags, userdata):
         """OpenCV mouse event callback to set desired target position in the frame
 
