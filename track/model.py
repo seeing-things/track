@@ -119,11 +119,18 @@ class ModelParamSet(NamedTuple):
         timestamp: Unix timestamp giving the approximate time that this set of model parameters
             was generated. Used only to check if the model parameters are stale; not used in any
             MountModel calculations.
+        guide_cam_align_error: This is a complex value that indicates the position of the center of
+            the main OTA camera frame in the guidescope camera frame. The complex plane is oriented
+            such that the positive real axis is the camera frame's positive X axis and the positive
+            imaginary axis is the camera frame's positive Y axis. The origin is the center of the
+            guidescope camera frame. This needs to be last and have a default value of 0 for
+            backward compatibility.
     """
     model_params: ModelParameters
     guide_cam_orientation: Longitude
     location: EarthLocation
     timestamp: Optional[float]
+    guide_cam_align_error: Angle = Angle(0*u.deg)
 
 
 def tip_axis(
@@ -160,6 +167,56 @@ def tip_axis(
     return coord_rot_cart.represent_as(UnitSphericalRepresentation)
 
 
+def apply_guide_cam_alignment_error(
+        old_params: ModelParamSet,
+        guide_cam_align_error: Angle
+    ) -> ModelParamSet:
+    """Create a new `ModelParamSet` that is transformed to account for guidescope alignment error.
+
+    Guidescope alignment error means that the center of the guidescope camera field of view is not
+    the same position on the sky as the center of the main telescope camera's field of view. This
+    function takes an existing set of model parameters, typically determined by performing an
+    alignment, and transforms them to account for this guidescope mis-alignment. Once applied,
+    tracking to a particular position on the sky should cause the object to be centered in the main
+    telescope camera as desired.
+
+    The transform applied here is an approximation that is reasonably accurate when the magnitude
+    of the guidescope camera error error is fairly small and the `camera_tilt` magnitude is also
+    small. It is very unlikely that either of these two conditions will not be true in practice.
+
+    Note that arithmetic precision loss occurs as this transformation is applied, and thus applying
+    this function to set a non-zero value for `guide_cam_align_error`, followed by applying it a
+    second time to set `guide_cam_align_error` to zero, may result in a final parameter set that
+    is close but not idential to the original.
+
+    Args:
+        old_params: An existing `ModelParamSet`
+        guide_cam_align_error: A complex angle that encodes the direction and offset from the
+            center of the guidescope camera frame to the center of the main OTA camera frame.
+
+    Returns:
+        A new set of model parameters that account for the guidescope alignment error.
+    """
+    # remove the effect of the previous alignment error in case it was non-zero
+    error_diff = guide_cam_align_error - old_params.guide_cam_align_error
+
+    # remove any camera rotation such that the real axis is parallel to axis 1 of the mount
+    align_error_rotated = error_diff * np.exp(-1j*old_params.guide_cam_orientation.rad)
+
+    # all parameters other than the ones specified here will remain unchanged
+    return old_params._replace(
+        model_params=old_params.model_params._replace(
+
+            # real axis error corresponds to an axis 1 encoder offset
+            axis_1_offset=old_params.model_params.axis_1_offset + align_error_rotated.real,
+
+            # imaginary axis error corresponds to a camera tilt out of plane
+            camera_tilt=old_params.model_params.camera_tilt - align_error_rotated.imag
+        ),
+        guide_cam_align_error=guide_cam_align_error
+    )
+
+
 class MountModel:
     """A math model of a telescope mount.
 
@@ -179,6 +236,7 @@ class MountModel:
         Args:
             model_param_set: Set of model parameters to use in calculations.
         """
+        self.model_param_set = model_param_set
         self.model_params = model_param_set.model_params
         self.guide_cam_orientation = model_param_set.guide_cam_orientation
         self.location = model_param_set.location
