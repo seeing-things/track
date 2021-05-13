@@ -4,6 +4,7 @@ Track provides the classes required to point a telescope with software using a f
 loop.
 """
 
+from datetime import datetime
 import time
 from enum import Flag, auto
 from typing import Callable, NamedTuple, Tuple, Optional, Union
@@ -598,13 +599,52 @@ class Tracker:
         #     self._telem_chans['rate_command_time_error'] = rate_command_time_error.sec
 
         if self.telem_logger is not None:
-            p = Point('mount_position')
+            points = []
+
+            # timestamp to use for all telemetry points that don't correspond to sensor readings
+            # or other events that occur at well-defined times
+            cycle_timestamp = datetime.utcnow()
+
+            # mount encoder positions
+            pt = Point('mount_position')
             for axis in self.axes:
-                p.field(f'encoder_{axis}', mount_state.position[axis].deg)
-            p.tag('units', 'degrees')
-            p.tag('class', type(self).__name__)
-            p.time(mount_state.time_queried.to_datetime())
-            self.telem_logger.post_points(p)
+                pt.field(f'encoder_{axis}', mount_state.position[axis].deg)
+            pt.tag('units', 'degrees')
+            pt.tag('class', type(self).__name__)
+            pt.time(mount_state.time_queried.to_datetime())
+            points.append(pt)
+
+            # mount slew rate
+            pt = Point('mount_rate')
+            for axis in self.axes:
+                pt.field(f'axis_{axis}', mount_state.rates[axis])
+            pt.tag('units', 'degrees/s')
+            pt.tag('class', type(self).__name__)
+            pt.time(mount_state.time_queried.to_datetime())
+            points.append(pt)
+
+            # controller commands
+            pt = Point('controller_commands')
+            for axis in self.axes:
+                pt.field(f'rate_axis_{axis}', rate_command.rates[axis])
+            pt.field('time_error', rate_command_time_error.sec)
+            pt.tag('units', 'degrees/s')
+            pt.tag('class', type(self).__name__)
+            pt.time(cycle_timestamp)
+            points.append(pt)
+
+            # target position
+            pt = Point('target_position')
+            pt.field('azimuth', position_target.topo.az.deg)
+            pt.field('altitude', position_target.topo.alt.deg)
+            for axis in self.axes:
+                pt.field(f'encoder_{axis}', position_target.enc[axis].deg)
+            pt.tag('units', 'degrees')
+            pt.tag('class', type(self).__name__)
+            pt.time(position_target.time.to_datetime())
+            points.append(pt)
+
+            self.telem_logger.post_points(points)
 
         self.num_iterations += 1
         return stop_reason
