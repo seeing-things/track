@@ -757,6 +757,12 @@ def add_program_arguments(parser: ArgParser) -> None:
         help='use sensor fusion of selected target with camera',
         action='store_true',
     )
+    target_group.add_argument(
+        '--fusion-gain',
+        help='gain for sensor fusion',
+        type=float,
+        default=5e-2,
+    )
 
     subparsers = parser.add_subparsers(title='target types', dest='target_type')
     subparsers.required = True
@@ -913,6 +919,7 @@ def make_target_from_args(
             mount=mount,
             model=mount_model,
             meridian_side=meridian_side,
+            filter_gain=args.fusion_gain,
         )
 
     return target
