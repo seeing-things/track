@@ -53,3 +53,5 @@ jobs:
         cd ${{ env.GITHUB_WORKSPACE }}/track
         pwd
         python3 -m unittest discover
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v3
