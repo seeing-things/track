@@ -50,5 +50,6 @@ jobs:
         pip install .
     - name: Run unit tests
       run: |
+        cd ${{ env.GITHUB_WORKSPACE }}/track
         pwd
         python3 -m unittest discover
