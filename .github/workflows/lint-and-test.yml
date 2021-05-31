@@ -10,11 +10,10 @@ on:
 
 jobs:
   pylint:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
-        os: [ubuntu-18.04, ubuntu-20.04]
-        python: [3.6, 3.7, 3.8, 3.9]
+        python: [3.8, 3.9]
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python
@@ -26,20 +25,19 @@ jobs:
         sudo sh -c "echo \"deb [trusted=yes] https://apt.fury.io/jgottula/ /\" >> /etc/apt/sources.list.d/jgottula.list"
         sudo apt update
         sudo apt install libasicamera2
-        python3 -m pip install --upgrade pip
-        pip3 install pylint
-        pip3 install numpy  # required until https://github.com/seeing-things/zwo/issues/66 is resolved
-        pip3 install .
+        python -m pip install --upgrade pip
+        pip install pylint
+        pip install numpy  # required until https://github.com/seeing-things/zwo/issues/66 is resolved
+        pip install .
     - name: Lint with pylint
       run: |
         pylint track/
 
   unittest:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
-        os: [ubuntu-18.04, ubuntu-20.04]
-        python: [3.6, 3.7, 3.8, 3.9]
+        python: [3.8, 3.9]
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python
@@ -51,9 +49,9 @@ jobs:
         sudo sh -c "echo \"deb [trusted=yes] https://apt.fury.io/jgottula/ /\" >> /etc/apt/sources.list.d/jgottula.list"
         sudo apt update
         sudo apt install libasicamera2
-        python3 -m pip install --upgrade pip
-        pip3 install numpy  # required until https://github.com/seeing-things/zwo/issues/66 is resolved
-        pip3 install .
+        python -m pip install --upgrade pip
+        pip install numpy  # required until https://github.com/seeing-things/zwo/issues/66 is resolved
+        pip install .
     - name: Run unit tests
       run: |
         python3 -m unittest discover tests
