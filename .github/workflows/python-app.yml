@@ -50,4 +50,4 @@ jobs:
         pip install .
     - name: Run unit tests
       run: |
-        python3 -m unittest
+        python3 -m unittest track/
