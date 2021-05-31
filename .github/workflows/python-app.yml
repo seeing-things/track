@@ -21,7 +21,6 @@ jobs:
         python-version: 3.8
     - name: Install dependencies
       run: |
-        # sudo add-apt-repository https://apt.fury.io/jgottula
         sudo sh -c "echo \"deb [trusted=yes] https://apt.fury.io/jgottula/ /\" >> /etc/apt/sources.list.d/jgottula.list"
         sudo apt update
         sudo apt install libasicamera2
@@ -43,7 +42,8 @@ jobs:
         python-version: 3.8
     - name: Install dependencies
       run: |
-        sudo add-apt-repository https://apt.fury.io/jgottula
+        sudo sh -c "echo \"deb [trusted=yes] https://apt.fury.io/jgottula/ /\" >> /etc/apt/sources.list.d/jgottula.list"
+        sudo apt update
         sudo apt install libasicamera2
         python -m pip install --upgrade pip
         pip install numpy  # required until https://github.com/seeing-things/zwo/issues/66 is resolved
