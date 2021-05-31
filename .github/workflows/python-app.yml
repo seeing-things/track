@@ -23,6 +23,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pylint
+        pip install numpy  # required until https://github.com/seeing-things/zwo/issues/66 is resolved
         pip install .
     - name: Lint with pylint
       run: |
@@ -39,6 +40,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install numpy  # required until https://github.com/seeing-things/zwo/issues/66 is resolved
         pip install .
     - name: Run unit tests
       run: |
