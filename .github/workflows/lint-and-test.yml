@@ -10,13 +10,17 @@ on:
 
 jobs:
   pylint:
-    runs-on: [ubuntu-18.04, ubuntu-20.04]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-18.04, ubuntu-20.04]
+        python: [3.6, 3.7, 3.8, 3.9]
     steps:
     - uses: actions/checkout@v2
-    - name: Set up Python 3.8
+    - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: 3.8
+        python-version: ${{ matrix.python-version }}
     - name: Install dependencies  # pylint does require dependencies to be installed
       run: |
         sudo sh -c "echo \"deb [trusted=yes] https://apt.fury.io/jgottula/ /\" >> /etc/apt/sources.list.d/jgottula.list"
@@ -31,13 +35,17 @@ jobs:
         pylint track/
 
   unittest:
-    runs-on: [ubuntu-18.04, ubuntu-20.04]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-18.04, ubuntu-20.04]
+        python: [3.6, 3.7, 3.8, 3.9]
     steps:
     - uses: actions/checkout@v2
-    - name: Set up Python 3.8
+    - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: 3.8
+        python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
         sudo sh -c "echo \"deb [trusted=yes] https://apt.fury.io/jgottula/ /\" >> /etc/apt/sources.list.d/jgottula.list"
