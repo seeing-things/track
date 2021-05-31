@@ -50,4 +50,5 @@ jobs:
         pip install .
     - name: Run unit tests
       run: |
-        python3 -m unittest track
+        cd track
+        python3 -m unittest discover
