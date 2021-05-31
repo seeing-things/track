@@ -22,7 +22,7 @@ jobs:
     - name: Install dependencies
       run: |
         # sudo add-apt-repository https://apt.fury.io/jgottula
-        sudo sh -c "echo \"deb [trusted=yes] https://apt.fury.io/jgottula/ /" >> /etc/apt/sources.list.d/jgottula.list"
+        sudo sh -c "echo \"deb [trusted=yes] https://apt.fury.io/jgottula/ /\" >> /etc/apt/sources.list.d/jgottula.list"
         sudo apt update
         sudo apt install libasicamera2
         python -m pip install --upgrade pip
