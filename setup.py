@@ -84,7 +84,7 @@ setup(
 
     install_requires=[
         'appdirs>=1.4',
-        'asi>=0.1',  # https://github.com/seeing-things/zwo
+        'asi @ https://github.com/seeing-things/zwo/tarball/master#subdirectory=python',
         'astropy>=4.0',
         'astropy-healpix>=0.4',
         'bs4>=0.0.1',

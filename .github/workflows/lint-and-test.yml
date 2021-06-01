@@ -1,0 +1,57 @@
+# This workflow runs pylint and unittest
+# https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: Lint and Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pylint:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        python: [3.8, 3.9]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies  # pylint does require dependencies to be installed
+      run: |
+        sudo sh -c "echo \"deb [trusted=yes] https://apt.fury.io/jgottula/ /\" >> /etc/apt/sources.list.d/jgottula.list"
+        sudo apt update
+        sudo apt install libasicamera2
+        python -m pip install --upgrade pip
+        pip install pylint
+        pip install numpy  # required until https://github.com/seeing-things/zwo/issues/66 is resolved
+        pip install .
+    - name: Lint with pylint
+      run: |
+        pylint track/
+
+  unittest:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        python: [3.8, 3.9]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        sudo sh -c "echo \"deb [trusted=yes] https://apt.fury.io/jgottula/ /\" >> /etc/apt/sources.list.d/jgottula.list"
+        sudo apt update
+        sudo apt install libasicamera2
+        python -m pip install --upgrade pip
+        pip install numpy  # required until https://github.com/seeing-things/zwo/issues/66 is resolved
+        pip install .
+    - name: Run unit tests
+      run: |
+        python3 -m unittest discover tests
