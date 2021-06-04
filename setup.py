@@ -108,6 +108,10 @@ setup(
         'v4l2 @ https://github.com/seeing-things/python-v4l2/tarball/master',  # webcam support
     ],
 
+    setup_requires = [
+        'astropy>=4.0',  # so IERS data can be downloaded
+    ],
+
     entry_points={
         'console_scripts':[
             'align = track.align:main',
