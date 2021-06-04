@@ -1,4 +1,6 @@
 # To use a consistent encoding
+import site
+from importlib import reload
 from codecs import open
 from os import path
 from setuptools import setup, find_packages
@@ -30,6 +32,7 @@ def download_iers():
     https://docs.astropy.org/en/stable/api/astropy.utils.iers.IERS_Auto.html
     https://docs.astropy.org/en/stable/api/astropy.utils.iers.LeapSeconds.html
     """
+    reload(site)
     from astropy.utils import iers
     iers.IERS_Auto().open()
     iers.LeapSeconds.auto_open()
