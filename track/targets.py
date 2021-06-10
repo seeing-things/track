@@ -418,28 +418,6 @@ class CameraTarget(Target):
             separation=target_offset_magnitude
         ).represent_as(UnitSphericalRepresentation)
 
-        if self.telem_logger is not None:
-            # TODO: What all should be piled into a single Point / measurement? Dump all the
-            # processed steps along with the original sensor readings? Or just the processed stuff?
-            # Should the processed stuff be broken up? What if fields have a heterogeneous set of
-            # units?
-            # The answer may depend somewhat on what I want to do with this data and how it gets
-            # packaged into Pandas dataframe(s).
-            p = Point('camera_to_mount_position')
-            for axis, enc_pos in enumerate(mount_enc_positions):
-                p.field(f'mount_enc_{axis}', enc_pos.deg)
-            p.field('target_offset_magnitude', target_offset_magnitude.deg)
-            p.field('target_position_angle', target_position_angle.deg)
-            p.field('target_in_mount_frame_lat', target_coord.lat.deg)
-            p.field('target_in_mount_frame_lon', target_coord.lon.deg)
-            p.tag('units', 'degrees')
-            p.tag('class', type(self).__name__)
-            # TODO: Is this the right timestamp to use here? The processed coordinates use both
-            # camera sensor and mount encoder readings as inputs so neither of those timestamps
-            # are really appropriate since they won't be from the exact same instant
-            p.time(datetime.utcnow())
-            self.telem_logger.post_points(p)
-
         return target_coord
 
     def _get_keypoint_xy(self, keypoint: cv2.KeyPoint) -> Tuple[float, float]:
