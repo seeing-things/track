@@ -643,6 +643,17 @@ class SensorFusionTarget(Target):
             )
         )
 
+    def _post_telemetry(self) -> None:
+        """Post telemetry points"""
+        if self.telem_logger is not None:
+            p = Point('sensor_fusion')
+            p.field('blind_target_bias_mag', np.abs(self.blind_target_bias))
+            p.field('blind_target_bias_angle', np.degrees(np.angle(self.blind_target_bias)))
+            p.tag('units', 'degrees')
+            p.tag('class', type(self).__name__)
+            p.time(datetime.utcnow())
+            self.telem_logger.post_points(p)
+
     def process_sensor_data(self) -> None:
         """Get camera frame and update blind target bias terms.
 
@@ -654,14 +665,7 @@ class SensorFusionTarget(Target):
         try:
             _, target_x, target_y = self.camera_target.process_camera_frame()
         except Target.IndeterminatePosition:
-            if self.telem_logger is not None:
-                p = Point('sensor_fusion')
-                p.field('blind_target_bias_mag', np.abs(self.blind_target_bias))
-                p.field('blind_target_bias_angle', np.degrees(np.angle(self.blind_target_bias)))
-                p.tag('units', 'degrees')
-                p.tag('class', type(self).__name__)
-                p.time(datetime.utcnow())
-                self.telem_logger.post_points(p)
+            self._post_telemetry()
             return
 
         # get meridian side of the mount
@@ -685,11 +689,7 @@ class SensorFusionTarget(Target):
                 1j*np.angle(self.blind_target_bias)
             )
 
-        # telem['target_offset_mag'] = target_offset_mag.deg
-        # telem['target_offset_position_angle'] = target_position_angle.deg
-        # telem['blind_target_bias_mag'] = np.abs(self.blind_target_bias)
-        # telem['blind_target_bias_angle'] = np.degrees(np.angle(self.blind_target_bias))
-        # self._set_telem_channels(telem)
+        self._post_telemetry()
 
 
 def add_program_arguments(parser: ArgParser) -> None:
