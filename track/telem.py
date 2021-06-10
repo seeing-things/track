@@ -2,15 +2,14 @@
 
 from abc import ABC, abstractmethod
 import os
-from datetime import datetime
 import pathlib
 import time
 import threading
-import toml
 import traceback
 from typing import Dict, List, Optional
+import toml
 from configargparse import Namespace
-from influxdb_client import InfluxDBClient, Point, WritePrecision
+from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import WriteOptions
 from influxdb_client.client.exceptions import InfluxDBError
 from track.config import ArgParser
