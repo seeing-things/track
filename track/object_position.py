@@ -11,6 +11,7 @@ import track
 
 
 def main():
+    """See module docstring at the top of this file."""
 
     parser = track.ArgParser()
 
@@ -64,6 +65,7 @@ def main():
     # Get the PyEphem Body object corresonding to the given named solar system body
     elif args.mode == 'solarsystem':
         print('In named solar system body mode: looking up \'{}\''.format(args.name))
+        # pylint: disable=protected-access
         ss_objs = [name.lower() for _, _, name in ephem._libastro.builtin_planets()]
         if args.name.lower() in ss_objs:
             body_type = None
@@ -72,7 +74,7 @@ def main():
                     body_type = getattr(ephem, attr)
                     print('Found solar system body: \'{}\''.format(attr))
                     break
-            assert body_type != None
+            assert body_type is not None
             target = body_type()
         else:
             raise Exception(

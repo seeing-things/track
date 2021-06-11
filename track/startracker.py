@@ -9,8 +9,6 @@ particular camera, camera settings, plate solver settings, and sky conditions.
 
 import time
 from datetime import datetime
-import numpy as np
-import asi
 import cv2
 import track
 from track import cameras

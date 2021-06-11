@@ -7,7 +7,6 @@ For all JPEG images in a directory, centers on a bright blob and then crops the 
 blob in the center. Places the new cropped image in a subdirectory cropped/.
 """
 
-from __future__ import print_function
 import sys
 import os
 import cv2
@@ -15,6 +14,7 @@ import cv2
 PIXELS_FROM_CENTER = 200
 
 def main():
+    """See module docstring at the top of this file."""
 
     # initialize blob detector
     params = cv2.SimpleBlobDetector_Params()
