@@ -32,7 +32,7 @@ class ArgParser(configargparse.ArgParser):
     """
 
     def __init__(self, **kwargs):
-        super(ArgParser, self).__init__(
+        super().__init__(
             ignore_unknown_config_file_keys=True,
             allow_abbrev=True,
             default_config_files=DEFAULT_CONFIG_FILES,

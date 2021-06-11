@@ -9,7 +9,7 @@ import os
 import sys
 import click
 import astropy.units as u
-from astropy.coordinates import Latitude, Longitude
+from astropy.coordinates import Longitude
 import track
 from track import laser, mounts, ntp, targets, telem
 from track.control import Tracker
@@ -20,7 +20,7 @@ from track.mounts import MeridianSide
 def main():
     """See module docstring"""
 
-    def gamepad_callback(tracker: Tracker) -> bool:
+    def gamepad_callback(_tracker: Tracker) -> bool:
         """Callback for gamepad control.
 
         Allows manual control of the slew rate via a gamepad when the 'B' button is held down,
@@ -30,7 +30,7 @@ def main():
         Defined inside main() so this has easy access to objects that are within that scope.
 
         Args:
-            tracker: A reference to an object of type Tracker. Not used internally.
+            _tracker: A reference to an object of type Tracker. Not used internally.
 
         Returns:
             True when the 'B' button is depressed which disables the normal control path. False
