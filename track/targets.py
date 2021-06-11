@@ -441,11 +441,11 @@ class CameraTarget(Target):
         return keypoint_x_px, keypoint_y_px
 
 
-    def _keypoint_nearest_desired_target_position(
+    def _keypoint_nearest_desired_position(
             self,
             keypoints: List[cv2.KeyPoint]
         ) -> cv2.KeyPoint:
-        """Find the keypoint closest to the desired target position from a list of keypoints
+        """Find the keypoint closest to the desired target position from a list of keypoints.
 
         Args:
             keypoints: List of keypoints to filter.
@@ -515,7 +515,7 @@ class CameraTarget(Target):
             raise self.IndeterminatePosition('No target detected in most recent frame')
 
         # assume that the target is the keypoint nearest the center of the camera frame
-        target_keypoint = self._keypoint_nearest_desired_target_position(keypoints)
+        target_keypoint = self._keypoint_nearest_desired_position(keypoints)
 
         self.preview_window.show_annotated_frame(frame, keypoints, target_keypoint)
 
