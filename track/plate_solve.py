@@ -1,3 +1,8 @@
+"""Plate solving.
+
+Uses Astrometry.net software to determine the celestial coordinates of an image of the sky.
+"""
+
 import os
 import warnings
 import tempfile
@@ -59,16 +64,20 @@ def plate_solve(frame: np.ndarray, camera_width: Optional[float] = None) -> SkyC
         args.append(frame_filename)
 
         # Call astrometry.net binary solve-field
-        subprocess.run(
-            args,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            subprocess.run(
+                args,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            print('astrometry.net subprocess: ' + str(e))
 
         try:
             wcs_file = fits.open(os.path.join(tempdir, filename_prefix + '.wcs'))
         except FileNotFoundError:
-            raise NoSolutionException()
+            raise NoSolutionException() from None
 
         # get "world coordinates" for center of frame
         wcs_header = wcs.WCS(header=wcs_file[0].header)

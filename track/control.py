@@ -1,7 +1,6 @@
-"""tracking loop for telescope control.
+"""Control system for tracking objects with a telescope.
 
-Track provides the classes required to point a telescope with software using a feedback control
-loop.
+The classes in this module implement the core control system algorithms.
 """
 
 from datetime import datetime

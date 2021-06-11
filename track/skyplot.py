@@ -9,10 +9,9 @@ completed (or even in-progress) pass.
 """
 
 from typing import Tuple, Optional
-from configargparse import ArgParser
 from datetime import datetime, timedelta
+from configargparse import ArgParser
 import dateutil
-import requests
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -413,6 +412,7 @@ def plot_mount_motion(
 
 
 def main():
+    """See module docstring at the top of this file"""
 
     parser = ArgParser(description='Make a plot of the sky to plan and evaluate tracking')
     parser.add_argument(

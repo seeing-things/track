@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 
+"""Test to compare commanded slew rates to actual slew rates."""
+
+import sys
 import time
-import numpy as np
 import astropy.units as u
 from astropy.coordinates import Longitude
 import track
 
+SLEW_CHANGE_TIME = 3.0
+TIME_LIMIT = 60.0
+SLEW_LIMIT = 20.0
+
 def main():
+    """See module docstring"""
 
     parser = track.ArgParser()
     parser.add_argument(
@@ -30,16 +37,13 @@ def main():
         print('mount-type not supported: ' + args.mount_type)
         sys.exit(1)
 
-    try:
-        SLEW_CHANGE_SLEEP = 3.0
-        TIME_LIMIT = 60.0
-        SLEW_LIMIT = 20.0
+    axes = mount.AxisName
 
+    # pylint: disable=too-many-nested-blocks
+    try:
         # rates to test in arcseconds per second
         rates = [2**x for x in range(14)]
         rates.append(16319)
-
-        axes = [axis for axis in mount.AxisName]
 
         rate_est = {}
         for axis in axes:
@@ -64,7 +68,9 @@ def main():
                 while True:
                     position = mount.get_position()
                     time_elapsed = time.time() - time_start
-                    position_change = abs(Longitude(position[axis] - position_start[axis], wrap_angle=180*u.deg)).deg
+                    position_change = abs(
+                        Longitude(position[axis] - position_start[axis], wrap_angle=180*u.deg)
+                    ).deg
                     if position_change > SLEW_LIMIT or time_elapsed > TIME_LIMIT:
                         break
 

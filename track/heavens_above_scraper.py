@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 
+"""Scrapes the Heavens Above website (heavens-above.com) to download TLEs for nightly passes.
+
+Heavens Above predicts which satellites will be visible at a given location and on a particular
+morning or evening. This program scrapes that website in order to download a set of fresh TLE files
+for such satellites.
+"""
+
 from bs4 import BeautifulSoup
 import requests
 import re

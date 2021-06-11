@@ -1,4 +1,4 @@
-"""Travelling salesman solver for optimizing route to set of multiple positions"""
+"""Travelling salesman solver for optimizing route to set of multiple positions."""
 
 from typing import List
 from abc import ABC, abstractmethod
@@ -6,27 +6,14 @@ from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 import numpy as np
 
-"""
-Some thoughts on how the distance matrix or callback would be implemented for align.py:
-
-- Use the MountModel object to transform all targets from topocentric coordinates to encoder
-  positions
-- For a pair of target encoder positions:
-  - Use ErrorSource._smallest_allowed_error() (which should probably be made public) to compute the
-    minimum allowed error for each axis.
-  - Take the max of the magnitudes of the error term for each axis. This is the distance.
-
-Should add an additional position representing the "depot" which is the parked "CWD" position.
-(Maybe the mount classes should have a public method that returns a "park" MountEncoderPositions)
-"""
 
 class Destination(ABC):
     """Abstract class representing a destination along a route"""
-    
+
     @abstractmethod
     def distance_to(self, other_destination: "Destination") -> int:
         """Returns the distance (cost) of travelling from this to the other destination
-        
+
         Args:
             other_destination: Another instance of this class
 

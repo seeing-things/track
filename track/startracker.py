@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 
-"""program for testing plate solving with guidescope camera"""
+"""Program for testing plate solving with guidescope camera.
+
+This program repeatedly prints the coordinates of the center of camera frames found by plate
+solving. This is intended primarily to be used to test whether plate solving is working with a
+particular camera, camera settings, plate solver settings, and sky conditions.
+"""
 
 import time
 from datetime import datetime

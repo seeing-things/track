@@ -1,4 +1,4 @@
-"""targets for use in telescope tracking control loop"""
+"""Targets for use in telescope tracking control loop."""
 
 from math import inf
 from typing import List, Optional, Tuple, NamedTuple

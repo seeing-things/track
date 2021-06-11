@@ -1,4 +1,4 @@
-"""cameras for use in telescope tracking control loop.
+"""Cameras for use in telescope tracking control loop.
 
 A set of classes that inherit from the abstract base class Camera, providing a common API for
 interacting with cameras. The main application for a camera relevant to this package is as a

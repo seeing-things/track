@@ -1,4 +1,4 @@
-"""mounts for use in telescope tracking control loop.
+"""Mounts for use in telescope tracking control loop.
 
 A set of classes that inherit from the abstract base class TelescopeMount, providing a common
 API for interacting with telescope mounts. The abstraction is not perfect and some mounts may

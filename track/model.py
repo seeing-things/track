@@ -1,4 +1,4 @@
-"""Mount modeling and transformations between sky and mount reference frames"""
+"""Mount modeling and transformations between sky and mount reference frames."""
 
 import os
 import pickle
