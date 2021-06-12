@@ -30,6 +30,7 @@ from astropy.time import Time
 from astropy.coordinates import SkyCoord, EarthLocation, Angle, Longitude
 import track
 from track import cameras, mounts, ntp, telem
+from track.cameras import Camera
 from track.control import Tracker, smallest_allowed_error
 from track.config import DATA_PATH
 from track.model import ModelParamSet, MountModel
@@ -147,6 +148,67 @@ def generate_positions(
         level += 1
 
     return positions
+
+
+def attempt_plate_solving(
+        camera: Camera,
+        mount: TelescopeMount,
+        location,
+        observations: List,
+        observations_dir: str,
+        num_solutions_so_far: int,
+    ) -> bool:
+    """Attempt to do plate solving.
+
+    Args:
+        camera: A frame will be captured from this camera to use for plate solving.
+        mount: The mount.
+        location: Observer location. Used to transform equatorial coordinate to topocentric.
+        observations: List of observations. If plate solving is successful a new dict is appended.
+        observations_dir: Directory where the FITS image will be saved if a solution is found.
+        num_solutions_so_far: Number of successful solutions up to this point in the alignment
+            procedure. Used to generate unique filename for FITS image.
+
+    Returns:
+        True on success, False on failure.
+    """
+
+    # Make all physical measurements (clock, camera, mount encoders) near same time
+    timestamp = time.time()
+    frame = camera.get_frame()
+    mount_position = mount.get_position()
+
+    try:
+        sc_eq = track.plate_solve(
+            frame,
+            camera_width=camera.field_of_view[1]
+        )
+    except track.NoSolutionException:
+        print('No solution.')
+        return False
+    else:
+        print('Solution found!')
+        sc_eq.obstime = Time(timestamp, format='unix')
+        sc_eq.location = location
+        sc_topo = sc_eq.transform_to('altaz')
+        observations.append({
+            'unix_timestamp': timestamp,
+            'encoder_0': mount_position.encoder_0.deg,
+            'encoder_1': mount_position.encoder_1.deg,
+            'sky_az': sc_topo.az.deg,
+            'sky_alt': sc_topo.alt.deg,
+            'sky_ra': sc_eq.ra.deg,
+            'sky_dec': sc_eq.dec.deg,
+        })
+        hdu = fits.PrimaryHDU(frame)
+        try:
+            hdu.writeto(os.path.join(
+                observations_dir,
+                f'camera_frame_{num_solutions_so_far:03d}.fits'
+            ))
+        except OSError as e:
+            print('Trouble saving image: ' + str(e))
+        return True
 
 
 def main():
@@ -349,41 +411,16 @@ def main():
 
                 print(f'\tPlate solver attempt {i + 1} of {args.max_tries}...', end='', flush=True)
 
-                # Make all physical measurements (clock, camera, mount encoders) near same time
-                timestamp = time.time()
-                frame = camera.get_frame()
-                mount_position = mount.get_position()
-
-                try:
-                    sc_eq = track.plate_solve(
-                        frame,
-                        camera_width=camera.field_of_view[1]
-                    )
-                    sc_eq.obstime = Time(timestamp, format='unix')
-                    sc_eq.location = location
-                    sc_topo = sc_eq.transform_to('altaz')
-                    print('Solution found!')
-                    observations.append({
-                        'unix_timestamp': timestamp,
-                        'encoder_0': mount_position.encoder_0.deg,
-                        'encoder_1': mount_position.encoder_1.deg,
-                        'sky_az': sc_topo.az.deg,
-                        'sky_alt': sc_topo.alt.deg,
-                        'sky_ra': sc_eq.ra.deg,
-                        'sky_dec': sc_eq.dec.deg,
-                    })
-                    hdu = fits.PrimaryHDU(frame)
-                    try:
-                        hdu.writeto(os.path.join(
-                            observations_dir,
-                            f'camera_frame_{num_solutions:03d}.fits'
-                        ))
-                    except OSError as e:
-                        print('Trouble saving image: ' + str(e))
+                if attempt_plate_solving(
+                    mount=mount,
+                    camera=camera,
+                    location=location,
+                    observations=observations,
+                    observations_dir=observations_dir,
+                    num_solutions_so_far=num_solutions
+                ):
                     num_solutions += 1
                     break
-                except track.NoSolutionException:
-                    print('No solution.')
 
         print('Plate solver found solutions at {} of {} positions.'.format(
             num_solutions,
