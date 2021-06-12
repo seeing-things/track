@@ -7,19 +7,21 @@ morning or evening. This program scrapes that website in order to download a set
 for such satellites.
 """
 
-from bs4 import BeautifulSoup
-import requests
+import os
 import re
-import track
+from math import inf
 import datetime
 import monthdelta
-import os
-from math import inf
+import requests
+from bs4 import BeautifulSoup
 from astropy.coordinates import EarthLocation
 import astropy.units as u
+import track
 from track.gps_client import GPSValues, GPSMargins, GPS
 
-def urlify(s):
+
+def urlify(s: str) -> str:
+    """Transform a string into a string that is a valid part of a URL"""
 
     # Remove all non-word characters (everything except numbers and letters)
     s = re.sub(r"[^\w\s]", '', s)
@@ -29,13 +31,28 @@ def urlify(s):
 
     return s
 
-# convert a given date object to the number-of-months-since-0-AD, because that's how HA encodes it
-def date_to_monthnum(date):
-    ad1 = datetime.date(1, 1, 1)
-    return (monthdelta.monthmod(ad1, date)[0].months + 12)
 
-def print_tz_help():
-    tz_soup = BeautifulSoup(requests.get('http://heavens-above.com/SelectLocation.aspx').text, 'lxml')
+def date_to_monthnum(date: datetime.date) -> int:
+    """Convert a given date object to the number-of-months-since-0-AD.
+
+    Why? Because that's how Heavens Above encodes it.
+
+    Args:
+        date: The date to convert.
+
+    Returns:
+        The number of months since 0 AD.
+    """
+    ad1 = datetime.date(1, 1, 1)
+    return monthdelta.monthmod(ad1, date)[0].months + 12
+
+
+def print_timezone_help():
+    """Print help message for how to use the timezones 'tz' program argument"""
+    tz_soup = BeautifulSoup(
+        requests.get('http://heavens-above.com/SelectLocation.aspx').text,
+        'lxml'
+    )
 
     # find the dropdown box containing the tz code to description mappings
     options = tz_soup.find('select', {'name': 'ctl00$cph1$listTimeZones'}).find_all('option')
@@ -44,7 +61,10 @@ def print_tz_help():
     for option in options:
         print('{:13s} {}'.format(option['value'], option.string))
 
+
 def main():
+    """See module docstring at the top of this file."""
+
     parser = track.ArgParser()
     parser.add_argument(
         'outdir',
@@ -111,7 +131,7 @@ def main():
     args = parser.parse_args()
 
     if args.tz == 'help':
-        print_tz_help()
+        print_timezone_help()
         return
 
     if args.ampm.upper() != 'AM' and args.ampm.upper() != 'PM':
@@ -122,7 +142,8 @@ def main():
     elif args.year is None and args.month is None and args.day is None:
         when = datetime.datetime.now().date()
     else:
-        raise Exception('If an explicit observation date is given, then year, month, and day must all be specified.')
+        raise Exception('If an explicit observation date is given, then year, month, and day must '
+            'all be specified.')
 
     # Get location of observer from arguments or from GPS
     if all(arg is not None for arg in [args.lat, args.lon, args.elevation]):
@@ -160,8 +181,14 @@ def main():
 
     # do an initial page request so we can get the __VIEWSTATE and __VIEWSTATEGENERATOR values
     pre_soup = BeautifulSoup(requests.get(bright_sats_url).text, 'lxml')
-    view_state           = pre_soup.find('input', {'type': 'hidden', 'name': '__VIEWSTATE'         })['value']
-    view_state_generator = pre_soup.find('input', {'type': 'hidden', 'name': '__VIEWSTATEGENERATOR'})['value']
+    view_state = pre_soup.find(
+        'input',
+        {'type': 'hidden', 'name': '__VIEWSTATE'         }
+    )['value']
+    view_state_generator = pre_soup.find(
+        'input',
+        {'type': 'hidden', 'name': '__VIEWSTATEGENERATOR'}
+    )['value']
 
     post_data = [
         ('__EVENTTARGET',                               ''),
@@ -191,6 +218,8 @@ def main():
 
         cols = row.find_all('td')
 
+        # We're not using all of these now, but preserving them is useful as documentation
+        # pylint: disable=unused-variable
         sat        =       cols[ 0].string
         mag        = float(cols[ 1].string)
         start_time =       cols[ 2].string # <-- in local time
@@ -230,6 +259,7 @@ def main():
         with open(filename, 'w') as f:
             for line in tle:
                 f.write(line + '\n')
+
 
 if __name__ == "__main__":
     main()
