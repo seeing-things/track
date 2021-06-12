@@ -23,7 +23,7 @@ from math import inf, isinf, nan, isnan
 from time import perf_counter
 
 from astropy import units as u
-from astropy.coordinates import EarthLocation, Latitude, Longitude
+from astropy.coordinates import EarthLocation
 from astropy.time import Time as APTime
 
 import gps
@@ -87,6 +87,7 @@ class GPS:
     INIT_ERR = GPSValues(lat=inf, lon=inf, alt=inf, track=inf, speed=inf, climb=inf, time=inf)
 
     class FailureReason(Flag):
+        """Various reasons a GPS request might fail."""
         NONE = 0
         BAD_FIX = auto()  # insufficient fix type
         NO_LAT = auto()  # no latitude
@@ -230,7 +231,7 @@ class GPS:
                 time=report.time if 'time' in report else self.INIT_VAL.time,
             )
 
-            if isnan(self.values.alt) and need_3d == False:
+            if isnan(self.values.alt) and need_3d is False:
                 # since a 3D fix is not required, set alt to 0
                 self.values = self.values._replace(alt=0.0)
 
@@ -302,6 +303,7 @@ class GPS:
         for field in self.errors._fields:
             if self.errors._asdict()[field] > err_max._asdict()[field]:
                 # iterates over FailureReason flags and adds the first one with a matching name
+                # pylint: disable=no-member
                 fail_reasons |= next(
                     val for (name, val) in self.FailureReason.__members__.items()
                     if name == 'ERR_' + field.upper()
@@ -350,9 +352,10 @@ def main():
     any 3D fix to pass muster. Adjust these to be more restrictive as desired.
     """
 
-    TIMEOUT = 10.0
-    NEED_3D = True
-    ERR_MAX = GPSValues(
+    # parameters
+    timeout = 10.0
+    need_3d = True
+    err_max = GPSValues(
         lat=100.0,
         lon=100.0,
         alt=inf,
@@ -361,11 +364,11 @@ def main():
         climb=inf,
         time=100.0
     )
-    MARGINS = GPSMargins(speed=inf, climb=inf, time=inf)
+    margins = GPSMargins(speed=inf, climb=inf, time=inf)
 
     with GPS() as g:
         try:
-            loc = g.get_location(TIMEOUT, NEED_3D, ERR_MAX, MARGINS)
+            loc = g.get_location(timeout, need_3d, err_max, margins)
             print(f'lat: {loc.lat:.5f}, lon: {loc.lon:.5f}, altitude: {loc.height:.2f}')
         finally:
             print('fix_type: {}'.format(g.fix_type))
