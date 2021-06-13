@@ -13,16 +13,14 @@ from datetime import datetime, timedelta
 from configargparse import ArgParser
 import dateutil
 import numpy as np
-import pandas as pd
 import matplotlib
 from matplotlib.patches import Circle
 import matplotlib.pyplot as plt
 import ephem
 from astropy import units as u
 from astropy.coordinates import Longitude, UnitSphericalRepresentation, EarthLocation
-from influxdb import InfluxDBClient
 import track
-from track import gps_client
+from track import gps_client, telem
 from track.mounts import MountEncoderPositions, MeridianSide
 from track.model import MountModel
 
@@ -365,50 +363,35 @@ def plot_reachable_zone(
 
 def plot_mount_motion(
         ax: matplotlib.axes.Axes,
-        mount_model: MountModel,
         time_start: datetime,
-        time_stop: datetime
+        time_stop: datetime,
     ) -> None:
     """Plot curve showing position of the mount versus time from telemetry.
 
     Args:
         ax: Axes object on which to plot.
-        mount_model: Mount model corresponding to the telemetry time period. Using the wrong model
-            will produce invalid results.
         time_start: Beginning of time interval to plot.
         time_stop: End of time interval to plot.
     """
 
-    db = InfluxDBClient(host='localhost', port=8086, database='telem')
-    query = db.query(
-        f'select mount_enc_0, mount_enc_1 from tracker where '
-        f'time > {int(time_start.timestamp())}s and time < {int(time_stop.timestamp())}s'
+    client = telem.open_client()
+    query_api = client.query_api()
+    df = query_api.query_data_frame(
+        'from(bucket: "telem")'
+        f'|> range(start: {int(time_start.timestamp())}, stop: {int(time_stop.timestamp())})'
+        '|> filter(fn: (r) => r._measurement == "mount_position" '
+            'and (r._field == "azimuth" or r._field == "altitude"))'
+        '|> aggregateWindow(every: 1s, fn: first, createEmpty: false)'
     )
-    if not query:
-        # no telemetry exists for this time interval
-        return
-    df = pd.DataFrame(query.get_points())
-    df['time'] = pd.to_datetime(df['time'])
-    df = df.set_index('time')
 
-    # downsample telemetry to at most 1 position per second of time
-    df = df.resample('1s').first().dropna()
-
-    az = []
-    alt = []
-    for _, row in df.iterrows():
-        topo = mount_model.encoders_to_topocentric(
-            MountEncoderPositions(
-                Longitude(row['mount_enc_0']*u.deg),
-                Longitude(row['mount_enc_1']*u.deg),
-            )
+    if not df.empty:
+        # pylint: disable=protected-access
+        plot_trajectory(
+            ax,
+            az=df[df._field == 'azimuth']._value.values,
+            alt=df[df._field == 'altitude']._value.values,
+            label='Mount Telemetry'
         )
-        az.append(topo.az.deg)
-        alt.append(topo.alt.deg)
-    az = np.array(az)
-    alt = np.array(alt)
-    if np.any(alt > 0):
-        plot_trajectory(ax, az, alt, label='Mount Telemetry')
 
 
 def main():
@@ -468,9 +451,11 @@ def main():
 
     if all(arg is None for arg in custom_model_args):
         if any(arg is not None for arg in observer_args):
+            # pylint: disable=not-callable
             parser.error('Observer location options require the custom mount model args to be set')
         mount_model = track.model.load_stored_model(max_age=None)
     elif any(arg is None for arg in custom_model_args):
+        # pylint: disable=not-callable
         parser.error("Must give all args in the custom mount model group or none of them.")
     else:
         # Generate a custom mount model from program arguments
@@ -502,7 +487,7 @@ def main():
             time_stop
         )
         if all((time_rise, time_set)):
-            plot_mount_motion(ax, mount_model, time_rise, time_set)
+            plot_mount_motion(ax, time_rise, time_set)
             print('Found a pass with these start and end times:')
             print(time_rise.isoformat() + 'Z')
             print(time_set.isoformat() + 'Z')

@@ -15,6 +15,28 @@ from influxdb_client.client.exceptions import InfluxDBError
 from track.config import ArgParser
 
 
+def open_client(
+        influx_config_filename: str = str(pathlib.Path.home().joinpath('.influxdbv2/configs'))
+    ) -> InfluxDBClient:
+    """Create a new InfluxDB client instance from config file.
+
+    Args:
+        influx_config_filename: Filename of the InfluxDB CLI configuration file, typically
+            $HOME/.influxdbv2/configs which is created by running `influx setup`.
+
+    Returns:
+        InfluxDB client instance.
+    """
+    # Can't use `InfluxDBClient.from_config_file()` here because `influx setup` generates a
+    # TOML formatted config file, but the Python client expects a .ini file. Because of course.
+    config_file_dict = toml.load(influx_config_filename)
+    return InfluxDBClient(
+        url=config_file_dict['influx2']['url'],
+        token=config_file_dict['influx2']['token'],
+        org=config_file_dict['influx2']['org'],
+    )
+
+
 class TelemSource(ABC):
     """Abstract base class for a producer of telemetry.
 
@@ -92,14 +114,7 @@ class TelemLogger:
         else:
             self.sources = {}
 
-        # Can't use `InfluxDBClient.from_config_file()` here because `influx setup` generates a
-        # TOML formatted config file, but the Python client expects a .ini file. Because of course.
-        config_file_dict = toml.load(influx_config_filename)
-        self.influxdb_client = InfluxDBClient(
-            url=config_file_dict['influx2']['url'],
-            token=config_file_dict['influx2']['token'],
-            org=config_file_dict['influx2']['org'],
-        )
+        self.influxdb_client = open_client(influx_config_filename)
 
         self.write_api = self.influxdb_client.write_api(
             write_options=WriteOptions(
