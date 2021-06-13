@@ -9,15 +9,12 @@ for such satellites.
 
 import os
 import re
-from math import inf
 import datetime
 import monthdelta
 import requests
 from bs4 import BeautifulSoup
-from astropy.coordinates import EarthLocation
-import astropy.units as u
 import track
-from track.gps_client import GPSValues, GPSMargins, GPS
+from track import gps_client
 
 
 def urlify(s: str) -> str:
@@ -76,25 +73,6 @@ def main():
         help='magnitude cutoff for object passes',
         type=float
     )
-    observer_group = parser.add_argument_group(
-        title='Observer Location Options',
-        description='Setting all three of these options will override GPS',
-    )
-    observer_group.add_argument(
-        '--lat',
-        help='latitude of observer (+N)',
-        type=float,
-    )
-    observer_group.add_argument(
-        '--lon',
-        help='longitude of observer (+E)',
-        type=float,
-    )
-    observer_group.add_argument(
-        '--elevation',
-        help='elevation of observer (m)',
-        type=float
-    )
     time_group = parser.add_argument_group(
         title='Time Options',
         description='Options pertaining to time of observation',
@@ -128,6 +106,7 @@ def main():
         help='morning or evening (\'AM\' or \'PM\')',
         default='PM'
     )
+    gps_client.add_program_arguments(parser)
     args = parser.parse_args()
 
     if args.tz == 'help':
@@ -146,33 +125,7 @@ def main():
             'all be specified.')
 
     # Get location of observer from arguments or from GPS
-    if all(arg is not None for arg in [args.lat, args.lon, args.elevation]):
-        print('Location (lat, lon, elevation) specified by program args. This will override GPS.')
-        location = EarthLocation(lat=args.lat*u.deg, lon=args.lon*u.deg, height=args.elevation*u.m)
-    elif any(arg is not None for arg in [args.lat, args.lon, args.elevation]):
-        parser.error("Must give all of lat, lon, and elevation or none of them.")
-    else:
-        with GPS() as g:
-            location = g.get_location(
-                timeout=10.0,
-                need_3d=True,
-                err_max=GPSValues(
-                    lat=100.0,
-                    lon=100.0,
-                    alt=100.0,
-                    track=inf,
-                    speed=inf,
-                    climb=inf,
-                    time=0.01
-                ),
-                margins=GPSMargins(speed=inf, climb=inf, time=1.0)
-            )
-            print(
-                'Got location from GPS: '
-                f'lat: {location.lat:.5f}, '
-                f'lon: {location.lon:.5f}, '
-                f'altitude: {location.height:.2f}'
-            )
+    location = gps_client.make_location_from_args(args)
 
     base_url = 'http://www.heavens-above.com/'
 

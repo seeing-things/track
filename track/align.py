@@ -27,16 +27,15 @@ from astropy_healpix import HEALPix
 from astropy import units as u
 from astropy.io import fits
 from astropy.time import Time
-from astropy.coordinates import SkyCoord, EarthLocation, Angle, Longitude
+from astropy.coordinates import SkyCoord, Angle, Longitude
 import track
-from track import cameras, mounts, ntp, telem
+from track import cameras, gps_client, mounts, ntp, telem
 from track.cameras import Camera
 from track.control import Tracker, smallest_allowed_error
 from track.config import DATA_PATH
 from track.model import ModelParamSet, MountModel
 from track.mounts import MeridianSide, MountEncoderPositions, TelescopeMount
 from track.targets import FixedMountEncodersTarget
-from track.gps_client import GPSValues, GPSMargins, GPS
 from track.tsp import Destination, solve_route
 
 
@@ -261,25 +260,7 @@ def main():
         default=0.2,
         type=float
     )
-    observer_group = parser.add_argument_group(
-        title='Observer Location Options',
-        description='Setting all three of these options will override GPS',
-    )
-    observer_group.add_argument(
-        '--lat',
-        help='latitude of observer (+N)',
-        type=float,
-    )
-    observer_group.add_argument(
-        '--lon',
-        help='longitude of observer (+E)',
-        type=float,
-    )
-    observer_group.add_argument(
-        '--elevation',
-        help='elevation of observer (m)',
-        type=float
-    )
+    gps_client.add_program_arguments(parser)
     mounts.add_program_arguments(parser)
     cameras.add_program_arguments(parser, profile='align')
     ntp.add_program_arguments(parser)
@@ -299,35 +280,7 @@ def main():
     mount = mounts.make_mount_from_args(args)
 
     # Get location of observer from arguments or from GPS
-    if all(arg is not None for arg in [args.lat, args.lon, args.elevation]):
-        print('Location (lat, lon, elevation) specified by program args. This will override GPS.')
-        if not click.confirm('Proceed without GPS location?', default=True):
-            sys.exit(1)
-        location = EarthLocation(lat=args.lat*u.deg, lon=args.lon*u.deg, height=args.elevation*u.m)
-    elif any(arg is not None for arg in [args.lat, args.lon, args.elevation]):
-        parser.error("Must give all of lat, lon, and elevation or none of them.")
-    else:
-        with GPS() as g:
-            location = g.get_location(
-                timeout=10.0,
-                need_3d=True,
-                err_max=GPSValues(
-                    lat=100.0,
-                    lon=100.0,
-                    alt=100.0,
-                    track=np.inf,
-                    speed=np.inf,
-                    climb=np.inf,
-                    time=0.01
-                ),
-                margins=GPSMargins(speed=np.inf, climb=np.inf, time=1.0)
-            )
-            print(
-                'Got location from GPS: '
-                f'lat: {location.lat:.5f}, '
-                f'lon: {location.lon:.5f}, '
-                f'altitude: {location.height:.2f}'
-            )
+    location = gps_client.make_location_from_args(args)
 
     # This is meant to be just good enough that the model is able to tell roughly which direction
     # is up so that the positions used during alignment are all above the horizon.

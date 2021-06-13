@@ -21,12 +21,13 @@ from datetime import datetime
 from enum import Flag, IntEnum, auto
 from math import inf, isinf, nan, isnan
 from time import perf_counter
-
+import click
+from configargparse import Namespace
 from astropy import units as u
 from astropy.coordinates import EarthLocation
 from astropy.time import Time as APTime
-
 import gps
+from track.config import ArgParser
 
 
 class GPSFixType(IntEnum):
@@ -343,6 +344,86 @@ def _test_margin_time_fail(v_str: str, margin: float):
 
     dt = abs(t_val - t_sys).total_seconds()
     return dt > margin
+
+
+def add_program_arguments(
+        parser: ArgParser,
+        group_description: str = 'Setting all three of these options will override GPS',
+    ) -> None:
+    """Add program arguments pertaining to observer location.
+
+    Arguments are added such that the location is obtained from a GPS receiver by default, but the
+    user can override this by supplying the location at the command line.
+
+    Args:
+        parser: The instance of ArgParser to which this function will add arguments.
+        group_description: The description for this argument group.
+    """
+    observer_group = parser.add_argument_group(
+        title='Observer Location Options',
+        description=group_description,
+    )
+    observer_group.add_argument(
+        '--lat',
+        help='latitude of observer (+N)',
+        type=float,
+    )
+    observer_group.add_argument(
+        '--lon',
+        help='longitude of observer (+E)',
+        type=float,
+    )
+    observer_group.add_argument(
+        '--elevation',
+        help='elevation of observer (m)',
+        type=float
+    )
+
+
+def make_location_from_args(args: Namespace) -> EarthLocation:
+    """Generate an observer location based on the program arguments provided.
+
+    Args:
+        args: Set of program arguments.
+
+    Returns:
+        An EarthLocation object.
+
+    Raises:
+        ValueError if an invalid combination of program arguments is specified.
+        RuntimeError if location is specified by program args but user does not confirm.
+    """
+    if all(arg is not None for arg in [args.lat, args.lon, args.elevation]):
+        print('Location (lat, lon, elevation) specified by program args. This will override GPS.')
+        if not click.confirm('Proceed without GPS location?', default=True):
+            raise RuntimeError('Could not generate a location')
+        location = EarthLocation(lat=args.lat*u.deg, lon=args.lon*u.deg, height=args.elevation*u.m)
+    elif any(arg is not None for arg in [args.lat, args.lon, args.elevation]):
+        raise ValueError("Must give all of lat, lon, and elevation or none of them.")
+    else:
+        with GPS() as g:
+            location = g.get_location(
+                timeout=10.0,
+                need_3d=True,
+                err_max=GPSValues(
+                    lat=100.0,
+                    lon=100.0,
+                    alt=100.0,
+                    track=inf,
+                    speed=inf,
+                    climb=inf,
+                    time=0.01
+                ),
+                margins=GPSMargins(speed=inf, climb=inf, time=1.0)
+            )
+            print(
+                'Got location from GPS: '
+                f'lat: {location.lat:.5f}, '
+                f'lon: {location.lon:.5f}, '
+                f'altitude: {location.height:.2f}'
+            )
+
+    return location
 
 
 def main():
