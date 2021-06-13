@@ -257,7 +257,7 @@ class Gamepad(TelemSource):
     def get_telem_points(self) -> List[Point]:
         """Called by telemetry logger. See `TelemSource` abstract base class."""
 
-        point = Point('Gamepad object state')
+        point = Point('gamepad')
         # attributes of this object to be captured as fields in the telemetry measurement
         names = ['left_x', 'left_y', 'right_x', 'right_y', 'int_x', 'int_y', 'integrator_mode']
         for name in names:
@@ -265,7 +265,7 @@ class Gamepad(TelemSource):
         point.time(datetime.utcnow())
 
         point_raw = Point.from_dict({
-            'measurement': 'gamepad events',
+            'measurement': 'gamepad_events',
             'fields': self.state,
             'time': datetime.utcnow(),
         })
