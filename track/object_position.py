@@ -8,26 +8,13 @@ import math
 import ephem
 import ephem.stars
 import track
+from track import gps_client
 
 
 def main():
     """See module docstring at the top of this file."""
 
     parser = track.ArgParser()
-
-    parser.add_argument(
-        '--lat',
-        required=True,
-        help='latitude of observer (+N)')
-    parser.add_argument(
-        '--lon',
-        required=True,
-        help='longitude of observer (+E)')
-    parser.add_argument(
-        '--elevation',
-        required=True,
-        help='elevation of observer (m)',
-        type=float)
     parser.add_argument(
         '--timestamp',
         required=False,
@@ -42,13 +29,15 @@ def main():
     parser_star = subparsers.add_parser('solarsystem', help='named solar system body mode')
     parser_star.add_argument('name', help='name of planet or moon')
 
+    gps_client.add_program_arguments(parser)
     args = parser.parse_args()
 
     # Create a PyEphem Observer object
+    location = gps_client.make_location_from_args(args)
     observer = ephem.Observer()
-    observer.lat = args.lat
-    observer.lon = args.lon
-    observer.elevation = args.elevation
+    observer.lat = location.lat.deg
+    observer.lon = location.lon.deg
+    observer.elevation = location.height.value
 
     # Get the PyEphem Body object corresonding to the given named star
     if args.mode == 'star':
