@@ -155,7 +155,7 @@ class TestMountModel(unittest.TestCase):
             assert_allclose(separation.deg, expected_separation.deg)
 
 
-    def test_encoder_to_spherical(self):
+    def test_encoders_to_spherical(self):
 
         params = ModelParameters(
             axis_0_offset=Angle(0*u.deg),
@@ -172,7 +172,7 @@ class TestMountModel(unittest.TestCase):
             # "counterweight down" startup position (corresponding to encoder offsets of 0), the
             # optical tube is pointed precisely in the direction of the mount's physical pole.
             encoders = MountEncoderPositions(180*u.deg, 180*u.deg)
-            spherical_coord, meridian_side = model.encoder_to_spherical(encoders)
+            spherical_coord, meridian_side = model.encoders_to_spherical(encoders)
             # the longitude value and meridian_side are both "don't care"/undefined since this is
             # at a pole so intentionally not applying any assertions to those values
             assert_allclose(spherical_coord.lat.deg, 90.0)
@@ -183,7 +183,7 @@ class TestMountModel(unittest.TestCase):
         with self.subTest(i=1):
             # Axis 0 still in startup position
             encoders = MountEncoderPositions(180*u.deg, 90*u.deg)
-            spherical_coord, meridian_side = model.encoder_to_spherical(encoders)
+            spherical_coord, meridian_side = model.encoders_to_spherical(encoders)
             assert_allclose(spherical_coord.lat.deg, 0.0)
             assert_allclose(spherical_coord.lon.deg, 90.0)
             self.assertEqual(meridian_side, MeridianSide.EAST)
@@ -192,7 +192,7 @@ class TestMountModel(unittest.TestCase):
             # Axis 0 is rotated 90 degrees counter-clockwise from startup position if viewed from
             # behind/below the OTA
             encoders = MountEncoderPositions(90*u.deg, 90*u.deg)
-            spherical_coord, meridian_side = model.encoder_to_spherical(encoders)
+            spherical_coord, meridian_side = model.encoders_to_spherical(encoders)
             assert_allclose(spherical_coord.lat.deg, 0.0)
             assert_allclose(spherical_coord.lon.deg, 180.0)
             self.assertEqual(meridian_side, MeridianSide.EAST)
@@ -201,7 +201,7 @@ class TestMountModel(unittest.TestCase):
             # Axis 0 is rotated 180 degrees from startup position. (This would normally be an
             # impossible position for a German equatorial mount)
             encoders = MountEncoderPositions(0*u.deg, 90*u.deg)
-            spherical_coord, meridian_side = model.encoder_to_spherical(encoders)
+            spherical_coord, meridian_side = model.encoders_to_spherical(encoders)
             assert_allclose(spherical_coord.lat.deg, 0.0)
             assert_allclose(spherical_coord.lon.deg, 270.0)
             self.assertEqual(meridian_side, MeridianSide.EAST)
@@ -210,7 +210,7 @@ class TestMountModel(unittest.TestCase):
             # Axis 0 is rotated 90 degrees clockwise from startup position if viewed from behind/
             # below the OTA
             encoders = MountEncoderPositions(270*u.deg, 90*u.deg)
-            spherical_coord, meridian_side = model.encoder_to_spherical(encoders)
+            spherical_coord, meridian_side = model.encoders_to_spherical(encoders)
             assert_allclose(spherical_coord.lat.deg, 0.0)
             assert_allclose(spherical_coord.lon.deg, 0.0)
             self.assertEqual(meridian_side, MeridianSide.EAST)
@@ -221,7 +221,7 @@ class TestMountModel(unittest.TestCase):
         with self.subTest(i=5):
             # Axis 0 still in startup position
             encoders = MountEncoderPositions(180*u.deg, 270*u.deg)
-            spherical_coord, meridian_side = model.encoder_to_spherical(encoders)
+            spherical_coord, meridian_side = model.encoders_to_spherical(encoders)
             assert_allclose(spherical_coord.lat.deg, 0.0)
             assert_allclose(spherical_coord.lon.deg, 270.0)
             self.assertEqual(meridian_side, MeridianSide.WEST)
@@ -230,7 +230,7 @@ class TestMountModel(unittest.TestCase):
             # Axis 0 is rotated 90 degrees counter-clockwise from startup position if viewed from
             # behind/below the OTA
             encoders = MountEncoderPositions(90*u.deg, 270*u.deg)
-            spherical_coord, meridian_side = model.encoder_to_spherical(encoders)
+            spherical_coord, meridian_side = model.encoders_to_spherical(encoders)
             assert_allclose(spherical_coord.lat.deg, 0.0)
             assert_allclose(spherical_coord.lon.deg, 0.0)
             self.assertEqual(meridian_side, MeridianSide.WEST)
@@ -239,7 +239,7 @@ class TestMountModel(unittest.TestCase):
             # Axis 0 is rotated 180 degrees from startup position. (This would normally be an
             # impossible position for a German equatorial mount)
             encoders = MountEncoderPositions(0*u.deg, 270*u.deg)
-            spherical_coord, meridian_side = model.encoder_to_spherical(encoders)
+            spherical_coord, meridian_side = model.encoders_to_spherical(encoders)
             assert_allclose(spherical_coord.lat.deg, 0.0)
             assert_allclose(spherical_coord.lon.deg, 90.0)
             self.assertEqual(meridian_side, MeridianSide.WEST)
@@ -248,7 +248,7 @@ class TestMountModel(unittest.TestCase):
             # Axis 0 is rotated 90 degrees clockwise from startup position if viewed from behind/
             # below the OTA
             encoders = MountEncoderPositions(270*u.deg, 270*u.deg)
-            spherical_coord, meridian_side = model.encoder_to_spherical(encoders)
+            spherical_coord, meridian_side = model.encoders_to_spherical(encoders)
             assert_allclose(spherical_coord.lat.deg, 0.0)
             assert_allclose(spherical_coord.lon.deg, 180.0)
             self.assertEqual(meridian_side, MeridianSide.WEST)
@@ -257,7 +257,7 @@ class TestMountModel(unittest.TestCase):
         with self.subTest(i=9):
             # Axis 1 is rotated 180 degrees from startup position
             encoders = MountEncoderPositions(180*u.deg, 0*u.deg)
-            spherical_coord, meridian_side = model.encoder_to_spherical(encoders)
+            spherical_coord, meridian_side = model.encoders_to_spherical(encoders)
             # As with the startup position, this is at a pole in the mount's spherical coordinate
             # system so the longitude coordinate and meridian side are undefined/don't care
             assert_allclose(spherical_coord.lat.deg, -90.0)
