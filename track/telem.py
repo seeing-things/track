@@ -1,4 +1,4 @@
-"""telemetry logging to a time series database"""
+"""Telemetry logging to a time series database."""
 
 from abc import ABC, abstractmethod
 import os

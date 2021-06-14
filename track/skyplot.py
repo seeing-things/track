@@ -9,10 +9,9 @@ completed (or even in-progress) pass.
 """
 
 from typing import Tuple, Optional
-from configargparse import ArgParser
 from datetime import datetime, timedelta
+from configargparse import ArgParser
 import dateutil
-import requests
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -23,7 +22,7 @@ from astropy import units as u
 from astropy.coordinates import Longitude, UnitSphericalRepresentation, EarthLocation
 from influxdb import InfluxDBClient
 import track
-from track.gps_client import GPSValues, GPSMargins, GPS
+from track import gps_client
 from track.mounts import MountEncoderPositions, MeridianSide
 from track.model import MountModel
 
@@ -413,6 +412,7 @@ def plot_mount_motion(
 
 
 def main():
+    """See module docstring at the top of this file"""
 
     parser = ArgParser(description='Make a plot of the sky to plan and evaluate tracking')
     parser.add_argument(
@@ -449,24 +449,11 @@ def main():
         '--mount-pole-alt',
         help='altitude of the mount pole',
         type=float)
-    observer_group = parser.add_argument_group(
-        title='Observer Location Options',
-        description='Set all of these to indicate observer location with a custom mount model',
-    )
-    observer_group.add_argument(
-        '--lat',
-        help='latitude of observer (+N)',
-        type=float,
-    )
-    observer_group.add_argument(
-        '--lon',
-        help='longitude of observer (+E)',
-        type=float,
-    )
-    observer_group.add_argument(
-        '--elevation',
-        help='elevation of observer (m)',
-        type=float
+    gps_client.add_program_arguments(
+        parser=parser,
+        group_description=(
+            'Set all of these to indicate observer location with a custom mount model'
+        ),
     )
     args = parser.parse_args()
     custom_model_args = (args.mount_pole_az, args.mount_pole_alt)
@@ -479,8 +466,6 @@ def main():
         time_start = datetime.utcnow()
     time_stop = time_start + timedelta(days=1)
 
-
-
     if all(arg is None for arg in custom_model_args):
         if any(arg is not None for arg in observer_args):
             parser.error('Observer location options require the custom mount model args to be set')
@@ -488,46 +473,13 @@ def main():
     elif any(arg is None for arg in custom_model_args):
         parser.error("Must give all args in the custom mount model group or none of them.")
     else:
-        # Get location of observer from arguments or from GPS
-        if all(arg is not None for arg in observer_args):
-            print('Observer location specified by program args. This will override GPS.')
-            location = EarthLocation(
-                lat=args.lat*u.deg,
-                lon=args.lon*u.deg,
-                height=args.elevation*u.m
-            )
-        elif any(arg is not None for arg in observer_args):
-            parser.error("Must give all observer location args or none of them.")
-        else:
-            print('Attempting to get location from GPS...', end='', flush=True)
-            with GPS() as g:
-                location = g.get_location(
-                    timeout=10.0,
-                    need_3d=True,
-                    err_max=GPSValues(
-                        lat=100.0,
-                        lon=100.0,
-                        alt=100.0,
-                        track=np.inf,
-                        speed=np.inf,
-                        climb=np.inf,
-                        time=0.01
-                    ),
-                    margins=GPSMargins(speed=np.inf, climb=np.inf, time=1.0)
-                )
-                print(
-                    'success: '
-                    f'lat: {location.lat:.5f}, '
-                    f'lon: {location.lon:.5f}, '
-                    f'altitude: {location.height:.2f}'
-                )
-
+        # Generate a custom mount model from program arguments
+        location = gps_client.make_location_from_args(args)
         mount_model = track.model.load_default_model(
             mount_pole_az=Longitude(args.mount_pole_az*u.deg),
             mount_pole_alt=Longitude(args.mount_pole_alt*u.deg),
             location=location,
         )
-
 
     ax = make_sky_plot()
     plot_reachable_zone(

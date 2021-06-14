@@ -24,7 +24,7 @@ PIN_DCD = (1<<6)
 PIN_RI  = (1<<7)
 
 
-class LaserPointer(object):
+class LaserPointer:
     """Class for controlling a laser pointer via an FTDI device.
 
     This class allows a laser pointer to be controlled by toggling the state of a pin on an FTDI
@@ -73,8 +73,8 @@ class LaserPointer(object):
         try:
             self.set(False)
             self.ftdi.close()
-        except:
-            pass
+        except Exception as e:  # pylint: disable=broad-except
+            print('Got exception while trying to disable laser pointer: ' + str(e))
 
     def set(self, enable):
         """Sets the state of the laser pointer.

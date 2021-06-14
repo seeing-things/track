@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
 
-from bs4 import BeautifulSoup
-import requests
+"""Scrapes the Heavens Above website (heavens-above.com) to download TLEs for nightly passes.
+
+Heavens Above predicts which satellites will be visible at a given location and on a particular
+morning or evening. This program scrapes that website in order to download a set of fresh TLE files
+for such satellites.
+"""
+
+import os
 import re
-import track
 import datetime
 import monthdelta
-import os
-from math import inf
-from astropy.coordinates import EarthLocation
-import astropy.units as u
-from track.gps_client import GPSValues, GPSMargins, GPS
+import requests
+from bs4 import BeautifulSoup
+import track
+from track import gps_client
 
-def urlify(s):
+
+def urlify(s: str) -> str:
+    """Transform a string into a string that is a valid part of a URL"""
 
     # Remove all non-word characters (everything except numbers and letters)
     s = re.sub(r"[^\w\s]", '', s)
@@ -22,13 +28,28 @@ def urlify(s):
 
     return s
 
-# convert a given date object to the number-of-months-since-0-AD, because that's how HA encodes it
-def date_to_monthnum(date):
-    ad1 = datetime.date(1, 1, 1)
-    return (monthdelta.monthmod(ad1, date)[0].months + 12)
 
-def print_tz_help():
-    tz_soup = BeautifulSoup(requests.get('http://heavens-above.com/SelectLocation.aspx').text, 'lxml')
+def date_to_monthnum(date: datetime.date) -> int:
+    """Convert a given date object to the number-of-months-since-0-AD.
+
+    Why? Because that's how Heavens Above encodes it.
+
+    Args:
+        date: The date to convert.
+
+    Returns:
+        The number of months since 0 AD.
+    """
+    ad1 = datetime.date(1, 1, 1)
+    return monthdelta.monthmod(ad1, date)[0].months + 12
+
+
+def print_timezone_help():
+    """Print help message for how to use the timezones 'tz' program argument"""
+    tz_soup = BeautifulSoup(
+        requests.get('http://heavens-above.com/SelectLocation.aspx').text,
+        'lxml'
+    )
 
     # find the dropdown box containing the tz code to description mappings
     options = tz_soup.find('select', {'name': 'ctl00$cph1$listTimeZones'}).find_all('option')
@@ -37,7 +58,10 @@ def print_tz_help():
     for option in options:
         print('{:13s} {}'.format(option['value'], option.string))
 
+
 def main():
+    """See module docstring at the top of this file."""
+
     parser = track.ArgParser()
     parser.add_argument(
         'outdir',
@@ -47,25 +71,6 @@ def main():
         '--mag-limit',
         required=True,
         help='magnitude cutoff for object passes',
-        type=float
-    )
-    observer_group = parser.add_argument_group(
-        title='Observer Location Options',
-        description='Setting all three of these options will override GPS',
-    )
-    observer_group.add_argument(
-        '--lat',
-        help='latitude of observer (+N)',
-        type=float,
-    )
-    observer_group.add_argument(
-        '--lon',
-        help='longitude of observer (+E)',
-        type=float,
-    )
-    observer_group.add_argument(
-        '--elevation',
-        help='elevation of observer (m)',
         type=float
     )
     time_group = parser.add_argument_group(
@@ -101,10 +106,11 @@ def main():
         help='morning or evening (\'AM\' or \'PM\')',
         default='PM'
     )
+    gps_client.add_program_arguments(parser)
     args = parser.parse_args()
 
     if args.tz == 'help':
-        print_tz_help()
+        print_timezone_help()
         return
 
     if args.ampm.upper() != 'AM' and args.ampm.upper() != 'PM':
@@ -115,36 +121,11 @@ def main():
     elif args.year is None and args.month is None and args.day is None:
         when = datetime.datetime.now().date()
     else:
-        raise Exception('If an explicit observation date is given, then year, month, and day must all be specified.')
+        raise Exception('If an explicit observation date is given, then year, month, and day must '
+            'all be specified.')
 
     # Get location of observer from arguments or from GPS
-    if all(arg is not None for arg in [args.lat, args.lon, args.elevation]):
-        print('Location (lat, lon, elevation) specified by program args. This will override GPS.')
-        location = EarthLocation(lat=args.lat*u.deg, lon=args.lon*u.deg, height=args.elevation*u.m)
-    elif any(arg is not None for arg in [args.lat, args.lon, args.elevation]):
-        parser.error("Must give all of lat, lon, and elevation or none of them.")
-    else:
-        with GPS() as g:
-            location = g.get_location(
-                timeout=10.0,
-                need_3d=True,
-                err_max=GPSValues(
-                    lat=100.0,
-                    lon=100.0,
-                    alt=100.0,
-                    track=inf,
-                    speed=inf,
-                    climb=inf,
-                    time=0.01
-                ),
-                margins=GPSMargins(speed=inf, climb=inf, time=1.0)
-            )
-            print(
-                'Got location from GPS: '
-                f'lat: {location.lat:.5f}, '
-                f'lon: {location.lon:.5f}, '
-                f'altitude: {location.height:.2f}'
-            )
+    location = gps_client.make_location_from_args(args)
 
     base_url = 'http://www.heavens-above.com/'
 
@@ -153,8 +134,14 @@ def main():
 
     # do an initial page request so we can get the __VIEWSTATE and __VIEWSTATEGENERATOR values
     pre_soup = BeautifulSoup(requests.get(bright_sats_url).text, 'lxml')
-    view_state           = pre_soup.find('input', {'type': 'hidden', 'name': '__VIEWSTATE'         })['value']
-    view_state_generator = pre_soup.find('input', {'type': 'hidden', 'name': '__VIEWSTATEGENERATOR'})['value']
+    view_state = pre_soup.find(
+        'input',
+        {'type': 'hidden', 'name': '__VIEWSTATE'         }
+    )['value']
+    view_state_generator = pre_soup.find(
+        'input',
+        {'type': 'hidden', 'name': '__VIEWSTATEGENERATOR'}
+    )['value']
 
     post_data = [
         ('__EVENTTARGET',                               ''),
@@ -184,6 +171,8 @@ def main():
 
         cols = row.find_all('td')
 
+        # We're not using all of these now, but preserving them is useful as documentation
+        # pylint: disable=unused-variable
         sat        =       cols[ 0].string
         mag        = float(cols[ 1].string)
         start_time =       cols[ 2].string # <-- in local time
@@ -223,6 +212,7 @@ def main():
         with open(filename, 'w') as f:
             for line in tle:
                 f.write(line + '\n')
+
 
 if __name__ == "__main__":
     main()

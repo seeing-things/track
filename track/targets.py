@@ -1,4 +1,4 @@
-"""targets for use in telescope tracking control loop"""
+"""Targets for use in telescope tracking control loop."""
 
 from math import inf
 from typing import List, Optional, Tuple, NamedTuple
@@ -441,11 +441,20 @@ class CameraTarget(Target):
         return keypoint_x_px, keypoint_y_px
 
 
-    def _keypoint_nearest_desired_target_position(
+    def _select_one_keypoint(
             self,
             keypoints: List[cv2.KeyPoint]
         ) -> cv2.KeyPoint:
-        """Find the keypoint closest to the desired target position from a list of keypoints
+        """Find the keypoint closest to the desired target position from a list of keypoints.
+
+        The simplifying assumption here is that when multiple keypoints are identified, the target
+        of interest is most likely to be the one that is already closest to the location in the
+        camera frame where we want it to be, since the action of the control system prior to this
+        point in time should have acted to keep it there. Stars and other bright objects that might
+        be present in the frame are less likely to land on that exact location, and even if they do
+        cross that location in one frame it is highly unlikely that they will stay there since such
+        distractor objects will not typically be moving across the sky at the same rate and in the
+        same direction as the target of interest.
 
         Args:
             keypoints: List of keypoints to filter.
@@ -514,8 +523,8 @@ class CameraTarget(Target):
             self.preview_window.show_annotated_frame(frame)
             raise self.IndeterminatePosition('No target detected in most recent frame')
 
-        # assume that the target is the keypoint nearest the center of the camera frame
-        target_keypoint = self._keypoint_nearest_desired_target_position(keypoints)
+        # select the keypoint that is most likely to be the target of interest
+        target_keypoint = self._select_one_keypoint(keypoints)
 
         self.preview_window.show_annotated_frame(frame, keypoints, target_keypoint)
 

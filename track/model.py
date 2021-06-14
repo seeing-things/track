@@ -1,4 +1,4 @@
-"""Mount modeling and transformations between sky and mount reference frames"""
+"""Mount modeling and transformations between sky and mount reference frames."""
 
 import os
 import pickle
@@ -377,8 +377,9 @@ class MountModel:
             Longitude(encoder_positions[1] - self.model_params.axis_1_offset),
         )
 
-        # TODO: This transformation is only correct if the mount axes are exactly orthogonal. This
-        # should be replaced with a more general transformation that can handle non-orthogonal axes.
+        # This transformation is only correct if the mount axes are exactly orthogonal. If better
+        # fidelity is required this could be replaced with a more general transformation that can
+        # handle non-orthogonal axes.
         if encoder_positions[1] < 180*u.deg:
             meridian_side = MeridianSide.EAST
             spherical_coord = UnitSphericalRepresentation(
@@ -444,8 +445,9 @@ class MountModel:
 
         coord = self.remove_camera_tilt(coord, meridian_side)
 
-        # TODO: This transformation is only correct if the mount axes are exactly orthogonal. This
-        # should be replaced with a more general transformation that can handle non-orthogonal axes.
+        # This transformation is only correct if the mount axes are exactly orthogonal. If better
+        # fidelity is required this could be replaced with a more general transformation that can
+        # handle non-orthogonal axes.
         if meridian_side == MeridianSide.EAST:
             encoder_0 = Longitude(270*u.deg - coord.lon)
             encoder_1 = Longitude(90*u.deg + coord.lat)

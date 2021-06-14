@@ -1,4 +1,4 @@
-"""mounts for use in telescope tracking control loop.
+"""Mounts for use in telescope tracking control loop.
 
 A set of classes that inherit from the abstract base class TelescopeMount, providing a common
 API for interacting with telescope mounts. The abstraction is not perfect and some mounts may
@@ -21,8 +21,8 @@ import numpy as np
 from astropy import units as u
 from astropy.coordinates import Longitude
 from configargparse import Namespace
-from track.config import ArgParser
 import point
+from track.config import ArgParser
 
 
 class MeridianSide(IntEnum):
@@ -388,7 +388,6 @@ class NexStarMount(TelescopeMount):
         # enforce altitude limits
         if axis == self.AxisName.ALTITUDE and not self.bypass_position_limits:
             position = self.get_position(0.25)
-            # pylint: disable=bad-continuation
             if ((position[self.AxisName.ALTITUDE].deg >= self.alt_max_limit and rate > 0.0) or
                 (position[self.AxisName.ALTITUDE].deg <= self.alt_min_limit and rate < 0.0)):
                 rate = 0.0
@@ -587,7 +586,6 @@ class LosmandyGeminiMount(TelescopeMount):
 
         if axis == self.AxisName.RIGHT_ASCENSION and not self.bypass_position_limits:
             pra = self.get_position(0.25)[self.AxisName.RIGHT_ASCENSION.value]
-            # pylint: disable=bad-continuation
             if ((pra.deg < 180 - self.ra_west_limit and rate < 0.0) or
                 (pra.deg > 180 + self.ra_east_limit and rate > 0.0)):
                 rate = 0.0

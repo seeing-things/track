@@ -1,4 +1,4 @@
-"""computer vision algorithms for identifying targets in a camera frame"""
+"""Computer vision algorithms for identifying targets in a camera frame"""
 
 from typing import List, Optional, Tuple
 import numpy as np

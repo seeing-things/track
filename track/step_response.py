@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
-"""program for plotting step response of the mount"""
+"""Program for plotting step response of the mount."""
 
-import sys
 import time
 import matplotlib.pyplot as plt
 import numpy as np

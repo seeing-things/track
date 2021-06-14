@@ -1,3 +1,5 @@
+"""Init for track package"""
+
 from .config import *
 from .gamepad import *
 from .mounts import *

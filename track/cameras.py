@@ -1,4 +1,4 @@
-"""cameras for use in telescope tracking control loop.
+"""Cameras for use in telescope tracking control loop.
 
 A set of classes that inherit from the abstract base class Camera, providing a common API for
 interacting with cameras. The main application for a camera relevant to this package is as a
@@ -123,7 +123,7 @@ class Camera(ABC):
 
     @staticmethod
     @abstractmethod
-    def add_program_arguments(parser: ArgParser) -> None:
+    def add_program_arguments(parser: ArgParser, profile: str) -> None:
         """Adds program arguments specific to this camera.
 
         This method should add program arguments required by this camera to the passed-in ArgParser
@@ -258,6 +258,8 @@ class ASICamera(Camera):
         # find the right camera
         self.info = None
         for idx in range(num_connected):
+            # pylint does not seem to handle SWIG bindings perfectly
+            # pylint: disable=no-value-for-parameter
             info = ASICheck(asi.ASIGetCameraProperty(idx))
             if name is None or name == info.Name:
                 self.info = info
@@ -382,6 +384,7 @@ class ASICamera(Camera):
         return np.reshape(frame, self._frame_shape)
 
     def get_dropped_frames(self) -> int:
+        """Get number of dropped frames so far"""
         return ASICheck(asi.ASIGetDroppedFrames(self.info.CameraID))
 
     def get_frame(self, timeout: float = inf) -> np.ndarray:
@@ -469,6 +472,7 @@ class WebCam(Camera):
             help='directory to save webcam frames as jpeg files on disk',
         )
 
+    # pylint: disable=unused-argument
     @staticmethod
     def from_program_args(args: Namespace, profile: str) -> 'WebCam':
         """Factory to make a WebCam instance from program arguments"""
@@ -526,6 +530,7 @@ class WebCam(Camera):
 
     @property
     def field_of_view(self) -> Tuple[float, float]:
+        # pylint: disable=consider-using-generator
         return tuple([self._pixel_scale * side for side in self._frame_shape])
 
     @property
@@ -635,7 +640,7 @@ class WebCam(Camera):
         )
 
     def _enum_frame_sizes(self, pixel_format):
-        # TODO: handle types other than V4L2_FRMSIZE_TYPE_DISCRETE sanely
+        # not handling types other than V4L2_FRMSIZE_TYPE_DISCRETE
         return self._enum_common(
             v4l2.VIDIOC_ENUM_FRAMESIZES,
             lambda idx: v4l2.v4l2_frmsizeenum(
@@ -645,7 +650,7 @@ class WebCam(Camera):
         )
 
     def _enum_frame_intervals(self, pixel_format, width, height):
-        # TODO: handle types other than V4L2_FRMIVAL_TYPE_DISCRETE sanely
+        # not handling types other than V4L2_FRMIVAL_TYPE_DISCRETE
         return self._enum_common(
             v4l2.VIDIOC_ENUM_FRAMEINTERVALS,
             lambda idx: v4l2.v4l2_frmivalenum(
@@ -674,10 +679,6 @@ class WebCam(Camera):
     def _verify_capabilities(self) -> Tuple[int, int]:
         fmt = v4l2.v4l2_format(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE)
         self._v4l2_ioctl(v4l2.VIDIOC_G_FMT, fmt)
-        # TODO: check whether VIDIOC_G_FMT is even the right IOCTL for determining POSSIBLE pixel
-        #       formats and not just the current one
-        # TODO: check whether VIDIOC_G_FMT is even the right IOCTL for determining POSSIBLE
-        #       resolutions and not just the current one
 
         # ensure that the device supports 'JFIF JPEG' format video capture
         assert fmt.fmt.pix.pixelformat == v4l2.V4L2_PIX_FMT_JPEG

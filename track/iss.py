@@ -13,6 +13,7 @@ import requests
 import track
 
 def main():
+    """See module docstring"""
 
     parser = track.ArgParser()
     parser.add_argument(
