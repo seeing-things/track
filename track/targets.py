@@ -332,7 +332,7 @@ class CameraTarget(Target):
         if meridian_side is not None:
             self.meridian_side = meridian_side
         else:
-            _, self.meridian_side = mount_model.encoder_to_spherical(mount.get_position())
+            _, self.meridian_side = mount_model.encoders_to_spherical(mount.get_position())
 
         frame_height, frame_width = camera.frame_shape
         self.frame_center_px = (frame_width / 2.0, frame_height / 2.0)
@@ -403,7 +403,7 @@ class CameraTarget(Target):
         #    lookup possible. Maybe add another argument to `get_position()` to specify the desired
         #    past time.
         mount_enc_positions = self.mount.get_position()
-        mount_coord, mount_meridian_side = self.mount_model.encoder_to_spherical(
+        mount_coord, mount_meridian_side = self.mount_model.encoders_to_spherical(
             mount_enc_positions
         )
 
@@ -563,7 +563,7 @@ class CameraTarget(Target):
         # transform to world coordinates
         position_mount = self._camera_to_mount_position(target_x, target_y)
 
-        position_enc = self.mount_model.spherical_to_encoder(
+        position_enc = self.mount_model.spherical_to_encoders(
             position_mount,
             self.meridian_side
         )
@@ -646,7 +646,7 @@ class SensorFusionTarget(Target):
         return TargetPosition(
             t,
             self.model.spherical_to_topocentric(position_target_fused_sph),
-            self.model.spherical_to_encoder(
+            self.model.spherical_to_encoders(
                 coord=position_target_fused_sph,
                 meridian_side=self.meridian_side
             )
@@ -679,7 +679,7 @@ class SensorFusionTarget(Target):
 
         # get meridian side of the mount
         mount_position = self.mount.get_position(max_cache_age=0.2)
-        mount_meridian_side = self.model.encoder_to_meridian_side(mount_position)
+        mount_meridian_side = self.model.encoders_to_meridian_side(mount_position)
 
         target_offset_mag, target_position_angle = self.camera_target.camera_to_directional_offset(
             target_x,

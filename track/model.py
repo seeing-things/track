@@ -337,7 +337,7 @@ class MountModel:
         ).represent_as(UnitSphericalRepresentation)
 
 
-    def encoder_to_spherical(
+    def encoders_to_spherical(
             self,
             encoder_positions: MountEncoderPositions
         ) -> Tuple[UnitSphericalRepresentation, MeridianSide]:
@@ -396,7 +396,7 @@ class MountModel:
         return self.apply_camera_tilt(spherical_coord, meridian_side), meridian_side
 
 
-    def encoder_to_meridian_side(
+    def encoders_to_meridian_side(
             self,
             encoder_positions: MountEncoderPositions
         ) -> MeridianSide:
@@ -417,14 +417,14 @@ class MountModel:
         return MeridianSide.EAST if encoder_1_position < 180*u.deg else MeridianSide.WEST
 
 
-    def spherical_to_encoder(
+    def spherical_to_encoders(
             self,
             coord: UnitSphericalRepresentation,
             meridian_side=MeridianSide.EAST,
         ) -> MountEncoderPositions:
         """Convert from mount-relative spherical coordinates to mount encoder positions
 
-        See docstring of encoder_to_spherical, which is the inverse of this method.
+        See docstring of `encoders_to_spherical`, which is the inverse of this method.
 
         Not all positions in the spherical coordinate system are necessarily reachable by the
         mount. For example, camera tilt or mount axes that are not perfectly orthogonal may create
@@ -511,7 +511,7 @@ class MountModel:
             inertial equatorial frame such as ICRS.
         """
         # convert encoder positions to mount-relative spherical coordinate system
-        mount_coord, _ = self.encoder_to_spherical(encoder_positions)
+        mount_coord, _ = self.encoders_to_spherical(encoder_positions)
 
         # transform pole of coordinate system from mount pole to local zenith
         return self.spherical_to_topocentric(mount_coord)
@@ -543,7 +543,7 @@ class MountModel:
         mount_coord = self.topocentric_to_spherical(sky_coord)
 
         # transform from mount-relative spherical coordiante to encoder positions
-        return self.spherical_to_encoder(mount_coord, meridian_side)
+        return self.spherical_to_encoders(mount_coord, meridian_side)
 
 
 def ha_to_ra(hour_angle: Longitude, longitude: Longitude, t: Time) -> Longitude:
