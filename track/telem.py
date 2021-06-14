@@ -38,9 +38,17 @@ class TelemSource(ABC):
 class TelemLogger:
     """Logs telemetry to a time-series database.
 
-    This class creates a connection to an InfluxDB database, samples telemetry
-    from various TelemSource objects, and writes this data to the database.
-    Telemetry is sampled in a thread that executes at a regular rate.
+    This class creates a connection to an InfluxDB database and provides interfaces for writing
+    telemetry samples to that database. There are three ways to get telemetry points into the
+    database:
+
+    1) Register objects of type `TelemSource` with an instance of this class, and then do one or
+        both of the following:
+        a) Specify a `period` at which this logger object should poll those sources asynchronously
+            from a separate thread.
+        b) Call `poll_sources()` on this logger object whenever telemetry should be gathered from
+            the registered sources.
+    2) Post telemetry points directly by calling `post_points()` with a list of `Point` objects.
 
     Attributes:
         bucket: Name of bucket in the database to write to.
@@ -61,18 +69,19 @@ class TelemLogger:
     ):
         """Inits a TelemLogger object.
 
-        Establishes a connection with the InfluxDB database and creates the worker thread.
-        Telemetry sampling will not occur until the start() method is called.
+        Establishes a connection with the InfluxDB database. If `period` is not `None`, creates a
+        worker thread to poll telemetry sources asynchronously. Note that in this case telemetry
+        sampling will not occur until the `start()` method is called.
 
         Args:
             influx_config_filename: Filename of the InfluxDB CLI configuration file, typically
                 $HOME/.influxdbv2/configs which is created by running `influx setup`.
             bucket: Name of bucket in database to write to.
-            period: Telemetry will be sampled asynchronously at this interval in seconds if set to
-                a positive value. If None this object will only poll sources for telemetry when
-                `poll_sources()` is called.
-            sources: Dict of TelemSource objects to be polled for telemetry. Values should be
-                objects of type TelemSource. Keys are only used to prevent registering the same
+            period: Telemetry from registered `TelemSource` objects will be sampled asynchronously
+                at this interval in seconds if set to a positive value. If None this object will
+                only poll sources for telemetry when `poll_sources()` is called.
+            sources: Dict of `TelemSource` objects to be polled for telemetry. Values should be
+                objects of type `TelemSource`. Keys are only used to prevent registering the same
                 object more than once.
         """
         self.bucket = bucket
@@ -184,13 +193,11 @@ class TelemLogger:
                 time.sleep(sleep_time)
 
 
-def add_program_arguments(parser: ArgParser, synchronous: bool = False) -> None:
+def add_program_arguments(parser: ArgParser) -> None:
     """Add program arguments relevant to telemetry.
 
     Args:
         parser: The instance of ArgParser to which this function will add arguments.
-        synchronous: If True, the assumption is that telemetry will only be polled synchronously.
-            In this case the telem-period program argument is omitted.
     """
     telem_group = parser.add_argument_group(
         title='Telemetry Logger Options',
@@ -206,13 +213,12 @@ def add_program_arguments(parser: ArgParser, synchronous: bool = False) -> None:
         help='filename of InfluxDB CLI config file',
         default=str(pathlib.Path.home().joinpath('.influxdbv2/configs'))
     )
-    if not synchronous:
-        telem_group.add_argument(
-            '--telem-period',
-            help='telemetry sampling period in seconds',
-            default=1.0,
-            type=float
-        )
+    telem_group.add_argument(
+        '--telem-period',
+        help='telemetry sampling period in seconds for asynchronously polled channels',
+        default=0.1,
+        type=float
+    )
 
 
 def make_telem_logger_from_args(
@@ -231,7 +237,7 @@ def make_telem_logger_from_args(
     if args.telem_enable:
         return TelemLogger(
             influx_config_filename=args.telem_influxdb_configfile,
-            period=(args.telem_period if 'telem_period' in args else None),
+            period=args.telem_period,
             sources=sources,
         )
     else:

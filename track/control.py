@@ -424,9 +424,8 @@ class Tracker:
             mount_model: Alignment model for converting to/from mount encoder positions.
             target: The target to track.
             control_loop_period: Target control loop period in seconds.
-            telem_logger: Telemetry logger object. If provided, the `poll_sources()` method will
-                be called on it once per control cycle such that telemetry is polled synchronously
-                in the same thread.
+            telem_logger: Telemetry logger object. If provided, telemetry points will be posted to
+                the database once per control cycle.
         """
         self.axes = list(mount.AxisName)
         self.controller = ModelPredictiveController(

@@ -54,7 +54,7 @@ def main():
     laser.add_program_arguments(parser)
     mounts.add_program_arguments(parser, meridian_side_required=True)
     ntp.add_program_arguments(parser)
-    telem.add_program_arguments(parser, synchronous=True)
+    telem.add_program_arguments(parser)
     args = parser.parse_args()
 
     # Set priority of this thread to realtime. Do this before constructing objects since priority
@@ -129,6 +129,7 @@ def main():
 
     if telem_logger is not None:
         telem_logger.register_sources(telem_sources)
+        telem_logger.start()
 
     try:
         tracker.run()
@@ -146,6 +147,9 @@ def main():
             game_pad.stop()
         except UnboundLocalError:
             pass
+
+        if telem_logger is not None:
+            telem_logger.stop()
 
 if __name__ == "__main__":
     main()

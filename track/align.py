@@ -221,7 +221,7 @@ def main():
     mounts.add_program_arguments(parser)
     cameras.add_program_arguments(parser, profile='align')
     ntp.add_program_arguments(parser)
-    telem.add_program_arguments(parser, synchronous=True)
+    telem.add_program_arguments(parser)
     args = parser.parse_args()
 
     # Check if system clock is synchronized to GPS
