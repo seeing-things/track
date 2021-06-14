@@ -4,14 +4,17 @@ Defines a single class Gamepad that provide support for game controller interfac
 program the integrated x- and y- values are printed to the console.
 """
 
+from datetime import datetime
 import os
 import signal
 import threading
 import time
+from typing import List
 import selectors
 import inputs
 import numpy as np
 import click
+from influxdb_client import Point
 from track.telem import TelemSource
 
 class Gamepad(TelemSource):
@@ -251,12 +254,23 @@ class Gamepad(TelemSource):
             if time_sleep > 0:
                 time.sleep(time_sleep)
 
-    def get_telem_channels(self):
-        names = ['left_x', 'left_y', 'right_x', 'right_y', 'int_x', 'int_y']
-        chans = {}
+    def get_telem_points(self) -> List[Point]:
+        """Called by telemetry logger. See `TelemSource` abstract base class."""
+
+        point = Point('gamepad')
+        # attributes of this object to be captured as fields in the telemetry measurement
+        names = ['left_x', 'left_y', 'right_x', 'right_y', 'int_x', 'int_y', 'integrator_mode']
         for name in names:
-            chans[name] = self.__dict__[name]
-        return chans
+            point.field(name, self.__dict__[name])
+        point.time(datetime.utcnow())
+
+        point_raw = Point.from_dict({
+            'measurement': 'gamepad_events',
+            'fields': self.state,
+            'time': datetime.utcnow(),
+        })
+
+        return [point, point_raw]
 
 def main():
     """Prints all gamepad events received"""

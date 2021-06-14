@@ -1,10 +1,10 @@
 """targets for use in telescope tracking control loop"""
 
 from math import inf
-from typing import Dict, List, Optional, Tuple, NamedTuple
+from typing import List, Optional, Tuple, NamedTuple
 from abc import abstractmethod
 from functools import lru_cache
-import threading
+from datetime import datetime
 import dateutil
 import numpy as np
 from configargparse import Namespace
@@ -14,13 +14,14 @@ from astropy.time import Time
 from astropy import units as u
 import ephem
 import cv2
+from influxdb_client import Point
 from track import cameras
 from track.config import ArgParser
 from track.cameras import Camera
 from track.compvis import find_features, PreviewWindow
 from track.model import MountModel
 from track.mounts import MeridianSide, MountEncoderPositions, TelescopeMount
-from track.telem import TelemSource
+from track.telem import TelemLogger
 
 
 class TargetPosition(NamedTuple):
@@ -36,7 +37,7 @@ class TargetPosition(NamedTuple):
     enc: MountEncoderPositions
 
 
-class Target(TelemSource):
+class Target:
     """Abstract base class providing a common interface for targets to be tracked."""
 
     class IndeterminatePosition(Exception):
@@ -73,14 +74,6 @@ class Target(TelemSource):
         sensors are associated with this target type there is no need to override this default
         no-op implementation.
         """
-
-    def get_telem_channels(self) -> dict:
-        """Called by telemetry polling thread to get a dict of telem channels.
-
-        This default implementation returns an empty dict. Override to return a non-empty set of
-        channels.
-        """
-        return {}
 
 
 class FixedMountEncodersTarget(Target):
@@ -309,6 +302,7 @@ class CameraTarget(Target):
             mount_model: MountModel,
             meridian_side: Optional[MeridianSide] = None,
             camera_timeout: float = inf,
+            telem_logger: Optional[TelemLogger] = None,
         ):
         """Construct an instance of CameraTarget
 
@@ -321,11 +315,14 @@ class CameraTarget(Target):
                 invoked.
             camera_timeout: How long to wait for a frame from the camera in seconds on calls to
                 `compute_error()`. If `inf`, `compute_error()` will block indefinitely.
+            telem_logger: Optional instance of `TelemLogger` to which telemetry points will be
+                written.
         """
         self.camera = camera
         self.camera_timeout = camera_timeout
         self.mount = mount
         self.mount_model = mount_model
+        self.telem_logger = telem_logger
         self.guide_cam_align_error = mount_model.model_param_set.guide_cam_align_error
         self.guide_cam_align_error_px = (
             self.guide_cam_align_error.deg
@@ -343,15 +340,11 @@ class CameraTarget(Target):
 
         self.target_position = None
 
-        self._telem_mutex = threading.Lock()
-        self._telem_chans = {}
-
     def camera_to_directional_offset(
             self,
             target_x: Angle,
             target_y: Angle,
             mount_meridian_side: MeridianSide,
-            telem_chans: Optional[Dict] = None
         ) -> Tuple[Angle, Angle]:
         """Transform from a position in camera frame to a magnitude and position angle
 
@@ -360,7 +353,6 @@ class CameraTarget(Target):
             target_y: Target position in camera's y-axis
             mount_meridian_side: The mount's meridian side at the time when the camera frame was
                 captured
-            telem_chans: Dict to be populated with new telemetry channels
 
         Returns:
             A tuple containing the target position offset magnitude and angle in the mount-relative
@@ -381,25 +373,18 @@ class CameraTarget(Target):
             # camera orientation flips when crossing the pole
             target_position_angle += 180*u.deg
 
-        if telem_chans is not None:
-            telem_chans['error_mag'] = target_offset_magnitude.deg
-            telem_chans['target_direction_cam'] = target_direction_cam.deg
-            telem_chans['target_position_angle'] = target_position_angle.deg
-
         return target_offset_magnitude, target_position_angle
 
     def _camera_to_mount_position(
             self,
             target_x: Angle,
             target_y: Angle,
-            telem: Optional[Dict] = None,
         ) -> UnitSphericalRepresentation:
         """Transform from target position in camera frame to position in mount frame
 
         Args:
             target_x: Target position in camera's x-axis
             target_y: Target position in camera's y-axis
-            telem_chans: Dict to be populated with new telemetry channels
 
         Returns:
             Target position in mount frame
@@ -426,17 +411,12 @@ class CameraTarget(Target):
             target_x,
             target_y,
             mount_meridian_side,
-            telem,
         )
 
         target_coord = SkyCoord(mount_coord).directional_offset_by(
             position_angle=target_position_angle,
             separation=target_offset_magnitude
         ).represent_as(UnitSphericalRepresentation)
-
-        if telem is not None:
-            for axis in self.mount.AxisName:
-                telem[f'mount_enc_{axis}'] = mount_enc_positions[axis].deg
 
         return target_coord
 
@@ -505,7 +485,7 @@ class CameraTarget(Target):
             raise self.IndeterminatePosition('No target detected in most recent frame')
         return self.target_position
 
-    def process_camera_frame(self, telem: Optional[Dict]) -> Tuple[Time, Angle, Angle]:
+    def process_camera_frame(self) -> Tuple[Time, Angle, Angle]:
         """Get frame from camera and find target using computer vision
 
         Args:
@@ -544,9 +524,14 @@ class CameraTarget(Target):
         target_x = Angle(target_x_px * self.camera.pixel_scale * self.camera.binning * u.deg)
         target_y = Angle(target_y_px * self.camera.pixel_scale * self.camera.binning * u.deg)
 
-        if telem is not None:
-            telem['target_cam_x'] = target_x.deg
-            telem['target_cam_y'] = target_y.deg
+        if self.telem_logger is not None:
+            p = Point('camera_target')
+            p.field('x', target_x.deg)
+            p.field('y', target_y.deg)
+            p.tag('units', 'degrees')
+            p.tag('class', type(self).__name__)
+            p.time(target_time.to_datetime())
+            self.telem_logger.post_points(p)
 
         return target_time, target_x, target_y
 
@@ -560,16 +545,14 @@ class CameraTarget(Target):
         4) The centroid position of the target blob is transformed from camera frame to topocentric
            frame and to mount encoder positions. These are cached in this object.
         """
-        telem = {}
         try:
-            target_time, target_x, target_y = self.process_camera_frame(telem)
+            target_time, target_x, target_y = self.process_camera_frame()
         except self.IndeterminatePosition:
             self.target_position = None
-            self._set_telem_channels()
             return
 
         # transform to world coordinates
-        position_mount = self._camera_to_mount_position(target_x, target_y, telem)
+        position_mount = self._camera_to_mount_position(target_x, target_y)
 
         position_enc = self.mount_model.spherical_to_encoder(
             position_mount,
@@ -577,23 +560,6 @@ class CameraTarget(Target):
         )
         position_topo = self.mount_model.spherical_to_topocentric(position_mount)
         self.target_position = TargetPosition(target_time, position_topo, position_enc)
-        self._set_telem_channels(telem)
-
-    def _set_telem_channels(self, chans: Optional[Dict] = None) -> None:
-        """Set telemetry dict polled by telemetry thread"""
-        self._telem_mutex.acquire()
-        self._telem_chans = {}
-        if chans is not None:
-            self._telem_chans.update(chans)
-        self._telem_mutex.release()
-
-    def get_telem_channels(self) -> dict:
-        """Called by telemetry polling thread -- see TelemSource abstract base class"""
-        # Protect dict copy with mutex since this method is called from another thread
-        self._telem_mutex.acquire()
-        chans = self._telem_chans.copy()
-        self._telem_mutex.release()
-        return chans
 
 
 class SensorFusionTarget(Target):
@@ -608,6 +574,7 @@ class SensorFusionTarget(Target):
             meridian_side: MeridianSide,
             filter_gain: float = 5e-2,
             bias_mag_limit: Angle = Angle(1.0*u.deg),
+            telem_logger: Optional[TelemLogger] = None,
         ):
         """Construct an instance of SensorFusionTarget
 
@@ -633,9 +600,7 @@ class SensorFusionTarget(Target):
         self.blind_target_bias = 0.0
         self.filter_gain = filter_gain
         self.bias_mag_limit = bias_mag_limit
-
-        self._telem_mutex = threading.Lock()
-        self._telem_chans = {}
+        self.telem_logger = telem_logger
 
     # Cache results to avoid re-computing unnecessarily. Strictly the cache should be cleared each
     # time the `blind_target_bias` member variable is updated but this is intentionally ignored to
@@ -678,6 +643,17 @@ class SensorFusionTarget(Target):
             )
         )
 
+    def _post_telemetry(self) -> None:
+        """Post telemetry points"""
+        if self.telem_logger is not None:
+            p = Point('sensor_fusion')
+            p.field('blind_target_bias_mag', np.abs(self.blind_target_bias))
+            p.field('blind_target_bias_angle', np.degrees(np.angle(self.blind_target_bias)))
+            p.tag('units', 'degrees')
+            p.tag('class', type(self).__name__)
+            p.time(datetime.utcnow())
+            self.telem_logger.post_points(p)
+
     def process_sensor_data(self) -> None:
         """Get camera frame and update blind target bias terms.
 
@@ -686,14 +662,10 @@ class SensorFusionTarget(Target):
         processes this error to generate a bias term that is used to adjust the target predicted
         position used for pointing.
         """
-        telem = {}
-
         try:
-            _, target_x, target_y = self.camera_target.process_camera_frame(telem)
+            _, target_x, target_y = self.camera_target.process_camera_frame()
         except Target.IndeterminatePosition:
-            telem['blind_target_bias_mag'] = np.abs(self.blind_target_bias)
-            telem['blind_target_bias_angle'] = np.degrees(np.angle(self.blind_target_bias))
-            self._set_telem_channels(telem)
+            self._post_telemetry()
             return
 
         # get meridian side of the mount
@@ -704,7 +676,6 @@ class SensorFusionTarget(Target):
             target_x,
             target_y,
             mount_meridian_side,
-            telem,
         )
 
         target_offset = target_offset_mag.deg * np.exp(1j*target_position_angle.rad)
@@ -718,27 +689,7 @@ class SensorFusionTarget(Target):
                 1j*np.angle(self.blind_target_bias)
             )
 
-        telem['target_offset_mag'] = target_offset_mag.deg
-        telem['target_offset_position_angle'] = target_position_angle.deg
-        telem['blind_target_bias_mag'] = np.abs(self.blind_target_bias)
-        telem['blind_target_bias_angle'] = np.degrees(np.angle(self.blind_target_bias))
-        self._set_telem_channels(telem)
-
-    def _set_telem_channels(self, chans: Optional[Dict] = None) -> None:
-        """Set telemetry dict polled by telemetry thread"""
-        self._telem_mutex.acquire()
-        self._telem_chans = {}
-        if chans is not None:
-            self._telem_chans.update(chans)
-        self._telem_mutex.release()
-
-    def get_telem_channels(self) -> dict:
-        """Called by telemetry polling thread -- see TelemSource abstract base class"""
-        # Protect dict copy with mutex since this method is called from another thread
-        self._telem_mutex.acquire()
-        chans = self._telem_chans.copy()
-        self._telem_mutex.release()
-        return chans
+        self._post_telemetry()
 
 
 def add_program_arguments(parser: ArgParser) -> None:
@@ -805,7 +756,8 @@ def make_target_from_args(
         args: Namespace,
         mount: TelescopeMount,
         mount_model: MountModel,
-        meridian_side: MeridianSide
+        meridian_side: MeridianSide,
+        telem_logger: Optional[TelemLogger] = None,
     ) -> Target:
     """Construct the appropriate target based on the program arguments provided.
 
@@ -850,6 +802,7 @@ def make_target_from_args(
             camera=camera,
             mount=mount,
             mount_model=mount_model,
+            telem_logger=telem_logger,
         )
 
     # Create a PyEphem Body object corresonding to the given fixed coordinates
@@ -912,6 +865,7 @@ def make_target_from_args(
             camera=camera,
             mount=mount,
             mount_model=mount_model,
+            telem_logger=telem_logger,
         )
         target = SensorFusionTarget(
             blind_target=blind_target,
@@ -919,6 +873,7 @@ def make_target_from_args(
             mount=mount,
             model=mount_model,
             meridian_side=meridian_side,
+            telem_logger=telem_logger,
             filter_gain=args.fusion_gain,
         )
 

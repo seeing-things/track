@@ -276,9 +276,7 @@ def main():
 
     camera = cameras.make_camera_from_args(args, profile='align')
 
-    if args.telem_enable:
-        telem_logger = telem.make_telem_logger_from_args(args)
-        telem_logger.start()
+    telem_logger = telem.make_telem_logger_from_args(args)
 
     if args.meridian_side is not None:
         meridian_side = MeridianSide[args.meridian_side.upper()]
@@ -331,9 +329,11 @@ def main():
             tracker = Tracker(
                 mount=mount,
                 mount_model=starter_mount_model,
-                target=target
+                target=target,
+                telem_logger=telem_logger,
             )
-            telem_logger.sources['tracker'] = tracker
+            if telem_logger is not None:
+                telem_logger.register_sources({'tracker': tracker})
             stop_reason = tracker.run(tracker.StoppingConditions(
                 timeout=args.timeout, error_threshold=Angle(2.0 * u.deg)
             ))
@@ -458,9 +458,6 @@ def main():
             print('Mount safed successfully!')
         else:
             print('Warning: Mount may be in an unsafe state!')
-
-        if args.telem_enable:
-            telem_logger.stop()
 
         # remove observations directory if it is empty
         try:

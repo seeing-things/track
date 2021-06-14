@@ -4,8 +4,8 @@ Track provides the classes required to point a telescope with software using a f
 loop.
 """
 
+from datetime import datetime
 import time
-import threading
 from enum import Flag, auto
 from typing import Callable, NamedTuple, Tuple, Optional, Union
 import numpy as np
@@ -13,10 +13,11 @@ from scipy.optimize import minimize
 import astropy.units as u
 from astropy.coordinates import SkyCoord, Angle, UnitSphericalRepresentation
 from astropy.time import Time, TimeDelta
+from influxdb_client import Point
 from track.model import MountModel
 from track.mounts import TelescopeMount, MountEncoderPositions
 from track.targets import Target
-from track.telem import TelemSource
+from track.telem import TelemLogger
 
 
 def separation(sc1: SkyCoord, sc2: SkyCoord) -> Angle:
@@ -376,7 +377,7 @@ class ModelPredictiveController:
         return np.mean(np.abs(pointing_errors))
 
 
-class Tracker(TelemSource):
+class Tracker:
     """Main tracking loop class.
 
     This class is the core of the track package. It forms a closed-loop control system. The thing
@@ -414,6 +415,7 @@ class Tracker(TelemSource):
             mount_model: MountModel,
             target: Target,
             control_loop_period: float = 0.1,
+            telem_logger: Optional[TelemLogger] = None,
         ):
         """Constructs a Tracker object.
 
@@ -422,6 +424,8 @@ class Tracker(TelemSource):
             mount_model: Alignment model for converting to/from mount encoder positions.
             target: The target to track.
             control_loop_period: Target control loop period in seconds.
+            telem_logger: Telemetry logger object. If provided, telemetry points will be posted to
+                the database once per control cycle.
         """
         self.axes = list(mount.AxisName)
         self.controller = ModelPredictiveController(
@@ -434,15 +438,13 @@ class Tracker(TelemSource):
         self.mount = mount
         self.mount_model = mount_model
         self.target = target
+        self.telem_logger = telem_logger
         self.num_iterations = 0
         self.callback = None
 
         # these are set when `run()` is called
         self.stopping_conditions = None
         self.time_run_called = None
-
-        self._telem_mutex = threading.Lock()
-        self._telem_chans = {}
 
     @property
     def target(self) -> Target:
@@ -499,6 +501,7 @@ class Tracker(TelemSource):
             self.target.process_sensor_data()
 
             # get current position and slew rates of the mount
+            # pylint: disable=consider-using-generator
             mount_state = MountState(
                 rates=tuple([self.mount.get_slew_rate(axis) for axis in self.axes]),
                 position=self.mount.get_position(),
@@ -550,6 +553,13 @@ class Tracker(TelemSource):
         ) -> "Tracker.StopReason":
         """Final tasks to perform at the end of each control cycle."""
 
+        # list of telemetry points to be populated
+        points = []
+
+        # timestamp to use for all telemetry points that don't correspond to sensor readings
+        # or other events that occur at well-defined times
+        cycle_timestamp = datetime.utcnow()
+
         # coordinate system transformations
         position_mount_topo = self.mount_model.encoders_to_topocentric(mount_state.position)
 
@@ -559,46 +569,82 @@ class Tracker(TelemSource):
 
         except Target.IndeterminatePosition:
             stop_reason = self._check_stopping_conditions()
-            self._telem_mutex.acquire()
-            self._telem_chans = {}
 
         else:
-            error_enc = {axis: float(smallest_allowed_error(
-                mount_state.position[axis].deg,
-                position_target.enc[axis].deg,
-                self.mount.no_cross_encoder_positions()[axis].deg,
-            )) for axis in self.axes}
-
             # on-sky separation between target and mount positions
             error_magnitude = separation(position_target.topo, position_mount_topo)
 
             stop_reason = self._check_stopping_conditions(error_magnitude)
 
-            # populate dict of telemetry channels
-            self._telem_mutex.acquire()
-            self._telem_chans = {}
-            self._telem_chans['target_az'] = position_target.topo.az.deg
-            self._telem_chans['target_alt'] = position_target.topo.alt.deg
-            self._telem_chans['error_mag'] = error_magnitude.deg
+            if self.telem_logger is not None:
+                error_enc = {axis: float(smallest_allowed_error(
+                    mount_state.position[axis].deg,
+                    position_target.enc[axis].deg,
+                    self.mount.no_cross_encoder_positions()[axis].deg,
+                )) for axis in self.axes}
+
+                # target position
+                pt = Point('target_position')
+                pt.field('azimuth', position_target.topo.az.deg)
+                pt.field('altitude', position_target.topo.alt.deg)
+                for axis in self.axes:
+                    pt.field(f'encoder_{axis}', position_target.enc[axis].deg)
+                pt.tag('units', 'degrees')
+                pt.tag('class', type(self).__name__)
+                pt.time(position_target.time.to_datetime())
+                points.append(pt)
+
+                # mount position error
+                pt = Point('mount_position_error')
+                pt.field('magnitude', error_magnitude.deg)
+                for axis in self.axes:
+                    pt.field(f'enoder_{axis}', error_enc[axis])
+                pt.tag('units', 'degrees')
+                pt.tag('class', type(self).__name__)
+                pt.time(cycle_timestamp)
+                points.append(pt)
+
+        if self.telem_logger is not None:
+
+            pt = Point('control_cycle_stats')
+            pt.field('period', cycle_period)
+            pt.field('cycle_count', self.num_iterations)
+            pt.field('callback_override', callback_override)
+            pt.tag('class', type(self).__name__)
+            pt.time(cycle_timestamp)
+            points.append(pt)
+
+            # mount positions
+            pt = Point('mount_position')
             for axis in self.axes:
-                self._telem_chans[f'target_enc_{axis}'] = position_target.enc[axis].deg
-                self._telem_chans[f'error_enc_{axis}'] = error_enc[axis]
+                pt.field(f'encoder_{axis}', mount_state.position[axis].deg)
+            pt.field('azimuth', position_mount_topo.az.deg)
+            pt.field('altitude', position_mount_topo.alt.deg)
+            pt.tag('units', 'degrees')
+            pt.tag('class', type(self).__name__)
+            pt.time(mount_state.time_queried.to_datetime())
+            points.append(pt)
 
+            # mount slew rate
+            pt = Point('mount_rate')
+            for axis in self.axes:
+                pt.field(f'axis_{axis}', mount_state.rates[axis])
+            pt.tag('units', 'degrees/s')
+            pt.tag('class', type(self).__name__)
+            pt.time(mount_state.time_queried.to_datetime())
+            points.append(pt)
 
-        if cycle_period is not None:
-            self._telem_chans['cycle_period'] = cycle_period
-        self._telem_chans['num_iterations'] = self.num_iterations
-        self._telem_chans['callback_override'] = int(callback_override)
-        self._telem_chans['mount_az'] = position_mount_topo.az.deg
-        self._telem_chans['mount_alt'] = position_mount_topo.alt.deg
-        for axis in self.axes:
-            self._telem_chans[f'rate_{axis}'] = mount_state.rates[axis]
-            self._telem_chans[f'mount_enc_{axis}'] = mount_state.position[axis].deg
-            if rate_command is not None:
-                self._telem_chans[f'rate_command_{axis}'] = rate_command.rates[axis]
-        if rate_command_time_error is not None:
-            self._telem_chans['rate_command_time_error'] = rate_command_time_error.sec
-        self._telem_mutex.release()
+            # controller commands
+            pt = Point('controller_commands')
+            for axis in self.axes:
+                pt.field(f'rate_axis_{axis}', rate_command.rates[axis])
+            pt.field('time_error', rate_command_time_error.sec)
+            pt.tag('units', 'degrees/s')
+            pt.tag('class', type(self).__name__)
+            pt.time(cycle_timestamp)
+            points.append(pt)
+
+            self.telem_logger.post_points(points)
 
         self.num_iterations += 1
         return stop_reason
@@ -632,9 +678,3 @@ class Tracker(TelemSource):
                     stop_reason |= self.StopReason.CONVERGED
 
         return stop_reason
-
-    def get_telem_channels(self):
-        self._telem_mutex.acquire()
-        chans = self._telem_chans.copy()
-        self._telem_mutex.release()
-        return chans

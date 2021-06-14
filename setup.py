@@ -55,7 +55,7 @@ setup(
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version='0.3.0',
+    version='0.4.0',
 
     description='A mess of code for tracking moving objects with a telescope',
     long_description=long_description,
@@ -92,7 +92,7 @@ setup(
         'ConfigArgParse==0.12.0',
         'ephem>=3.7',
         'gps>=3.19',
-        'influxdb>=5.0.0',  # telemetry database client for InfluxDB 1.0
+        'influxdb-client>=1.14',  # telemetry database client; requires InfluxDB 2.0
         'inputs>=0.1',
         'lxml',  # parser for bs4
         'matplotlib>=2.1',
@@ -105,6 +105,7 @@ setup(
         'pyftdi>=0.49',  # for laser pointer control
         'requests',
         'scipy',
+        'toml',  # parser for InfluxDB CLI configuration files
         'v4l2 @ https://github.com/seeing-things/python-v4l2/tarball/master',  # webcam support
     ],
 

@@ -92,22 +92,22 @@ def main():
     # Create object with base type TelescopeMount
     mount = mounts.make_mount_from_args(args)
 
-    telem_sources = {}
+    telem_logger = telem.make_telem_logger_from_args(args)
 
     target = targets.make_target_from_args(
         args,
         mount,
         mount_model,
-        MeridianSide[args.meridian_side.upper()]
+        MeridianSide[args.meridian_side.upper()],
+        telem_logger=telem_logger,
     )
-    telem_sources['target'] = target
 
     tracker = Tracker(
         mount=mount,
         mount_model=mount_model,
         target=target,
+        telem_logger=telem_logger,
     )
-    telem_sources['tracker'] = tracker
 
     try:
         laser_pointer = laser.make_laser_from_args(args)
@@ -115,6 +115,7 @@ def main():
         print('Could not connect to laser pointer FTDI device.')
         laser_pointer = None
 
+    telem_sources = {}
     try:
         # Create gamepad object and register callback
         game_pad = Gamepad()
@@ -126,8 +127,8 @@ def main():
     except RuntimeError:
         print('No gamepads found.')
 
-    if args.telem_enable:
-        telem_logger = telem.make_telem_logger_from_args(args, telem_sources)
+    if telem_logger is not None:
+        telem_logger.register_sources(telem_sources)
         telem_logger.start()
 
     try:
@@ -143,14 +144,12 @@ def main():
             print('Warning: Mount may be in an unsafe state!')
 
         try:
-            telem_logger.stop()
-        except UnboundLocalError:
-            pass
-
-        try:
             game_pad.stop()
         except UnboundLocalError:
             pass
+
+        if telem_logger is not None:
+            telem_logger.stop()
 
 if __name__ == "__main__":
     main()
