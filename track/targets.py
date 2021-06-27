@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple, NamedTuple
 from abc import abstractmethod, ABC
 from functools import lru_cache
 from datetime import datetime
+import time
 import dateutil
 import numpy as np
 from configargparse import Namespace
@@ -22,6 +23,23 @@ from track.compvis import find_features, PreviewWindow
 from track.model import MountModel
 from track.mounts import MeridianSide, MountEncoderPositions, TelescopeMount
 from track.telem import TelemLogger
+
+
+def spiral(elapsed_time: float, spiral_spacing_deg: float, velocity_deg_s: float) -> complex:
+    """Generate an arithmetic (Archimedean) spiral with contant linear velocity.
+
+    Args:
+        elapsed_time: Elapsed time in seconds since the start of the search.
+        spiral_spacing_deg: The spacing between each revolution of the spiral arm in degrees.
+        velocity_deg_s: Approximate velocity in direction of travel in degrees per second. Note
+            that this is *not* angular velocity around the spiral -- this is the velocity of
+            apparent motion across the sky.
+
+    Returns:
+        A complex value giving a single position along the spiral search in the complex plane.
+    """
+    theta = np.sqrt(4 * np.pi * velocity_deg_s / spiral_spacing_deg * elapsed_time)
+    return spiral_spacing_deg / (2*np.pi) * theta * np.exp(1j*theta)
 
 
 class TargetPosition(NamedTuple):
@@ -583,6 +601,7 @@ class SensorFusionTarget(Target):
             filter_gain: float = 5e-2,
             bias_mag_limit: Angle = Angle(1.0*u.deg),
             telem_logger: Optional[TelemLogger] = None,
+            spiral_search: bool = False,
         ):
         """Construct an instance of SensorFusionTarget
 
@@ -598,6 +617,7 @@ class SensorFusionTarget(Target):
                 camera. The output of the integrator is the estimate of the blind target bias.
             bias_mag_limit: The magnitude of the blind target bias estimate is limited to this
                 value to prevent it from growing excessively large.
+            spiral_search: Do a spiral search until a target is found in the camera.
         """
 
         self.blind_target = blind_target
@@ -609,6 +629,15 @@ class SensorFusionTarget(Target):
         self.filter_gain = filter_gain
         self.bias_mag_limit = bias_mag_limit
         self.telem_logger = telem_logger
+        self.spiral_search = spiral_search
+
+        if spiral_search:
+            # spiral search parameters
+            fov_height, _ = self.camera_target.camera.field_of_view
+            self.spiral_spacing_deg = 0.5 * fov_height  # half of frame height so there is overlap
+            self.velocity_deg_s = fov_height / 2.0  # 2 seconds to traverse frame height
+            self.spiral_start_time = None  # will be initialized later
+
 
     # Cache results to avoid re-computing unnecessarily. Strictly the cache should be cleared each
     # time the `blind_target_bias` member variable is updated but this is intentionally ignored to
@@ -673,6 +702,14 @@ class SensorFusionTarget(Target):
         try:
             _, target_x, target_y = self.camera_target.process_camera_frame()
         except Target.IndeterminatePosition:
+            # spiral search overwrites any pre-existing bias term
+            if self.spiral_search:
+                if self.spiral_start_time is None:
+                    self.spiral_start_time = time.perf_counter()
+                spiral_elapsed_time = time.perf_counter() - self.spiral_start_time
+                self.blind_target_bias = spiral(
+                    spiral_elapsed_time, self.spiral_spacing_deg, self.velocity_deg_s)
+
             self._post_telemetry()
             return
 
@@ -721,6 +758,11 @@ def add_program_arguments(parser: ArgParser) -> None:
         help='gain for sensor fusion',
         type=float,
         default=5e-2,
+    )
+    target_group.add_argument(
+        '--spiral-search',
+        help='perform a spiral search until target is detected in camera (sensor fusion mode only)',
+        action='store_true',
     )
 
     subparsers = parser.add_subparsers(title='target types', dest='target_type')
@@ -776,6 +818,9 @@ def make_target_from_args(
     """
     if args.target_type == 'camera' and args.fuse:
         raise ValueError('Cannot fuse camera target with itself')
+
+    if args.spiral_search and not args.fuse:
+        raise ValueError('Spiral search only supported with --fuse')
 
     if args.target_type == 'flightclub':
         print(f'In Flight Club trajectory mode using {args.file}')
@@ -887,6 +932,7 @@ def make_target_from_args(
             meridian_side=meridian_side,
             telem_logger=telem_logger,
             filter_gain=args.fusion_gain,
+            spiral_search=args.spiral_search,
         )
 
     return target
