@@ -21,6 +21,8 @@ import numpy as np
 import v4l2
 from configargparse import Namespace
 import cv2
+from astropy.coordinates import Angle
+import astropy.units as u
 import asi
 from asi import ASICheck, ASIError
 from track.config import ArgParser
@@ -129,6 +131,52 @@ class Camera(ABC):
         This method should add program arguments required by this camera to the passed-in ArgParser
         instance.
         """
+
+    def pixel_in_frame(self, position_x: float, position_y: float) -> bool:
+        """Check if a pixel location is inside the frame.
+
+        Args:
+            position_x: Position along the horizontal axis, where 0 is the center of the left-most
+                pixel and positive is right.
+            position_y: Position along the vertical axis, where 0 is the center of the top-most
+                pixel and positive is down.
+
+        Returns:
+            True if the pixel location is within the frame. False otherwise.
+        """
+        frame_height, frame_width = self.frame_shape
+        # Each pixel spans from -0.5 to +0.5 about any integer position
+        return (
+            (-0.5 <= position_x <= frame_width - 0.5) and
+            (-0.5 <= position_y <= frame_height - 0.5)
+        )
+
+    def pixel_to_angle(self, position_x: float, position_y: float) -> Angle:
+        """Convert a pixel location to a complex angle from frame center.
+
+        Args:
+            position_x: Position along the horizontal axis, where 0 is the center of the left-most
+                pixel and positive is right.
+            position_y: Position along the vertical axis, where 0 is the center of the top-most
+                pixel and positive is down.
+
+        Returns:
+            An Angle representing the position in a coordinate system where the center of the frame
+            is the origin with the positive real axis pointing to the right and the positive
+            imaginary axis pointing up. The magnitude of the angle represents the separation
+            angle between the center of the frame and this position in the sky.
+        """
+        frame_height, frame_width = self.frame_shape
+
+        # pixel location of the center of the camera frame
+        center_px_x = frame_width / 2.0 - 0.5
+        center_px_y = frame_height / 2.0 - 0.5
+
+        # angular separation from the frame center along X and Y axes separately
+        target_x = Angle((position_x - center_px_x) * self.pixel_scale * self.binning * u.deg)
+        target_y = Angle((center_px_y - position_y) * self.pixel_scale * self.binning * u.deg)
+
+        return target_x + 1j*target_y
 
 
 class CameraTimeout(Exception):
