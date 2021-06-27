@@ -178,7 +178,7 @@ def attempt_plate_solving(
     mount_position = mount.get_position()
 
     try:
-        sc_eq = track.plate_solve(
+        _, sc_eq = track.plate_solve(
             frame,
             camera_width=camera.field_of_view[1]
         )

@@ -43,7 +43,7 @@ def main():
 
         try:
             start_time = time.time()
-            sc = track.plate_solve(
+            _, sc = track.plate_solve(
                 frame,
                 camera_width=camera.field_of_view[1]
             )
