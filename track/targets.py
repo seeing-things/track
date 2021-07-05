@@ -783,7 +783,7 @@ def add_program_arguments(parser: ArgParser) -> None:
     parser_tle.add_argument('file', help='filename of two-line element (TLE) target ephemeris')
 
     subparsers.add_parser('camera', help='follows bright target detected in camera')
-    cameras.add_program_arguments(parser, profile='track')
+    cameras.add_program_arguments(parser)
 
     parser_coord_eq = subparsers.add_parser('coord-eq', help='fixed equatorial coordinate')
     parser_coord_eq.add_argument('ra', help='right ascension [deg]', type=float)
@@ -850,7 +850,7 @@ def make_target_from_args(
 
     elif args.target_type == 'camera':
         print('In camera mode')
-        camera = cameras.make_camera_from_args(args, profile='track')
+        camera = cameras.make_camera_from_args(args, video_mode=True)
         target = CameraTarget(
             camera=camera,
             mount=mount,
@@ -917,7 +917,7 @@ def make_target_from_args(
     if args.fuse:
         print('Sensor fusion with camera enabled')
         blind_target = target
-        camera = cameras.make_camera_from_args(args, profile='track')
+        camera = cameras.make_camera_from_args(args, video_mode=True)
         camera_target = CameraTarget(
             camera=camera,
             mount=mount,

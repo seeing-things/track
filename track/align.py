@@ -262,7 +262,7 @@ def main():
     )
     gps_client.add_program_arguments(parser)
     mounts.add_program_arguments(parser)
-    cameras.add_program_arguments(parser, profile='align')
+    cameras.add_program_arguments(parser)
     ntp.add_program_arguments(parser)
     telem.add_program_arguments(parser)
     args = parser.parse_args()
@@ -289,7 +289,7 @@ def main():
         location=location
     )
 
-    camera = cameras.make_camera_from_args(args, profile='align')
+    camera = cameras.make_camera_from_args(args)
 
     telem_logger = telem.make_telem_logger_from_args(args)
 

@@ -125,7 +125,7 @@ class Camera(ABC):
 
     @staticmethod
     @abstractmethod
-    def add_program_arguments(parser: ArgParser, profile: str) -> None:
+    def add_program_arguments(parser: ArgParser) -> None:
         """Adds program arguments specific to this camera.
 
         This method should add program arguments required by this camera to the passed-in ArgParser
@@ -196,44 +196,24 @@ class ASICamera(Camera):
             return 1 if self == self.RAW8 else 2
 
     @staticmethod
-    def add_program_arguments(parser: ArgParser, profile: str) -> None:
+    def add_program_arguments(parser: ArgParser) -> None:
         """Adds program arguments for ZWO ASI camera configuration.
 
         Args:
             parser: The instance of ArgParser to which this function will add arguments.
-            profile: 'track' or 'align' to indicate which set of arguments to add.
-
-        Raises:
-            ValueError if profile is set to an invalid string.
         """
-        if profile == 'align':
-            parser.add_argument(
-                '--zwo-exposure-time-align',
-                help='ZWO camera exposure time used during alignment in seconds',
-                default=0.5,
-                type=float
-            )
-            parser.add_argument(
-                '--zwo-gain-align',
-                help='ZWO camera gain used during alignment',
-                default=400,
-                type=int
-            )
-        elif profile == 'track':
-            parser.add_argument(
-                '--zwo-exposure-time',
-                help='ZWO camera exposure time used during tracking in seconds',
-                default=0.03,
-                type=float
-            )
-            parser.add_argument(
-                '--zwo-gain',
-                help='ZWO camera gain used during tracking',
-                default=10,
-                type=int
-            )
-        else:
-            ValueError('profile must be "track" or "align"')
+        parser.add_argument(
+            '--zwo-exposure-time',
+            help='ZWO camera exposure time used during tracking in seconds',
+            default=0.03,
+            type=float
+        )
+        parser.add_argument(
+            '--zwo-gain',
+            help='ZWO camera gain used during tracking',
+            default=10,
+            type=int
+        )
         parser.add_argument(
             '--zwo-binning',
             help='ZWO camera binning',
@@ -247,35 +227,22 @@ class ASICamera(Camera):
         )
 
     @staticmethod
-    def from_program_args(args: Namespace, profile: str) -> 'ASICamera':
+    def from_program_args(args: Namespace) -> 'ASICamera':
         """Factory to make a WebCam instance from program arguments
 
         Args:
             args: Set of program arguments.
-            profile: Set to 'tracking' to use the tracking gain and exposure time or to 'align' to
-                use the alignment gain and exposure time.
 
         Returns:
             An instance of ASICamera initialized with the appropriate configuration.
-
-        Raises:
-            ValueError if profile is set to an invalid string.
         """
         camera = ASICamera(
             pixel_scale=args.camera_pixel_scale / 3600.0,
             binning=args.zwo_binning,
             name=args.zwo_name,
         )
-        if profile == 'track':
-            camera.exposure = args.zwo_exposure_time
-            camera.gain = args.zwo_gain
-            camera.video_mode = True
-        elif profile == 'align':
-            camera.exposure = args.zwo_exposure_time_align
-            camera.gain = args.zwo_gain_align
-            camera.video_mode = False
-        else:
-            raise ValueError('profile must be "track" or "align"')
+        camera.exposure = args.zwo_exposure_time
+        camera.gain = args.zwo_gain
         return camera
 
     def __init__(
@@ -507,8 +474,17 @@ class WebCam(Camera):
     """Webcams or other cameras that can be accessed using the 'Video4Linux' (V4L) drivers."""
 
     @staticmethod
-    def add_program_arguments(parser: ArgParser, profile: str) -> None:
-        parser.add_argument('--webcam-dev', help='webcam device node path', default='/dev/video0')
+    def add_program_arguments(parser: ArgParser) -> None:
+        """Adds program arguments for Webcam camera configuration.
+
+        Args:
+            parser: The instance of ArgParser to which this function will add arguments.
+        """
+        parser.add_argument(
+            '--webcam-dev',
+            help='webcam device node path',
+            default='/dev/video0'
+        )
         parser.add_argument(
             '--webcam-exposure',
             help='webcam exposure time (unspecified units)',
@@ -520,14 +496,14 @@ class WebCam(Camera):
             help='directory to save webcam frames as jpeg files on disk',
         )
 
-    # pylint: disable=unused-argument
     @staticmethod
-    def from_program_args(args: Namespace, profile: str) -> 'WebCam':
+    def from_program_args(args: Namespace) -> 'WebCam':
         """Factory to make a WebCam instance from program arguments"""
         return WebCam(
             dev_path=args.webcam_dev,
             ctrl_exposure=args.webcam_exposure,
-            pixel_scale=args.camera_pixel_scale / 3600.0,  # program arg is in arcseconds
+            # program arg is in arcseconds
+            pixel_scale=args.camera_pixel_scale / 3600.0,
             frame_dump_dir=args.webcam_frame_dump_dir,
         )
 
@@ -877,16 +853,15 @@ class WebCam(Camera):
             f.write(jpeg)
 
 
-def add_program_arguments(parser: ArgParser, profile: str) -> None:
+def add_program_arguments(parser: ArgParser) -> None:
     """Add program arguments for all cameras.
 
     Args:
         parser: The instance of ArgParser to which this function will add arguments.
-        profile: 'track' or 'align' to indicate which set of arguments to add.
     """
     camera_group = parser.add_argument_group(
         title='General Camera Options',
-        description='Options that apply to all cameras',
+        description='Options that apply to cameras of any type',
     )
     camera_group.add_argument(
         '--camera-type',
@@ -905,23 +880,26 @@ def add_program_arguments(parser: ArgParser, profile: str) -> None:
         title='Webcam Options',
         description='Options that apply when camera-type is set to "webcam"',
     )
-    WebCam.add_program_arguments(webcam_group, profile)
+    WebCam.add_program_arguments(webcam_group)
     zwo_group = parser.add_argument_group(
         title='ZWO ASI Camera Options',
         description='Options that apply when camera-type is set to "zwo"',
     )
-    ASICamera.add_program_arguments(zwo_group, profile)
+    ASICamera.add_program_arguments(zwo_group)
 
 
-def make_camera_from_args(args: Namespace, profile: str) -> Camera:
+def make_camera_from_args(args: Namespace, video_mode: bool = False) -> Camera:
     """Construct the appropriate camera based on the program arguments provided.
 
     Args:
         args: Set of program arguments.
-        profile: 'track' or 'align' to indicate which set of arguments to add.
+        video_mode: Puts camera in video mode when True.
     """
     if args.camera_type == 'webcam':
-        return WebCam.from_program_args(args, profile)
-    if args.camera_type == 'zwo':
-        return ASICamera.from_program_args(args, profile)
-    raise ValueError(f'Invalid camera-type {args.camera_type}')
+        camera = WebCam.from_program_args(args)
+    elif args.camera_type == 'zwo':
+        camera = ASICamera.from_program_args(args)
+    else:
+        raise ValueError(f'Invalid camera type {args.camera_type}')
+    camera.video_mode = video_mode
+    return camera

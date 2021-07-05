@@ -63,7 +63,7 @@ def main():
         required=True,
         choices=tuple(m.name.lower() for m in MeridianSide),
     )
-    cameras.add_program_arguments(parser, profile='align')
+    cameras.add_program_arguments(parser)
     args = parser.parse_args()
 
 
@@ -109,7 +109,7 @@ def main():
     # Solve frame from guidescope camera while the tracking system is keeping the star centered in
     # the main camera.
     print('Plate solving guidescope camera frame...', end='', flush=True)
-    camera = cameras.make_camera_from_args(args, profile='align')
+    camera = cameras.make_camera_from_args(args)
     frame = camera.get_frame()
     wcs, _ = track.plate_solve(
         frame,
