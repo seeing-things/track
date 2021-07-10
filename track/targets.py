@@ -2,7 +2,7 @@
 
 from math import inf
 from typing import List, Optional, Tuple, NamedTuple
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from functools import lru_cache
 from datetime import datetime
 import dateutil
@@ -37,7 +37,7 @@ class TargetPosition(NamedTuple):
     enc: MountEncoderPositions
 
 
-class Target:
+class Target(ABC):
     """Abstract base class providing a common interface for targets to be tracked."""
 
     class IndeterminatePosition(Exception):
@@ -276,7 +276,6 @@ class PyEphemTarget(Target):
 
         self.mount_model = mount_model
         self.meridian_side = meridian_side
-
 
     @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
     def get_position(self, t: Time) -> TargetPosition:
