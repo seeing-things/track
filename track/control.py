@@ -634,14 +634,16 @@ class Tracker:
             points.append(pt)
 
             # controller commands
-            pt = Point('controller_commands')
-            for axis in self.axes:
-                pt.field(f'rate_axis_{axis}', rate_command.rates[axis])
-            pt.field('time_error', rate_command_time_error.sec)
-            pt.tag('units', 'degrees/s')
-            pt.tag('class', type(self).__name__)
-            pt.time(cycle_timestamp)
-            points.append(pt)
+            if rate_command is not None:
+                pt = Point('controller_commands')
+                for axis in self.axes:
+                    pt.field(f'rate_axis_{axis}', rate_command.rates[axis])
+                if rate_command_time_error is not None:
+                    pt.field('time_error', rate_command_time_error.sec)
+                pt.tag('units', 'degrees/s')
+                pt.tag('class', type(self).__name__)
+                pt.time(cycle_timestamp)
+                points.append(pt)
 
             self.telem_logger.post_points(points)
 
