@@ -816,9 +816,13 @@ def make_target_from_args(
 
     # Create a PyEphem Body object corresonding to the given fixed coordinates
     elif args.target_type == 'coord-eq':
-        print('In fixed equatorial coordinate mode: (RA {}, dec {}).'.format(args.ra, args.dec))
+        print(f'In fixed equatorial coordinate mode: (RA {args.ra}, dec {args.dec}).')
+        # Intentionally not using constructor arguments to `ephem.FixedBody()`; they don't work
+        fixed_body = ephem.FixedBody()
+        fixed_body._ra = np.radians(args.ra)  # pylint: disable=protected-access
+        fixed_body._dec = np.radians(args.dec)  # pylint: disable=protected-access
         target = PyEphemTarget(
-            target=ephem.FixedBody(_ra=np.radians(args.ra), _dec=np.radians(args.dec)),
+            target=fixed_body,
             location=mount_model.location,
             mount_model=mount_model,
             meridian_side=meridian_side,
