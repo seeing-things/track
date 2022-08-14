@@ -505,6 +505,13 @@ class LosmandyGeminiMount(TelescopeMount):
                 changing slew rates. Higher acceleration increases the likelihood of motor stalls.
             max_slew_step: The maximum change in slew rate per slew command in degrees per second.
                 Higher limits increase the likelihood of motor stalls.
+            use_multiprocessing: The Gemini 2 firmware as of Level 5.2 does not have very good
+                support for direct control of the slew rate. The available commands try to apply
+                the new slew rate instantaneously, and when the firmware detects that the encoders
+                are not immediately moving at the new rate it interprets this as a stall. Setting
+                this to `True` enables a work-around in the Gemini software driver in the `point`
+                package which tries to smoothly accelerate the mount with a series of commands sent
+                in quick succession.
         """
         self.mount = point.Gemini2(
             backend=point.gemini_backend.Gemini2BackendUDP(0.25, device_name),
