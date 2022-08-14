@@ -11,7 +11,7 @@ import click
 import astropy.units as u
 from astropy.coordinates import Longitude
 import track
-from track import laser, mounts, ntp, targets, telem
+from track import control, laser, mounts, ntp, targets, telem
 from track.control import Tracker
 from track.gamepad import Gamepad
 from track.mounts import MeridianSide
@@ -55,6 +55,7 @@ def main():
     mounts.add_program_arguments(parser, meridian_side_required=True)
     ntp.add_program_arguments(parser)
     telem.add_program_arguments(parser)
+    control.add_program_arguments(parser)
     args = parser.parse_args()
 
     # Set priority of this thread to realtime. Do this before constructing objects since priority
@@ -131,8 +132,9 @@ def main():
         telem_logger.register_sources(telem_sources)
         telem_logger.start()
 
+    stopping_conditions = control.make_stop_conditions_from_args(args)
     try:
-        tracker.run()
+        tracker.run(stopping_conditions)
     except KeyboardInterrupt:
         print('Got CTRL-C, shutting down...')
     finally:

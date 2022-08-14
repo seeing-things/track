@@ -13,10 +13,12 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord, Angle, UnitSphericalRepresentation
 from astropy.time import Time, TimeDelta
 from influxdb_client import Point
+from configargparse import Namespace
 from track.model import MountModel
 from track.mounts import TelescopeMount, MountEncoderPositions
 from track.targets import Target
 from track.telem import TelemLogger
+from track.config import ArgParser
 
 
 def separation(sc1: SkyCoord, sc2: SkyCoord) -> Angle:
@@ -399,8 +401,8 @@ class Tracker:
                 when not None. The CONVERGED flag in the return value will be set when this
                 criterion is met.
         """
-        timeout: float
-        error_threshold: Angle
+        timeout: Optional[float]
+        error_threshold: Optional[Angle]
 
     class StopReason(Flag):
         """Tracker `run()` method return value indicating stop reason or reasons."""
@@ -675,7 +677,43 @@ class Tracker:
 
         if self.stopping_conditions.error_threshold is not None:
             if error_magnitude is not None:
-                if error_magnitude <= self.stopping_conditions.error_threshold:
+                if error_magnitude.deg <= self.stopping_conditions.error_threshold:
                     stop_reason |= self.StopReason.CONVERGED
 
         return stop_reason
+
+
+def add_program_arguments(parser: ArgParser) -> None:
+    """Add program arguments relevant to the control system.
+
+    Args:
+        parser: The instance of ArgParser to which this function will add arguments.
+    """
+    stop_group = parser.add_argument_group(
+        title='Stopping Condition Options',
+        description='Options that determine when the control system stops',
+    )
+    stop_group.add_argument(
+        '--stop-timeout',
+        type=float,
+        default=None,
+        help='stop after this many seconds if no other stopping condition occurs first',
+    )
+    stop_group.add_argument(
+        '--stop-when-converged-angle',
+        type=float,
+        default=None,
+        help='stop when mount is within this many degrees of the target',
+    )
+
+
+def make_stop_conditions_from_args(args: Namespace) -> Tracker.StoppingConditions:
+    """Construct stopping conditions tuple based on the program arguments provided.
+
+    Args:
+        args: Set of program arguments.
+    """
+    return Tracker.StoppingConditions(
+        timeout=args.stop_timeout,
+        error_threshold=args.stop_when_converged_angle,
+    )
