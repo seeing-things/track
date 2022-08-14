@@ -8,6 +8,10 @@ import configargparse
 CONFIG_PATH = appdirs.user_config_dir('track')
 DATA_PATH = appdirs.user_data_dir('track')
 
+# If the same program argument appears in multiple configuration files, the value in the last
+# config file in the list takes precedence. Note also that if another configuration file not listed
+# here is supplied at the command line with --cfg, it is as if that config file is *added* to the
+# end of this list, and does not replace this list.
 DEFAULT_CONFIG_FILES = [
     os.path.join(CONFIG_PATH, 'track.cfg'),
 ]
