@@ -26,7 +26,7 @@ from track.telem import TelemLogger
 
 
 def spiral(elapsed_time: float, spiral_spacing_deg: float, velocity_deg_s: float) -> complex:
-    """Generate an arithmetic (Archimedean) spiral with contant linear velocity.
+    """Generate an arithmetic (Archimedean) spiral with constant linear velocity.
 
     Args:
         elapsed_time: Elapsed time in seconds since the start of the search.
