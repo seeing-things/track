@@ -69,10 +69,12 @@ class LaserPointer:
         self.set(False)
 
     def __del__(self):
-        # make sure laser is disabled on shutdown
+        """Try to make sure laser is disabled on shutdown."""
         try:
             self.set(False)
             self.ftdi.close()
+        except AttributeError:  # happens when no laser was present at construction time
+            pass
         except Exception as e:  # pylint: disable=broad-except
             print('Got exception while trying to disable laser pointer: ' + str(e))
 
