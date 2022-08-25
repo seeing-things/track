@@ -22,6 +22,7 @@ VB_DATE_TICKS_PER_SEC = 10_000_000
 
 
 class SERColorID(IntEnum):
+    """ColorID field of the SER file header"""
     MONO = 0
     BAYER_RGGB = 8
     BAYER_GRBG = 9
@@ -36,10 +37,12 @@ class SERColorID(IntEnum):
 
 
 class SEREndianness(IntEnum):
+    """Endianness of multi-byte pixel values"""
     BIG_ENDIAN = 0
     LITTLE_ENDIAN = 1
 
     def dtype_char(self) -> str:
+        """Get the endian character ('<' or '>') to use with `numpy.dtype`"""
         return '<' if self == self.LITTLE_ENDIAN else '>'
 
 
@@ -253,8 +256,14 @@ class SERHeader:
 
 
 class SERReader:
+    """Reads a SER file."""
 
     def __init__(self, filename: str):
+        """Construct a SERReader object.
+
+        Args:
+            filename: Filename of SER file to read.
+        """
 
         self.file = open(filename, 'rb')
 
@@ -270,7 +279,10 @@ class SERReader:
         # check if trailer is present and read it if so
         self.file.seek(0, SEEK_END)
         file_size_bytes = self.file.tell()
-        file_size_no_trailer = SERHeader.SIZE_BYTES + self._header.frame_count * self._header.frame_size_bytes
+        file_size_no_trailer = (
+            SERHeader.SIZE_BYTES +
+            self._header.frame_count * self._header.frame_size_bytes
+        )
         trailer_size_bytes = 8 * self._header.frame_count  # each timestamp is an int64
         file_size_with_trailer = file_size_no_trailer + trailer_size_bytes
         if file_size_bytes == file_size_no_trailer:
@@ -290,6 +302,14 @@ class SERReader:
         return deepcopy(self._header)
 
     def get_frame(self, frame_index: int) -> np.ndarray:
+        """Get a frame.
+
+        Args:
+            frame_index: Select which frame to get. First frame has index 0.
+
+        Returns:
+            The frame data as a numpy array.
+        """
 
         if frame_index < 0 or frame_index >= self._header.frame_count:
             raise ValueError('Invalid frame index')
@@ -299,7 +319,7 @@ class SERReader:
 
         self.file.seek(SERHeader.SIZE_BYTES + frame_index * self._header.frame_size_bytes, SEEK_SET)
 
-        # FIXME: This won't work for BGR or RGB
+        # This won't work for BGR or RGB
         return np.reshape(
             np.fromfile(self.file, dtype=self.dtype, count=self._header.frame_size_pixels),
             (self._header.frame_height, self._header.frame_width)
@@ -337,6 +357,7 @@ class SERReader:
 
 
 class SERWriter:
+    """Writes a SER file."""
 
     def __init__(
             self,
@@ -344,7 +365,14 @@ class SERWriter:
             header: SERHeader,
             add_trailer: bool = True,
         ):
+        """Constructs a SERWriter object.
 
+        Args:
+            filename: Filename of SER file to create.
+            header: `SERHeader` object which defines the header fields to use.
+            add_trailer: Trailer containing frame timestamps will be added if
+                `True`, otherwise trailer will be omitted.
+        """
         self.header = header
         self.header.frame_count = 0
         self.add_trailer = add_trailer
