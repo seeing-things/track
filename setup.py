@@ -92,6 +92,7 @@ setup(
         'ConfigArgParse>=1.0',
         'ephem>=3.7',
         'gps>=3.19',
+        'imageio>=2.20',
         'influxdb-client>=1.14',  # telemetry database client; requires InfluxDB 2.0
         'inputs>=0.1',
         'lxml',  # parser for bs4
@@ -116,6 +117,7 @@ setup(
     entry_points={
         'console_scripts':[
             'align = track.align:main',
+            'autofocus = track.autofocus:main',
             'gamepad = track.gamepad_control:main',
             'align_guidescope = track.align_guidescope:main',
             'object_position = track.object_position:main',
