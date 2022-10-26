@@ -677,7 +677,7 @@ class Tracker:
 
         if self.stopping_conditions.error_threshold is not None:
             if error_magnitude is not None:
-                if error_magnitude.deg <= self.stopping_conditions.error_threshold:
+                if error_magnitude <= self.stopping_conditions.error_threshold:
                     stop_reason |= self.StopReason.CONVERGED
 
         return stop_reason
@@ -715,5 +715,5 @@ def make_stop_conditions_from_args(args: Namespace) -> Tracker.StoppingCondition
     """
     return Tracker.StoppingConditions(
         timeout=args.stop_timeout,
-        error_threshold=args.stop_when_converged_angle,
+        error_threshold=Angle(args.stop_when_converged_angle * u.deg),
     )
