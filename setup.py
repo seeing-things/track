@@ -116,6 +116,7 @@ setup(
     entry_points={
         'console_scripts':[
             'align = track.align:main',
+            'autofocus = track.autofocus:main',
             'gamepad = track.gamepad_control:main',
             'align_guidescope = track.align_guidescope:main',
             'object_position = track.object_position:main',

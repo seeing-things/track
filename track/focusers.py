@@ -1,9 +1,17 @@
+from abc import ABC
+import time
 from typing import Optional
 import serial
 
+# TODO: create functions to add program arguments and to create a focuser object from arguments
 
-# Todo: Write an abstract base class
-class MoonliteFocuser:
+# TODO: Add abstract methods/properties to this
+class Focuser(ABC):
+    """Abstract base class for focusers"""
+
+
+# TODO: Add some notion of min/max allowed positions and enforcement of those
+class MoonliteFocuser(Focuser):
     """Implements the MoonLite High Res Stepper Motor serial command set."""
 
     class ResponseException(Exception):
@@ -22,13 +30,12 @@ class MoonliteFocuser:
     class ReadTimeoutException(Exception):
         """Raised when read from the motor times out."""
 
-    def __init__(self, device, read_timeout=1):
+    def __init__(self, device: str, read_timeout: float = 1.0):
         """Constructs a MoonliteFocuser object.
 
         Args:
-            device (str): The path to the serial device.
-                For example, '/dev/ttyUSB0'.
-            read_timeout (float): Timeout in seconds for reads on the serial device.
+            device: The path to the serial device. For example, '/dev/ttyUSB0'.
+            read_timeout: Timeout in seconds for reads on the serial device.
         """
         self.serial = serial.Serial(device, baudrate=9600, timeout=read_timeout)
 
@@ -141,14 +148,17 @@ class MoonliteFocuser:
         self._send_command(b'SH', 0)
 
     def set_motor_speed(self, speed: int) -> None:
-        """Set motor speed. Valid speeds are 2, 4, 8, 16, and 32."""
+        """Set motor speed. Valid speeds are 2, 4, 8, 16, and 32. Lower values are faster."""
         if speed not in [2, 4, 8, 16, 32]:
             raise ValueError('invalid speed')
         self._send_command(f'SD{speed:02X}'.encode(), 0)
 
-    def move_to_new_position(self) -> None:
+    def move_to_new_position(self, blocking: bool = False) -> None:
         """Move to the new position."""
         self._send_command(b'FG', 0)
+        if blocking:
+            while self.in_motion():
+                time.sleep(0.1)
 
     def stop_motion(self) -> None:
         """Stop motor immediately."""
