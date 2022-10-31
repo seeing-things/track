@@ -713,7 +713,8 @@ def make_stop_conditions_from_args(args: Namespace) -> Tracker.StoppingCondition
     Args:
         args: Set of program arguments.
     """
+    angle = args.stop_when_converged_angle
     return Tracker.StoppingConditions(
         timeout=args.stop_timeout,
-        error_threshold=Angle(args.stop_when_converged_angle * u.deg),
+        error_threshold=Angle(angle * u.deg) if angle else None,
     )
