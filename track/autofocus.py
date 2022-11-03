@@ -7,8 +7,8 @@ Automatic focus script and associated algorithms.
 import time
 from typing import Optional, Tuple
 import numpy as np
-from numpy.polynomial import Polynomial
 from scipy import ndimage
+from scipy.optimize import curve_fit
 from track import cameras, focusers
 from track.config import ArgParser
 
@@ -90,11 +90,14 @@ def estimate_ideal_focuser_position(focuser_steps: np.ndarray, hfrs: np.ndarray)
     Returns:
         Estimated ideal focuser position.
     """
-    poly = Polynomial.fit(focuser_steps, hfrs, 2)
-    if poly.deriv(2)(0) <= 0:  # expecting a concave up parabola with positive 2nd derivative
-        raise FocusEstimatorException('Fitted polynomial does not have a minimum')
-    # take derivative, set equal to zero to find the minimum
-    return int(np.round(poly.deriv().roots()[0]))
+    def v_curve(x, alpha, beta, x_0, y_0):
+        return beta * np.sqrt((x - x_0)**2 + alpha**2) + y_0
+
+    # TODO: initial x_0 param value is specific to my focuser which has a position range of 4200
+    # TODO: Add bounds on parameters
+    popt, _ = curve_fit(v_curve, focuser_steps, hfrs, p0=(350, 1.75e-2, 2100, 0))
+
+    return int(np.round(popt[2]))
 
 
 def autofocus(camera: cameras.Camera, focuser: focusers.Focuser, focuser_steps: np.ndarray) -> int:
