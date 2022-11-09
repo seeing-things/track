@@ -123,11 +123,8 @@ def autofocus(camera: cameras.Camera, focuser: focusers.Focuser, focuser_steps: 
         focuser.move_to_new_position(blocking=True)
         image = camera.get_frame()
 
-        # TODO: Use more robust algorithm to deal with background. Could be one or more of:
-        # - Background subtraction
-        # - Crop around the star
-        # - Mask out stuff far from the star
-        image[image < 1000] = 0
+        # Reject background
+        image[image < 0.1*np.max(image)] = 0
 
         hfrs[idx] = estimate_hfr(image)
         print('done.')
