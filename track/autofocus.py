@@ -116,7 +116,7 @@ def autofocus(camera: cameras.Camera, focuser: focusers.Focuser, focuser_steps: 
     Returns:
         The estimated ideal focuser position.
     """
-    hfrs = np.zeros_like(focuser_steps)
+    hfrs = np.zeros(focuser_steps.size)
     for idx, position in enumerate(focuser_steps):
         print(f'Estimating HFR at focuser position {position:4d} ({idx:3d} of {focuser_steps.size:3d})...', end='', flush=True)
         focuser.set_new_position(position)
