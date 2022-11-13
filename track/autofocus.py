@@ -119,8 +119,8 @@ def autofocus(camera: cameras.Camera, focuser: focusers.Focuser, focuser_steps: 
     hfrs = np.zeros(focuser_steps.size)
     for idx, position in enumerate(focuser_steps):
         print(f'Estimating HFR at focuser position {position:4d} ({idx:3d} of {focuser_steps.size:3d})...', end='', flush=True)
-        focuser.set_new_position(position)
-        focuser.move_to_new_position(blocking=True)
+        focuser.target_position = position
+        focuser.move_to_target_position(blocking=True)
         image = camera.get_frame()
 
         # Reject background
@@ -132,24 +132,26 @@ def autofocus(camera: cameras.Camera, focuser: focusers.Focuser, focuser_steps: 
     ideal_position = estimate_ideal_focuser_position(focuser_steps, hfrs)
     print(f'Estimated ideal focuser position: {ideal_position}')
 
-    print(f'Moving focuser to {ideal_position}...', end='', flush=True)
-    focuser.set_new_position(ideal_position)
-    focuser.move_to_new_position(blocking=True)
-    print('done.')
+    if not skip_final_move:
+        print(f'Moving focuser to {ideal_position}...', end='', flush=True)
+        focuser.target_position = ideal_position
+        focuser.move_to_target_position(blocking=True)
+        print('done.')
 
     return ideal_position
 
 
 def main():
 
+    # TODO: Use a separate config file by default that hopefully specifies the correct camera, similar to align_guidescope.py
     parser = ArgParser()
     cameras.add_program_arguments(parser, profile='align')
     args = parser.parse_args()
 
     camera = cameras.make_camera_from_args(args, 'align')
     # TODO: create focuser from program args
-    focuser = focusers.MoonliteFocuser('/dev/ttyUSB0')
-    focuser.set_motor_speed(2)  # fastest speed
+    focuser = focusers.MoonliteFocuser('/dev/ttyUSB0', min_position=0, max_position=4200)
+    focuser.motor_speed = 2  # fastest speed
 
     time_start = time.perf_counter()
 

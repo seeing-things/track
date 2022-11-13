@@ -1,13 +1,80 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 import time
 from typing import Optional
 import serial
 
 # TODO: create functions to add program arguments and to create a focuser object from arguments
 
-# TODO: Add abstract methods/properties to this
 class Focuser(ABC):
     """Abstract base class for focusers"""
+
+    @property
+    @abstractmethod
+    def min_position(self) -> int:
+        """Minimum allowed focuser position."""
+
+    @property
+    @abstractmethod
+    def max_position(self) -> int:
+        """Maximum allowed focuser position."""
+
+    @property
+    @abstractmethod
+    def current_position(self) -> int:
+        """Get current position of the focuser."""
+
+    @current_position.setter
+    @abstractmethod
+    def current_position(self, position: int) -> None:
+        """Set current position.
+
+        This sets the register containing the current position value. It is not a request to move
+        to a new position. This is typically used at startup to set the zero position such that it
+        corresponds to a meaningful physical focuser position. For example, it may be desirable to
+        enforce that position 0 corresponds to the draw tube being fully retracted.
+        """
+
+    @property
+    @abstractmethod
+    def target_position(self) -> int:
+        """Get target position of the focuser."""
+
+    @target_position.setter
+    @abstractmethod
+    def target_position(self, position: int) -> None:
+        """Set target position.
+
+        This sets the register containing the desired (target) position value. The motor will not
+        move to this position until `move_to_new_position()` is called.
+        """
+
+    @property
+    @abstractmethod
+    def motor_speed(self) -> int:
+        """Get motor speed."""
+
+    @motor_speed.setter
+    @abstractmethod
+    def motor_speed(self, speed: int) -> None:
+        """Set motor speed."""
+
+    @property
+    @abstractmethod
+    def in_motion(self) -> bool:
+        """Query if motor is in motion."""
+
+    @abstractmethod
+    def move_to_target_position(self, blocking: bool = False) -> None:
+        """Move to the target position.
+
+        Args:
+            blocking: If True, this call will block until the focuser has arrived at the new
+                position. Otherwise it returns immediately.
+        """
+
+    @abstractmethod
+    def stop_motion(self) -> None:
+        """Stop motion immediately."""
 
 
 # TODO: Add some notion of min/max allowed positions and enforcement of those
@@ -30,15 +97,32 @@ class MoonliteFocuser(Focuser):
     class ReadTimeoutException(Exception):
         """Raised when read from the motor times out."""
 
-    def __init__(self, device: str, read_timeout: float = 1.0):
+    def __init__(
+            self,
+            device: str,
+            min_position: int,
+            max_position: int,
+            read_timeout: float = 1.0):
         """Constructs a MoonliteFocuser object.
 
         Args:
             device: The path to the serial device. For example, '/dev/ttyUSB0'.
+            min_position: Minimum allowed position. Must greater than or equal to 0.
+            max_position: Maximum allowed position. Must be less than or equal to 0xffff (65535).
             read_timeout: Timeout in seconds for reads on the serial device.
-        """
-        self.serial = serial.Serial(device, baudrate=9600, timeout=read_timeout)
 
+        Raises:
+            ValueError if `min_position` or `max_position` are outside allowed range.
+        """
+        if not (0 <= min_position <= 0xffff):
+            raise ValueError('min_position is beyond allowed range')
+        if not (0 <= max_position <= 0xffff):
+            raise ValueError('max_position is beyond allowed range')
+        if max_position < min_position:
+            raise ValueError('max_position is less than min position')
+        self._min_position = min_position
+        self._max_position = max_position
+        self._serial = serial.Serial(device, baudrate=9600, timeout=read_timeout)
 
     def _send_command(self, command: bytearray, response_len: int) -> Optional[bytearray]:
         """Sends a command to the focuser and reads back the response.
@@ -62,14 +146,14 @@ class MoonliteFocuser(Focuser):
 
         # Eliminate any stale data sitting in the read buffer which could be left over from prior
         # command responses.
-        self.serial.read(self.serial.in_waiting)
+        self._serial.read(self._serial.in_waiting)
 
-        self.serial.write(b':' + command + b'#')
+        self._serial.write(b':' + command + b'#')
 
         if response_len == 0:
             return None
 
-        response = self.serial.read_until(terminator=b'#')
+        response = self._serial.read_until(terminator=b'#')
         if response[-1:] != b'#':
             raise MoonliteFocuser.ReadTimeoutException()
 
@@ -85,39 +169,21 @@ class MoonliteFocuser(Focuser):
 
         return response
 
-    def get_position(self) -> int:
+    @property
+    def min_position(self) -> int:
+        return self._min_position
+
+    @property
+    def max_position(self) -> int:
+        return self._max_position
+
+    @property
+    def current_position(self) -> int:
         """Get current position of the stepper motor."""
         return int(self._send_command(b'GP', 4), 16)
 
-    def get_new_position(self) -> int:
-        """Get new (target) position of the stepper motor."""
-        return int(self._send_command(b'GN', 4), 16)
-
-    def get_temperature(self) -> int:
-        """Get current temperature."""
-        return int(self._send_command(b'GT', 4), 16)
-
-    def get_motor_speed(self) -> int:
-        """Get motor speed. Valid speeds are 2, 4, 8, 16, and 32."""
-        return int(self._send_command(b'GD', 2), 16)
-
-    def in_half_step_mode(self) -> bool:
-        """True if half step mode, false otherwise."""
-        return self._send_command(b'GH', 2) == b'FF'
-
-    def in_motion(self) -> bool:
-        """Query if motor is in motion."""
-        return self._send_command(b'GI', 2) == b'01'
-
-    def get_led_backlight_val(self) -> int:
-        """Get red LED backlight value."""
-        return int(self._send_command(b'GB', 2), 16)
-
-    def get_firmware_version(self) -> int:
-        """Get firmware version code."""
-        return int(self._send_command(b'GV', 2), 16)
-
-    def set_current_position(self, position: int) -> None:
+    @current_position.setter
+    def current_position(self, position: int) -> None:
         """Set current position.
 
         This sets the register containing the current position value. It is not a request to move
@@ -125,39 +191,81 @@ class MoonliteFocuser(Focuser):
         corresponds to a meaningful physical focuser position. For example, it may be desirable to
         enforce that position 0 corresponds to the draw tube being fully retracted.
         """
-        if not (0 <= position <= 0xffff):
+        if not (self._min_position <= position <= self._max_position):
             raise ValueError('position is beyond allowed range')
         self._send_command(f'SP{position:04X}'.encode(), 0)
 
-    def set_new_position(self, position: int) -> None:
-        """Set new position.
+    @property
+    def target_position(self) -> int:
+        """Get target position of the stepper motor."""
+        return int(self._send_command(b'GN', 4), 16)
 
-        This sets the register containing the desired (new) position value. The motor will not move
-        to this position until `move_to_new_position()` is called.
+    @target_position.setter
+    def target_position(self, position: int) -> None:
+        """Set target position.
+
+        This sets the register containing the desired (target) position value. The motor will not
+        move to this position until `move_to_new_position()` is called.
         """
-        if not (0 <= position <= 0xffff):
+        if not (self._min_position <= position <= self._max_position):
             raise ValueError('position is beyond allowed range')
         self._send_command(f'SN{position:04X}'.encode(), 0)
 
-    def set_full_step(self) -> None:
-        """Enable full-step mode."""
-        self._send_command(b'SF', 0)
+    @property
+    def temperature(self) -> int:
+        """Get current temperature."""
+        return int(self._send_command(b'GT', 4), 16)
 
-    def set_half_step(self) -> None:
-        """Enable half-step mode."""
-        self._send_command(b'SH', 0)
+    @property
+    def motor_speed(self) -> int:
+        """Get motor speed. Valid speeds are 2, 4, 8, 16, and 32."""
+        return int(self._send_command(b'GD', 2), 16)
 
-    def set_motor_speed(self, speed: int) -> None:
+    @motor_speed.setter
+    def motor_speed(self, speed: int) -> None:
         """Set motor speed. Valid speeds are 2, 4, 8, 16, and 32. Lower values are faster."""
         if speed not in [2, 4, 8, 16, 32]:
             raise ValueError('invalid speed')
         self._send_command(f'SD{speed:02X}'.encode(), 0)
 
-    def move_to_new_position(self, blocking: bool = False) -> None:
-        """Move to the new position."""
+    @property
+    def half_step_mode(self) -> bool:
+        """True if half step mode, false otherwise."""
+        return self._send_command(b'GH', 2) == b'FF'
+
+    @half_step_mode.setter
+    def half_step_mode(self, half_step_mode: bool) -> None:
+        """Set half step mode."""
+        if half_step_mode:
+            self._send_command(b'SH', 0)
+        else:
+            self._send_command(b'SF', 0)
+
+    @property
+    def in_motion(self) -> bool:
+        """Query if motor is in motion."""
+        return self._send_command(b'GI', 2) == b'01'
+
+    @property
+    def led_backlight_val(self) -> int:
+        """Get red LED backlight value."""
+        return int(self._send_command(b'GB', 2), 16)
+
+    @property
+    def firmware_version(self) -> int:
+        """Get firmware version code."""
+        return int(self._send_command(b'GV', 2), 16)
+
+    def move_to_target_position(self, blocking: bool = False) -> None:
+        """Move to the target position.
+
+        Args:
+            blocking: If True, this call will block until the focuser has arrived at the new
+                position. Otherwise it returns immediately.
+        """
         self._send_command(b'FG', 0)
         if blocking:
-            while self.in_motion():
+            while self.in_motion:
                 time.sleep(0.1)
 
     def stop_motion(self) -> None:
