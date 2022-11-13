@@ -1,9 +1,18 @@
+"""Classes for controlling focuser hardware.
+
+A set of classes that inherit from the abstract base class Focuser, providing a common API for
+interacting with focusers. The main application in this package is autofocus, which is faster,
+typically more reliable, and certainly less frustrating than focusing the camera manually.
+"""
+
+from __future__ import annotations
 from abc import ABC, abstractmethod
 import time
 from typing import Optional
 import serial
+from configargparse import Namespace
+from track.config import ArgParser
 
-# TODO: create functions to add program arguments and to create a focuser object from arguments
 
 class Focuser(ABC):
     """Abstract base class for focusers"""
@@ -45,7 +54,7 @@ class Focuser(ABC):
         """Set target position.
 
         This sets the register containing the desired (target) position value. The motor will not
-        move to this position until `move_to_new_position()` is called.
+        move to this position until `move_to_target_position()` is called.
         """
 
     @property
@@ -77,7 +86,6 @@ class Focuser(ABC):
         """Stop motion immediately."""
 
 
-# TODO: Add some notion of min/max allowed positions and enforcement of those
 class MoonliteFocuser(Focuser):
     """Implements the MoonLite High Res Stepper Motor serial command set."""
 
@@ -97,6 +105,24 @@ class MoonliteFocuser(Focuser):
     class ReadTimeoutException(Exception):
         """Raised when read from the motor times out."""
 
+    @staticmethod
+    def add_program_arguments(parser: ArgParser) -> None:
+        """Add Moonlite-specific program arguments"""
+        parser.add_argument(
+            '--focuser-dev',
+            help='Moonlite focuser serial device node path',
+            default='/dev/ttyUSB0'
+        )
+
+    @staticmethod
+    def from_program_args(args: Namespace) -> MoonliteFocuser:
+        """Factory to make a MoonliteFocuser instance from program arguments"""
+        return MoonliteFocuser(
+            device=args.focuser_dev,
+            min_position=args.focuser_min,
+            max_position=args.focuser_max,
+        )
+
     def __init__(
             self,
             device: str,
@@ -114,9 +140,9 @@ class MoonliteFocuser(Focuser):
         Raises:
             ValueError if `min_position` or `max_position` are outside allowed range.
         """
-        if not (0 <= min_position <= 0xffff):
+        if not 0 <= min_position <= 0xffff:
             raise ValueError('min_position is beyond allowed range')
-        if not (0 <= max_position <= 0xffff):
+        if not 0 <= max_position <= 0xffff:
             raise ValueError('max_position is beyond allowed range')
         if max_position < min_position:
             raise ValueError('max_position is less than min position')
@@ -160,7 +186,8 @@ class MoonliteFocuser(Focuser):
         # strip off the '#' terminator
         response = response[:-1]
         if b'#' in response:
-            raise MoonliteFocuser.ResponseException(response, 'Unexpected terminator found in response')
+            raise MoonliteFocuser.ResponseException(
+                response, 'Unexpected terminator found in response')
 
         if len(response) != response_len:
             raise MoonliteFocuser.ResponseException(
@@ -191,7 +218,7 @@ class MoonliteFocuser(Focuser):
         corresponds to a meaningful physical focuser position. For example, it may be desirable to
         enforce that position 0 corresponds to the draw tube being fully retracted.
         """
-        if not (self._min_position <= position <= self._max_position):
+        if not self._min_position <= position <= self._max_position:
             raise ValueError('position is beyond allowed range')
         self._send_command(f'SP{position:04X}'.encode(), 0)
 
@@ -207,7 +234,7 @@ class MoonliteFocuser(Focuser):
         This sets the register containing the desired (target) position value. The motor will not
         move to this position until `move_to_new_position()` is called.
         """
-        if not (self._min_position <= position <= self._max_position):
+        if not self._min_position <= position <= self._max_position:
             raise ValueError('position is beyond allowed range')
         self._send_command(f'SN{position:04X}'.encode(), 0)
 
@@ -271,3 +298,49 @@ class MoonliteFocuser(Focuser):
     def stop_motion(self) -> None:
         """Stop motor immediately."""
         self._send_command(b'FQ', 0)
+
+
+def add_program_arguments(parser: ArgParser) -> None:
+    """Add program arguments for all focusers.
+
+    Args:
+        parser: The instance of ArgParser to which this function will add arguments.
+    """
+    focuser_group = parser.add_argument_group(
+        title='General Focuser Options',
+        description='Options that apply to all focusers',
+    )
+    focuser_group.add_argument(
+        '--focuser-type',
+        help='type of focuser',
+        default='moonlite',
+        choices=['moonlite'],
+    )
+    focuser_group.add_argument(
+        '--focuser-min',
+        help='focuser minimum allowed position',
+        required=True,
+        type=int
+    )
+    focuser_group.add_argument(
+        '--focuser-max',
+        help='focuser maximum allowed position',
+        required=True,
+        type=int
+    )
+    moonlite_group = parser.add_argument_group(
+        title='Moonlite Focuser Options',
+        description='Options that apply when focuser-type is set to "moonlite"',
+    )
+    MoonliteFocuser.add_program_arguments(moonlite_group)
+
+
+def make_focuser_from_args(args: Namespace) -> Focuser:
+    """Construct the appropriate focuser based on the program arguments provided.
+
+    Args:
+        args: Set of program arguments.
+    """
+    if args.focuser_type == 'moonlite':
+        return MoonliteFocuser.from_program_args(args)
+    raise ValueError(f'Invalid focuser-type {args.focuser_type}')
