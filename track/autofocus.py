@@ -73,6 +73,7 @@ def estimate_hfr(
     return radius
 
 
+# TODO: Not using this exception right now
 class FocusEstimatorException(Exception):
     """Something went wrong trying to estimate ideal focus position."""
 
@@ -80,8 +81,8 @@ class FocusEstimatorException(Exception):
 def estimate_ideal_focuser_position(focuser_steps: np.ndarray, hfrs: np.ndarray) -> int:
     """Estimate ideal focuser position.
 
-    Estimates the ideal focuser position by fitting a degree 2 polynomial (a parabola) to a set of
-    HFR estimates and solves for the focuser position that minimizes the HFR.
+    Estimates the ideal focuser position by fitting a hyperbolic function to a set of HFR estimates
+    and solves for the focuser position that minimizes the HFR.
 
     Args:
         focuser_steps: Array of focuser positions.
@@ -100,18 +101,26 @@ def estimate_ideal_focuser_position(focuser_steps: np.ndarray, hfrs: np.ndarray)
     return int(np.round(popt[2]))
 
 
-def autofocus(camera: cameras.Camera, focuser: focusers.Focuser, focuser_steps: np.ndarray) -> int:
+def autofocus(
+        camera: cameras.Camera,
+        focuser: focusers.Focuser,
+        focuser_steps: np.ndarray,
+        skip_final_move: bool = False,
+    ) -> int:
     """Automatically focus the camera.
 
     This algorithm estimates the half-flux radius (HFR) of a bright star across a set of focuser
-    positions, estimates the position that minimizes the HFR, and then sets the focuser to that
-    position. The mount should be tracking a bright star such that it remains steady in the camera
-    for the duration of the procedure.
+    positions and estimates the position that minimizes the HFR, and then optionally moves the
+    focuser to that position. The mount should be tracking a bright star such that it remains
+    steady in the camera for the duration of the procedure.
 
     Args:
         camera: Camera attached to the optical system to be focused.
         focuser: The focuser to be adjusted.
         focuser_steps: A set of focuser positions to sample.
+        skip_final_move: By default, this function will move the focuser to the estimated ideal
+            position. If this is True, that final move will be skipped and the focuser will be left
+            at the last position in `focuser_steps`.
 
     Returns:
         The estimated ideal focuser position.
@@ -143,21 +152,24 @@ def autofocus(camera: cameras.Camera, focuser: focusers.Focuser, focuser_steps: 
 
 def main():
 
-    # TODO: Use a separate config file by default that hopefully specifies the correct camera, similar to align_guidescope.py
     parser = ArgParser()
     cameras.add_program_arguments(parser, profile='align')
+    focusers.add_program_arguments(parser)
     args = parser.parse_args()
 
-    camera = cameras.make_camera_from_args(args, 'align')
-    # TODO: create focuser from program args
-    focuser = focusers.MoonliteFocuser('/dev/ttyUSB0', min_position=0, max_position=4200)
+    camera = cameras.make_camera_from_args(args, profile='align')
+    focuser = focusers.make_focuser_from_args(args)
     focuser.motor_speed = 2  # fastest speed
 
     time_start = time.perf_counter()
 
-    # TODO: generate focuser position range from program args
-    # TODO: consider defaulting to some range centered on the current focuser position
-    positions = np.linspace(2600, 3400, 100).astype(int)
+    # Start by sparsely sampling the entire range to get a rough idea of where best focus is
+    positions = np.linspace(focuser.min_position, focuser.max_position, 5, dtype=int)
+    prelim_ideal_position = autofocus(camera, focuser, positions, skip_final_move=True)
+
+    # Refine by taking a greater number of closely spaced samples centered on the first estimate
+    positions = np.linspace(-200, 200, 20, dtype=int) + prelim_ideal_position
+    positions = positions[(positions >= focuser.min_position) & (positions <= focuser.max_position)]
     autofocus(camera, focuser, positions)
 
     time_elapsed = time.perf_counter() - time_start
