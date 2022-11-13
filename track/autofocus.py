@@ -13,7 +13,12 @@ from track import cameras, focusers
 from track.config import ArgParser
 
 
-def create_circular_mask(width: int, height: int, radius: float, center: Tuple[float, float]) -> np.ndarray:
+def create_circular_mask(
+        width: int,
+        height: int,
+        radius: float,
+        center: Tuple[float, float]
+    ) -> np.ndarray:
     """Create a circular mask.
 
     Args:
@@ -26,51 +31,50 @@ def create_circular_mask(width: int, height: int, radius: float, center: Tuple[f
         An array containing a circular mask.
     """
     radius_squared = radius**2
-    Y, X = np.ogrid[:height, :width]
-    dist_from_center_squared = (Y - center[0])**2 + (X - center[1])**2
+    y_grid, x_grid = np.ogrid[:height, :width]
+    dist_from_center_squared = (y_grid - center[0])**2 + (x_grid - center[1])**2
     return dist_from_center_squared <= radius_squared
 
 
 def estimate_hfr(
         image: np.ndarray,
-        max_radius: Optional[float] = None,
+        hfr_max: Optional[float] = None,
         tolerance: float = 0.1
     ) -> float:
     """Estimates the half flux radius (HFR) of a star.
 
     Args:
         image: A greyscale image containing a star. Background and other stars should be removed.
-        max_radius: Maximum radius in pixels. No check is performed to ensure that this value
-            is large enough.
+        hfr_max: Maximum radius in pixels. No check is performed to ensure that this value is large
+            enough.
         tolerance: Max allowed error in the estimate in pixels.
 
     Returns:
-        The estimated half flux radius in pixels. Will be in the range [0, max_radius].
+        The estimated half flux radius in pixels. Will be in the range [0, hfr_max].
     """
     height, width = image.shape
     center_of_mass = ndimage.center_of_mass(image)
     total_flux = np.sum(image)
     half_flux = total_flux / 2
 
-    if max_radius is None:
+    hfr_min = 0.0
+    if hfr_max is None:
         # a circle with radius equal to the diagonal of the image will always encompass the entire
         # image no matter where the center is located
-        max_radius = np.sqrt(width**2 + height**2)
+        hfr_max = np.sqrt(width**2 + height**2)
 
-    min = 0.0
-    max = max_radius
     while True:
-        radius = (min + max) / 2
-        if max - min < tolerance:
+        hfr = (hfr_min + hfr_max) / 2
+        if hfr_max - hfr_min < tolerance:
             break
-        mask = create_circular_mask(width, height, radius, center_of_mass)
+        mask = create_circular_mask(width, height, hfr, center_of_mass)
         flux = np.sum(image * mask)
         if flux > half_flux:
-            max = radius
+            hfr_max = hfr
         else:
-            min = radius
+            hfr_min = hfr
 
-    return radius
+    return hfr
 
 
 # TODO: Not using this exception right now
@@ -127,7 +131,11 @@ def autofocus(
     """
     hfrs = np.zeros(focuser_steps.size)
     for idx, position in enumerate(focuser_steps):
-        print(f'Estimating HFR at focuser position {position:4d} ({idx:3d} of {focuser_steps.size:3d})...', end='', flush=True)
+        print(
+            f'Estimating HFR at focuser position {position:4d} '
+            f'({idx:3d} of {focuser_steps.size:3d})...',
+            end='',
+            flush=True)
         focuser.target_position = position
         focuser.move_to_target_position(blocking=True)
         image = camera.get_frame()
@@ -151,6 +159,7 @@ def autofocus(
 
 
 def main():
+    """Run the full autofocus algorithm."""
 
     parser = ArgParser()
     cameras.add_program_arguments(parser, profile='align')
@@ -168,8 +177,11 @@ def main():
     prelim_ideal_position = autofocus(camera, focuser, positions, skip_final_move=True)
 
     # Refine by taking a greater number of closely spaced samples centered on the first estimate
-    positions = np.linspace(-200, 200, 20, dtype=int) + prelim_ideal_position
-    positions = positions[(positions >= focuser.min_position) & (positions <= focuser.max_position)]
+    positions = np.linspace(
+        start=max(prelim_ideal_position - 200, focuser.min_position),
+        stop=min(prelim_ideal_position + 200, focuser.max_position),
+        num=20,
+        dtype=int)
     autofocus(camera, focuser, positions)
 
     time_elapsed = time.perf_counter() - time_start
