@@ -123,6 +123,7 @@ def estimate_ideal_focuser_position(focuser_steps: np.ndarray, hfrs: np.ndarray)
         Estimated ideal focuser position.
     """
     position_mid = (np.max(focuser_steps) + np.min(focuser_steps)) / 2
+    # pylint: disable=unbalanced-tuple-unpacking
     popt, _ = curve_fit(
         v_curve,
         focuser_steps,
