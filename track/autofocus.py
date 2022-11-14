@@ -77,16 +77,43 @@ def estimate_hfr(
     return hfr
 
 
-# TODO: Not using this exception right now
-class FocusEstimatorException(Exception):
-    """Something went wrong trying to estimate ideal focus position."""
+def v_curve(x: np.ndarray, alpha: float, beta: float, x_0: float, y_0: float) -> np.ndarray:
+    """Hyperbolic model of focuser V-curve.
+
+    Half flux radius (HFR) as a function of focuser position is approximately hyperbolic. Far from
+    the ideal focus position, HFR is nearly linear in focus position but the bottom of the "V" is
+    rounded off because even with ideal focus the star is not infintesimally small due to
+    diffraction, the point spread function of the optics, and seeing conditions. Thus as the
+    focuser is near the ideal position, these other effects become the dominant contributors to the
+    HFR.
+
+    The coordinates at the minimum of this function are (x_0, alpha * beta + y_0).
+
+    Args:
+        x: Array of x coordinates. In this application, x represents the focuser position.
+        alpha: Affects the sharpness of the point of the V, where smaller values yield a sharper
+            point. When this value is 0, the to sides of the curve are straight lines. The sign of
+            this value has no impact on the curve shape.
+        beta: The slope of the curve when x approaches infinity. In this focuser application beta
+            will be a positive value, since a negative value would yield an upside-down V.
+        x_0: The x coordinate of the tip of the V, which is the focuser position that minimizes the
+            HFR.
+        y_0: The y offset. When alpha equals 0, this is the y coordinate of the tip of the V. When
+            alpha is nonzero, the straight lines tangent to the arms of the curve as x approaches
+            positive and negative infinity intersect at (x_0, y_0).
+
+    Returns:
+        The function evaluated at the points in x.
+    """
+    return beta * np.sqrt((x - x_0)**2 + alpha**2) + y_0
 
 
 def estimate_ideal_focuser_position(focuser_steps: np.ndarray, hfrs: np.ndarray) -> int:
     """Estimate ideal focuser position.
 
     Estimates the ideal focuser position by fitting a hyperbolic function to a set of HFR estimates
-    and solves for the focuser position that minimizes the HFR.
+    and solves for the focuser position that minimizes the HFR. The solution is constrained to
+    fall within the same range as the provided array of focuser positions.
 
     Args:
         focuser_steps: Array of focuser positions.
@@ -95,12 +122,20 @@ def estimate_ideal_focuser_position(focuser_steps: np.ndarray, hfrs: np.ndarray)
     Returns:
         Estimated ideal focuser position.
     """
-    def v_curve(x, alpha, beta, x_0, y_0):
-        return beta * np.sqrt((x - x_0)**2 + alpha**2) + y_0
+    position_mid = (np.max(focuser_steps) + np.min(focuser_steps)) / 2
+    popt, _ = curve_fit(
+        v_curve,
+        focuser_steps,
+        hfrs,
+        p0=(1, 1, position_mid, 0),
+        bounds=(
+            (0, 0, np.min(focuser_steps), -np.inf),  # lower bounds on param values
+            (np.inf, np.inf, np.max(focuser_steps), np.inf)  # upper bounds on param values
+        )
+    )
 
-    # TODO: initial x_0 param value is specific to my focuser which has a position range of 4200
-    # TODO: Add bounds on parameters
-    popt, _ = curve_fit(v_curve, focuser_steps, hfrs, p0=(350, 1.75e-2, 2100, 0))
+    rms_error = np.sqrt(np.mean(np.square(v_curve(focuser_steps, *popt) - hfrs)))
+    print(f'Focuser V-curve solution RMS error: {rms_error} pixels')
 
     return int(np.round(popt[2]))
 
