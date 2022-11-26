@@ -28,13 +28,13 @@ from astropy import units as u
 from astropy.io import fits
 from astropy.time import Time
 from astropy.coordinates import SkyCoord, Angle, Longitude
-import track
-from track import cameras, gps_client, mounts, ntp, telem
+from track import cameras, gps_client, model, mounts, ntp, telem
 from track.cameras import Camera
 from track.control import Tracker, smallest_allowed_error
 from track.config import ArgParser, CONFIG_PATH, DATA_PATH
 from track.model import ModelParamSet, MountModel
 from track.mounts import MeridianSide, MountEncoderPositions, TelescopeMount
+from track.plate_solve import plate_solve, NoSolutionException
 from track.targets import FixedMountEncodersTarget
 from track.tsp import Destination, solve_route
 
@@ -178,11 +178,11 @@ def attempt_plate_solving(
     mount_position = mount.get_position()
 
     try:
-        _, sc_eq = track.plate_solve(
+        _, sc_eq = plate_solve(
             frame,
             camera_width=camera.field_of_view[1]
         )
-    except track.NoSolutionException:
+    except NoSolutionException:
         print('No solution.')
         return False
     else:
@@ -284,7 +284,7 @@ def main():
 
     # This is meant to be just good enough that the model is able to tell roughly which direction
     # is up so that the positions used during alignment are all above the horizon.
-    starter_mount_model = track.model.load_default_model(
+    starter_mount_model = model.load_default_model(
         mount_pole_alt=Longitude(args.mount_pole_alt*u.deg),
         location=location
     )
@@ -402,7 +402,7 @@ def main():
 
         try:
             print('Solving for mount model parameters...', end='', flush=True)
-            model_params, result = track.model.solve_model(observations)
+            model_params, result = model.solve_model(observations)
             print('done.')
             print(result)
 
@@ -431,9 +431,9 @@ def main():
                 pickle.dump(model_param_set, f, pickle.HIGHEST_PROTOCOL)
 
             print('Making this set of model parameters the default')
-            track.model.save_default_param_set(model_param_set)
+            model.save_default_param_set(model_param_set)
 
-        except track.model.NoSolutionException as e:
+        except model.NoSolutionException as e:
             print('failed: {}'.format(str(e)))
 
     except RuntimeError as e:

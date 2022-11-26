@@ -7,13 +7,14 @@ are controlled by the analog sticks.
 """
 
 from threading import Event
-import track
+from track.config import ArgParser
+from track.gamepad import Gamepad
 from track import laser, mounts, telem
 
 def main():
     """See module docstring"""
 
-    parser = track.ArgParser()
+    parser = ArgParser()
     mounts.add_program_arguments(parser)
     telem.add_program_arguments(parser)
     laser.add_program_arguments(parser)
@@ -21,7 +22,7 @@ def main():
 
     mount = mounts.make_mount_from_args(args, use_multiprocessing=False)
 
-    game_pad = track.Gamepad()
+    game_pad = Gamepad()
 
     try:
         laser_pointer = laser.make_laser_from_args(args)

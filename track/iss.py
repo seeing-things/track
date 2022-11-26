@@ -6,16 +6,15 @@ Simple program grabs the latest TLE for the ISS from Celestrak and then uses the
 to print the current Az/Alt position of ISS relative to the observer's location.
 """
 
-from __future__ import print_function
 import time
 import ephem
 import requests
-import track
+from track.config import ArgParser
 
 def main():
     """See module docstring"""
 
-    parser = track.ArgParser()
+    parser = ArgParser()
     parser.add_argument(
         '--lat',
         required=True,

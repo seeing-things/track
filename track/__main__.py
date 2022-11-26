@@ -10,8 +10,7 @@ import sys
 import click
 import astropy.units as u
 from astropy.coordinates import Longitude
-import track
-from track import control, laser, mounts, ntp, targets, telem
+from track import control, laser, model, mounts, ntp, targets, telem
 from track.config import ArgParser, CONFIG_PATH
 from track.control import Tracker
 from track.gamepad import Gamepad
@@ -76,15 +75,15 @@ def main():
 
     # Load a MountModel object
     try:
-        mount_model = track.model.load_stored_model()
-    except track.model.StaleParametersException:
+        mount_model = model.load_stored_model()
+    except model.StaleParametersException:
         if click.confirm('Stored alignment parameters are stale. Use anyway?', default=True):
-            mount_model = track.model.load_stored_model(max_age=None)
+            mount_model = model.load_stored_model(max_age=None)
         elif args.target_type == 'camera':
             if click.confirm('Use a default set of alignment parameters instead?', default=True):
                 guide_cam_orientation = click.prompt(
                     'Enter guide camera orientation in degrees, clockwise positive', type=float)
-                mount_model = track.model.load_default_model(
+                mount_model = model.load_default_model(
                     guide_cam_orientation=Longitude(guide_cam_orientation*u.deg))
 
     if 'mount_model' not in locals():

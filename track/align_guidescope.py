@@ -20,7 +20,6 @@ import astropy.units as u
 import click
 import ephem
 import matplotlib.pyplot as plt
-import track
 from track import cameras
 from track.config import ArgParser, CONFIG_PATH
 from track.mounts import MeridianSide
@@ -29,6 +28,7 @@ from track.model import (
     load_stored_param_set,
     apply_guide_cam_alignment_error
 )
+from track.plate_solve import plate_solve
 
 
 SHUTDOWN_TIMEOUT_S = 2.0
@@ -111,7 +111,7 @@ def main():
     print('Plate solving guidescope camera frame...', end='', flush=True)
     camera = cameras.make_camera_from_args(args)
     frame = camera.get_frame()
-    wcs, _ = track.plate_solve(
+    wcs, _ = plate_solve(
         frame,
         camera_width=camera.field_of_view[1]
     )

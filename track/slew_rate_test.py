@@ -6,7 +6,8 @@ import sys
 import time
 import astropy.units as u
 from astropy.coordinates import Longitude
-import track
+from track.config import ArgParser
+from track.mounts import LosmandyGeminiMount, NexStarMount
 
 SLEW_CHANGE_TIME = 3.0
 TIME_LIMIT = 60.0
@@ -15,7 +16,7 @@ SLEW_LIMIT = 20.0
 def main():
     """See module docstring"""
 
-    parser = track.ArgParser()
+    parser = ArgParser()
     parser.add_argument(
         '--mount-type',
         help='select mount type (nexstar or gemini)',
@@ -30,9 +31,9 @@ def main():
 
     # Create object with base type TelescopeMount
     if args.mount_type == 'nexstar':
-        mount = track.NexStarMount(args.mount_path)
+        mount = NexStarMount(args.mount_path)
     elif args.mount_type == 'gemini':
-        mount = track.LosmandyGeminiMount(args.mount_path)
+        mount = LosmandyGeminiMount(args.mount_path)
     else:
         print('mount-type not supported: ' + args.mount_type)
         sys.exit(1)

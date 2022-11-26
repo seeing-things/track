@@ -8,13 +8,13 @@ import numpy as np
 import pandas as pd
 from astropy.coordinates import Longitude
 import astropy.units as u
-import track
+from track.config import ArgParser
 from track import mounts
 
 def main():
     """Apply step functions of varying magnitudes to a mount axis and plot the responses."""
 
-    parser = track.ArgParser()
+    parser = ArgParser()
     mounts.add_program_arguments(parser)
     parser.add_argument(
         '--axis',

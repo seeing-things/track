@@ -13,7 +13,7 @@ import datetime
 import monthdelta
 import requests
 from bs4 import BeautifulSoup
-import track
+from track.config import ArgParser
 from track import gps_client
 
 
@@ -62,7 +62,7 @@ def print_timezone_help():
 def main():
     """See module docstring at the top of this file."""
 
-    parser = track.ArgParser()
+    parser = ArgParser()
     parser.add_argument(
         'outdir',
         help='output directory'

@@ -10,13 +10,14 @@ particular camera, camera settings, plate solver settings, and sky conditions.
 import time
 from datetime import datetime
 import cv2
-import track
 from track import cameras
+from track.config import ArgParser
+from track.plate_solve import plate_solve, NoSolutionException
 
 def main():
     """Repeatedly prints coordinates of camera frame center found by plate solving."""
 
-    parser = track.ArgParser()
+    parser = ArgParser()
     parser.add_argument(
         '--skip-solve',
         help='skip plate solving',
@@ -43,12 +44,12 @@ def main():
 
         try:
             start_time = time.time()
-            _, sc = track.plate_solve(
+            _, sc = plate_solve(
                 frame,
                 camera_width=camera.field_of_view[1]
             )
             elapsed = time.time() - start_time
-        except track.NoSolutionException:
+        except NoSolutionException:
             print('No solution found')
             continue
 
