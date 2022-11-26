@@ -32,7 +32,7 @@ import track
 from track import cameras, gps_client, mounts, ntp, telem
 from track.cameras import Camera
 from track.control import Tracker, smallest_allowed_error
-from track.config import DATA_PATH
+from track.config import ArgParser, CONFIG_PATH, DATA_PATH
 from track.model import ModelParamSet, MountModel
 from track.mounts import MeridianSide, MountEncoderPositions, TelescopeMount
 from track.targets import FixedMountEncodersTarget
@@ -213,7 +213,7 @@ def attempt_plate_solving(
 def main():
     """Run the alignment procedure! See module docstring for a description."""
 
-    parser = track.ArgParser()
+    parser = ArgParser(additional_config_files=[os.path.join(CONFIG_PATH, 'align.cfg')])
     align_group = parser.add_argument_group(
         title='Alignment Configuration',
         description='Options that apply to alignment',

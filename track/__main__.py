@@ -12,6 +12,7 @@ import astropy.units as u
 from astropy.coordinates import Longitude
 import track
 from track import control, laser, mounts, ntp, targets, telem
+from track.config import ArgParser, CONFIG_PATH
 from track.control import Tracker
 from track.gamepad import Gamepad
 from track.mounts import MeridianSide
@@ -49,7 +50,7 @@ def main():
             return False
 
 
-    parser = track.ArgParser()
+    parser = ArgParser(additional_config_files=[os.path.join(CONFIG_PATH, 'track.cfg')])
     targets.add_program_arguments(parser)
     laser.add_program_arguments(parser)
     mounts.add_program_arguments(parser, meridian_side_required=True)

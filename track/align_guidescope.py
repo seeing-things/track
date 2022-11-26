@@ -22,7 +22,7 @@ import ephem
 import matplotlib.pyplot as plt
 import track
 from track import cameras
-from track.config import CONFIG_PATH
+from track.config import ArgParser, CONFIG_PATH
 from track.mounts import MeridianSide
 from track.model import (
     save_default_param_set,
@@ -50,12 +50,12 @@ def terminate_subprocess(process: subprocess.Popen) -> None:
 
 def main():
     """See module docstring at the top of this file."""
-    parser = track.ArgParser()
+    parser = ArgParser(additional_config_files=[os.path.join(CONFIG_PATH, 'align.cfg')])
     parser.add_argument('star', help='Name of bright star')
     parser.add_argument(
         '--main-camera-cfg',
-        help='Configuration file with settings for the main OTA camera',
-        default=os.path.join(CONFIG_PATH, 'camera_main.cfg')
+        help='Configuration file with settings for the main camera',
+        default=os.path.join(CONFIG_PATH, 'track_main_cam.cfg')
     )
     parser.add_argument(
         '--meridian-side',
@@ -89,7 +89,7 @@ def main():
     track_process = subprocess.Popen(
         args=[
             'track',
-            f'--cfg={args.main_camera_cfg}',  # use the main camera in this subprocess
+            f'--config-file={args.main_camera_cfg}',  # use the main camera in this subprocess
             f'--meridian-side={args.meridian_side}',
             '--fuse',
             '--spiral-search',
