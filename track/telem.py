@@ -211,12 +211,12 @@ class TelemLogger:
         while True:
             if not self.running:
                 return
-            start_time = time.time()
+            start_time = time.perf_counter()
             try:
                 self.poll_sources()
             except InfluxDBError:
                 logger.exception('Failed to post telemetry to database.')
-            elapsed_time = time.time() - start_time
+            elapsed_time = time.perf_counter() - start_time
             sleep_time = self.period - elapsed_time
             if sleep_time > 0.0:
                 time.sleep(sleep_time)
