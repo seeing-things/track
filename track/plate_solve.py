@@ -41,6 +41,7 @@ def plate_solve(frame: np.ndarray, camera_width: Optional[float] = None) -> Tupl
 
     Raises:
         NoSolutionException when a solution could not be found.
+        subprocess.CalledProcessError if astrometry.net has a non-zero exit code.
     """
 
     # Must pass frame to astrometry.net as a file and read results from files, so do this in a
@@ -66,15 +67,12 @@ def plate_solve(frame: np.ndarray, camera_width: Optional[float] = None) -> Tupl
         args.append(frame_filename)
 
         # Call astrometry.net binary solve-field
-        try:
-            subprocess.run(
-                args,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=True,
-            )
-        except subprocess.CalledProcessError as e:
-            print('astrometry.net subprocess: ' + str(e))
+        subprocess.run(
+            args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
 
         try:
             wcs_file = fits.open(os.path.join(tempdir, filename_prefix + '.wcs'))
