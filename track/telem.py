@@ -1,11 +1,11 @@
 """Telemetry logging to a time series database."""
 
 from abc import ABC, abstractmethod
+import logging
 import os
 import pathlib
 import time
 import threading
-import traceback
 from typing import Dict, List, Optional
 import toml
 from configargparse import Namespace
@@ -13,6 +13,9 @@ from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import WriteOptions
 from influxdb_client.client.exceptions import InfluxDBError
 from track.config import ArgParser
+
+
+logger = logging.getLogger(__name__)
 
 
 def open_client(
@@ -199,9 +202,8 @@ class TelemLogger:
             start_time = time.time()
             try:
                 self.poll_sources()
-            except InfluxDBError as e:
-                print('Failed to post telemetry to database: ' + str(e))
-                traceback.print_exc()
+            except InfluxDBError:
+                logger.exception('Failed to post telemetry to database.')
             elapsed_time = time.time() - start_time
             sleep_time = self.period - elapsed_time
             if sleep_time > 0.0:

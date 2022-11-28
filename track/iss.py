@@ -47,7 +47,7 @@ def main():
     while True:
         home.date = ephem.now()
         iss.compute(home)
-        print('Az: %s Alt: %s' % (iss.az, iss.alt))
+        print(f'Az: {iss.az} Alt: {iss.alt}')
         time.sleep(1)
 
 if __name__ == "__main__":

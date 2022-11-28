@@ -5,6 +5,7 @@ program the integrated x- and y- values are printed to the console.
 """
 
 from datetime import datetime
+import logging
 import os
 import signal
 import threading
@@ -16,6 +17,10 @@ import numpy as np
 import click
 from influxdb_client import Point
 from track.telem import TelemSource
+
+
+logger = logging.getLogger(__name__)
+
 
 class Gamepad(TelemSource):
     """Class for interfacing with gamepads.
@@ -101,7 +106,6 @@ class Gamepad(TelemSource):
         )
         self.integrator_mode = False
         self.running = True
-        self.debug_prints = False
 
         # Use a selector on the character device that the inputs package reads from so that we
         # can avoid blocking on calls to gamepad.read() in the input_thread loop. Calls that block
@@ -219,8 +223,7 @@ class Gamepad(TelemSource):
                     if callback is not None:
                         callback(event.state)
 
-                    if self.debug_prints:
-                        print(event.code + ': ' + str(event.state))
+                    logger.debug('%s: %s', event.code, event.state)
 
     def __integrator(self):
         """Thread function for integrating analog stick values.
@@ -275,8 +278,11 @@ class Gamepad(TelemSource):
 def main():
     """Prints all gamepad events received"""
 
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(message)s',
+    )
     gamepad = Gamepad()
-    gamepad.debug_prints = True
     try:
         signal.pause()
     except KeyboardInterrupt:

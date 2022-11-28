@@ -6,6 +6,7 @@ Automatic focus script and associated algorithms.
 
 import atexit
 from datetime import datetime
+import logging
 import signal
 import subprocess
 import os
@@ -16,26 +17,28 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import ndimage
 from scipy.optimize import curve_fit
-from track import cameras, focusers
+from track import cameras, focusers, logs
 from track.config import ArgParser, CONFIG_PATH, DATA_PATH
 from track.mounts import MeridianSide
 
+
+logger = logging.getLogger(__name__)
 
 SHUTDOWN_TIMEOUT_S = 2.0
 
 
 def terminate_subprocess(process: subprocess.Popen) -> None:
     """Terminate a running subprocess"""
-    print('Terminating subprocess...', end='', flush=True)
+    logger.info('Terminating subprocess.')
     process.send_signal(signal.SIGINT)
     time_sigint = time.perf_counter()
     while process.poll() is None:
         if time.perf_counter() - time_sigint > SHUTDOWN_TIMEOUT_S:
-            print('Subprocess shutdown timeout; resorting to SIGKILL...', end='', flush=True)
+            logger.warning('Subprocess shutdown timeout; resorting to SIGKILL.')
             process.kill()
             break
         time.sleep(0.1)
-    print('done.')
+    logger.info('Subprocess terminated.')
 
 
 def create_circular_mask(
@@ -151,22 +154,30 @@ def estimate_ideal_focuser_position(
 
     Returns:
         Estimated ideal focuser position.
+
+    Raises:
+        RuntimeError if the curve fit fails.
     """
     position_mid = (np.max(focuser_steps) + np.min(focuser_steps)) / 2
+
+    try:
     # pylint: disable=unbalanced-tuple-unpacking
-    popt, _ = curve_fit(
-        v_curve,
-        focuser_steps,
-        hfrs,
-        p0=(1, 1, position_mid, 0),
-        bounds=(
-            (0, 0, np.min(focuser_steps), -np.inf),  # lower bounds on param values
-            (np.inf, np.inf, np.max(focuser_steps), np.inf)  # upper bounds on param values
+        popt, _ = curve_fit(
+            v_curve,
+            focuser_steps,
+            hfrs,
+            p0=(1, 1, position_mid, 0),
+            bounds=(
+                (0, 0, np.min(focuser_steps), -np.inf),  # lower bounds on param values
+                (np.inf, np.inf, np.max(focuser_steps), np.inf)  # upper bounds on param values
+            )
         )
-    )
+    except RuntimeError:
+        logger.exception('curve_fit failed.')
+        raise
 
     rms_error = np.sqrt(np.mean(np.square(v_curve(focuser_steps, *popt) - hfrs)))
-    print(f'Focuser V-curve solution RMS error: {rms_error} pixels')
+    logger.info(f'Focuser V-curve solution RMS error: {rms_error} pixels')
 
     ideal_position = int(np.round(popt[2]))
 
@@ -216,11 +227,9 @@ def autofocus(
     """
     hfrs = np.zeros(focuser_steps.size)
     for idx, position in enumerate(focuser_steps):
-        print(
+        logger.info(
             f'Estimating HFR at focuser position {position:4d} '
-            f'({idx:3d} of {focuser_steps.size:3d})...',
-            end='',
-            flush=True)
+            f'({idx + 1:3d} of {focuser_steps.size:3d}).')
         focuser.target_position = position
         focuser.move_to_target_position(blocking=True)
         image = camera.get_frame()
@@ -240,7 +249,6 @@ def autofocus(
         image[image < 0.1*np.max(image)] = 0
 
         hfrs[idx] = estimate_hfr(image)
-        print('done.')
 
     if output_dir is not None:
         np.savetxt(
@@ -255,13 +263,12 @@ def autofocus(
         )
 
     ideal_position = estimate_ideal_focuser_position(focuser_steps, hfrs, show_plot)
-    print(f'Estimated ideal focuser position: {ideal_position}')
+    logger.info(f'Estimated ideal focuser position: {ideal_position}')
 
     if not skip_final_move:
-        print(f'Moving focuser to {ideal_position}...', end='', flush=True)
+        logger.info(f'Moving focuser to {ideal_position}.')
         focuser.target_position = ideal_position
         focuser.move_to_target_position(blocking=True)
-        print('done.')
 
     return ideal_position
 
@@ -289,7 +296,10 @@ def main():
     )
     cameras.add_program_arguments(parser)
     focusers.add_program_arguments(parser)
+    logs.add_program_arguments(parser)
     args = parser.parse_args()
+
+    logs.setup_logging_from_args(args, 'autofocus')
 
     camera = cameras.make_camera_from_args(args)
     focuser = focusers.make_focuser_from_args(args)
@@ -297,7 +307,7 @@ def main():
 
     # Run the `track` program to get the mount pointed at the approximate location of the star.
     # Need to wait until the star is within the main camera's field of view before proceeding.
-    print(f"Moving mount until centered on {args.star}...", end='', flush=True)
+    logger.info(f'Moving mount until centered on {args.star}.')
     subprocess.run(
         args=[
             'track',
@@ -309,10 +319,9 @@ def main():
         ],
         check=True,
     )
-    print('done.')
 
     # Run the `track` program as a subprocess in the background to continue tracking the star
-    print(f'Continuing to track {args.star}.')
+    logger.info(f'Continuing to track {args.star}.')
     track_process = subprocess.Popen(
         args=[
             'track',
@@ -359,7 +368,7 @@ def main():
     autofocus(camera, focuser, positions, output_dir=output_dir, show_plot=args.plot)
 
     time_elapsed = time.perf_counter() - time_start
-    print(f'Elapsed time: {time_elapsed} s')
+    logger.info(f'Elapsed time: {time_elapsed} s')
 
 
 if __name__ == "__main__":

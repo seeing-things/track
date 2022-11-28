@@ -82,6 +82,7 @@ def plate_solve(frame: np.ndarray, camera_width: Optional[float] = None) -> Tupl
             raise NoSolutionException() from None
 
         # get "world coordinates" for center of frame
+        # pylint: disable=no-member
         wcs = WCS(header=wcs_file[0].header)
         frame_width = frame.shape[1]
         frame_height = frame.shape[0]

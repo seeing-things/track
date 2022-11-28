@@ -7,6 +7,7 @@ target.
 """
 
 from abc import ABC, abstractmethod
+import logging
 from typing import Tuple
 from math import inf
 import enum
@@ -26,6 +27,9 @@ import astropy.units as u
 import asi
 from asi import ASICheck, ASIError
 from track.config import ArgParser
+
+
+logger = logging.getLogger(__name__)
 
 
 class Camera(ABC):
@@ -818,7 +822,7 @@ class WebCam(Camera):
         try:
             self._v4l2_ioctl(req, arg)
         except OSError:
-            print('WebCam: {}'.format(err_msg))
+            logger.exception(f'WebCam ioctl failed: {err_msg}')
 
     def _v4l2_ioctl(self, req, arg):
         assert fcntl.ioctl(self.dev_fd, req, arg) == 0

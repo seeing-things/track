@@ -10,6 +10,7 @@ guidescope camera's field of view.
 """
 
 import atexit
+import logging
 import os
 import sys
 import signal
@@ -20,7 +21,7 @@ import astropy.units as u
 import click
 import ephem
 import matplotlib.pyplot as plt
-from track import cameras
+from track import cameras, logs
 from track.config import ArgParser, CONFIG_PATH
 from track.mounts import MeridianSide
 from track.model import (
@@ -31,21 +32,23 @@ from track.model import (
 from track.plate_solve import plate_solve
 
 
+logger = logging.getLogger(__name__)
+
 SHUTDOWN_TIMEOUT_S = 2.0
 
 
 def terminate_subprocess(process: subprocess.Popen) -> None:
     """Terminate a running subprocess"""
-    print('Terminating subprocess...', end='', flush=True)
+    logger.info('Terminating subprocess.')
     process.send_signal(signal.SIGINT)
     time_sigint = time.perf_counter()
     while process.poll() is None:
         if time.perf_counter() - time_sigint > SHUTDOWN_TIMEOUT_S:
-            print('Subprocess shutdown timeout; resorting to SIGKILL...', end='', flush=True)
+            logger.warning('Subprocess shutdown timeout; resorting to SIGKILL.')
             process.kill()
             break
         time.sleep(0.1)
-    print('done.')
+    logger.info('Subprocess terminated.')
 
 
 def main():
@@ -64,11 +67,13 @@ def main():
         choices=tuple(m.name.lower() for m in MeridianSide),
     )
     cameras.add_program_arguments(parser)
+    logs.add_program_arguments(parser)
     args = parser.parse_args()
 
+    logs.setup_logging_from_args(args, 'align_guidescope')
 
     # Run the `track` program to get the mount pointed at the approximate location of the star.
-    print(f'Moving mount to the vicinity of {args.star}...', end='', flush=True)
+    logger.info(f'Moving mount to the vicinity of {args.star}.')
     subprocess.run(
         args=[
             'track',
@@ -79,7 +84,6 @@ def main():
         ],
         check=True,
     )
-    print('done.')
 
     # Run the `track` program as a subprocess. This performs a spiral search until the star is
     # found and then continues to track it to keep it centered in the main telescope camera while
@@ -103,19 +107,18 @@ def main():
             f'Is the spiral search completed, with {args.star} centered in the preview window?',
             default=True
         ):
-        print('Aborting')
+        logger.info(f'User denies that {args.star} is centered in the preview window.')
         sys.exit(1)
 
     # Solve frame from guidescope camera while the tracking system is keeping the star centered in
     # the main camera.
-    print('Plate solving guidescope camera frame...', end='', flush=True)
+    logger.info('Plate solving guidescope camera frame.')
     camera = cameras.make_camera_from_args(args)
     frame = camera.get_frame()
     wcs, _ = plate_solve(
         frame,
         camera_width=camera.field_of_view[1]
     )
-    print('done.')
 
     # get astrometric geocentric world coordinate of named star
     target = ephem.star(args.star)
@@ -125,7 +128,7 @@ def main():
 
     # sanity check that the pixel location is actually in the frame
     if not camera.pixel_in_frame(pixel_location[0], pixel_location[1]):
-        print(f'Could not find {args.star} in the frame')
+        logger.error(f'Could not find {args.star} in the frame.')
         sys.exit(1)
 
     # show the frame annotated with the location of the bright star
@@ -135,16 +138,15 @@ def main():
     plt.show()
 
     if not click.confirm(f'Was the red X on {args.star}?', default=True):
-        print('Aborting')
+        logger.info(f'User rejected identification of star {args.star}.')
         sys.exit(1)
 
     # apply the estimated guidecam alignment error to the stored mount model
-    print('Alignment succeeded! Applying result to saved mount model...', end='', flush=True)
+    logger.info('Alignment succeeded! Applying result to saved mount model.')
     guide_cam_align_error = camera.pixel_to_angle(pixel_location[0], pixel_location[1])
     old_param_set = load_stored_param_set()
     new_param_set = apply_guide_cam_alignment_error(old_param_set, guide_cam_align_error)
     save_default_param_set(new_param_set)
-    print('done.')
 
 
 if __name__ == "__main__":

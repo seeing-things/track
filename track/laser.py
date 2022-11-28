@@ -6,9 +6,13 @@ pointer allow the laser pointer on/off state to be controlled by the voltage lev
 The details of that electrical interface are not specified.
 """
 
+import logging
 from pyftdi.ftdi import Ftdi
 from configargparse import Namespace
 from track.config import ArgParser
+
+
+logger = logging.getLogger(__name__)
 
 
 # for purposes of set_bitmode bitmask:
@@ -75,8 +79,8 @@ class LaserPointer:
             self.ftdi.close()
         except AttributeError:  # happens when no laser was present at construction time
             pass
-        except Exception as e:  # pylint: disable=broad-except
-            print('Got exception while trying to disable laser pointer: ' + str(e))
+        except Exception:  # pylint: disable=broad-except
+            logger.exception('Got exception while trying to disable laser pointer.')
 
     def set(self, enable):
         """Sets the state of the laser pointer.

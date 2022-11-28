@@ -15,6 +15,7 @@ just roll our own solution that provides exactly what we need in a lightweight a
 from abc import ABC, abstractmethod
 import enum
 from enum import IntEnum
+import logging
 from typing import NamedTuple, Tuple
 import time
 import numpy as np
@@ -23,6 +24,9 @@ from astropy.coordinates import Longitude
 from configargparse import Namespace
 import point
 from track.config import ArgParser
+
+
+logger = logging.getLogger(__name__)
 
 
 class MeridianSide(IntEnum):
@@ -426,9 +430,9 @@ class NexStarMount(TelescopeMount):
             Always returns True for this mount since there is no way to query the slew rate from
             the mount.
         """
+        logger.info('Safing mount.')
         for axis in self.AxisName:
             self.slew(axis, 0.0)
-
         return True
 
 
@@ -614,7 +618,7 @@ class LosmandyGeminiMount(TelescopeMount):
         Returns:
             True when motion is stopped. Will not return otherwise.
         """
-        # This method blocks until motion on both axes has ceased.
+        logger.info('Safing mount.')
         self.mount.stop_motion()
         return True
 

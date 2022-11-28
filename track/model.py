@@ -1,5 +1,6 @@
 """Mount modeling and transformations between sky and mount reference frames."""
 
+import logging
 import os
 import pickle
 import time
@@ -20,6 +21,8 @@ from track.mounts import MeridianSide, MountEncoderPositions
 
 
 DEFAULT_MODEL_FILENAME = os.path.join(CONFIG_PATH, 'model_params.pickle')
+
+logger = logging.getLogger(__name__)
 
 
 # Disable IERS data age checking in calls to methods that depend on this data so that the code will
@@ -240,6 +243,7 @@ class MountModel:
         self.model_params = model_param_set.model_params
         self.guide_cam_orientation = model_param_set.guide_cam_orientation
         self.location = model_param_set.location
+        logger.info(f'MountModel created with {model_param_set}')
 
 
     def apply_camera_tilt(

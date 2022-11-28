@@ -6,10 +6,16 @@ This program allows direct control of a telescope mount with a gamepad. The slew
 are controlled by the analog sticks.
 """
 
+import logging
+import sys
 from threading import Event
 from track.config import ArgParser
 from track.gamepad import Gamepad
-from track import laser, mounts, telem
+from track import laser, logs, mounts, telem
+
+
+logger = logging.getLogger(__name__)
+
 
 def main():
     """See module docstring"""
@@ -18,7 +24,11 @@ def main():
     mounts.add_program_arguments(parser)
     telem.add_program_arguments(parser)
     laser.add_program_arguments(parser)
+    logs.add_program_arguments(parser)
     args = parser.parse_args()
+
+    logs.setup_logging_from_args(args, 'gamepad_control')
+    logger.info(f'Program started with the following arguments: {sys.argv}')
 
     mount = mounts.make_mount_from_args(args, use_multiprocessing=False)
 
@@ -28,7 +38,7 @@ def main():
         laser_pointer = laser.make_laser_from_args(args)
         game_pad.register_callback('BTN_SOUTH', laser_pointer.set)
     except OSError:
-        print('Could not connect to laser pointer control device.')
+        logger.warning('Could not connect to laser pointer FTDI device.')
         laser_pointer = None
 
     if args.telem_enable:
@@ -46,15 +56,13 @@ def main():
                 mount.slew(1, mount.max_slew_rate * y)
 
     except KeyboardInterrupt:
-        print('Got CTRL-C, shutting down...')
+        logger.info('Got CTRL-C, shutting down.')
     finally:
         if mount is not None:
             # don't rely on destructors to safe mount!
-            print('Safing mount...', end='', flush=True)
-            if mount.safe():
-                print('Mount safed successfully!')
-            else:
-                print('Warning: Mount may be in an unsafe state!')
+            logger.info('Safing mount.')
+            if not mount.safe():
+                logger.error('Safing failed; mount may be in an unsafe state.')
 
         if args.telem_enable:
             telem_logger.stop()

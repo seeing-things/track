@@ -16,6 +16,7 @@ system time to a reasonable degree of precision.
 
 # http://manpages.ubuntu.com/manpages/bionic/man5/gpsd_json.5.html
 
+import logging
 from typing import NamedTuple
 from datetime import datetime
 from enum import Flag, IntEnum, auto
@@ -28,6 +29,9 @@ from astropy.coordinates import EarthLocation
 from astropy.time import Time as APTime
 import gps
 from track.config import ArgParser
+
+
+logger = logging.getLogger(__name__)
 
 
 class GPSFixType(IntEnum):
@@ -398,6 +402,7 @@ def make_location_from_args(args: Namespace) -> EarthLocation:
         if not click.confirm('Proceed without GPS location?', default=True):
             raise RuntimeError('Could not generate a location')
         location = EarthLocation(lat=args.lat*u.deg, lon=args.lon*u.deg, height=args.elevation*u.m)
+        logger.info('Got location from program args.')
     elif any(arg is not None for arg in [args.lat, args.lon, args.elevation]):
         raise ValueError("Must give all of lat, lon, and elevation or none of them.")
     else:
@@ -416,12 +421,12 @@ def make_location_from_args(args: Namespace) -> EarthLocation:
                 ),
                 margins=GPSMargins(speed=inf, climb=inf, time=1.0)
             )
-            print(
-                'Got location from GPS: '
-                f'lat: {location.lat:.5f}, '
-                f'lon: {location.lon:.5f}, '
-                f'altitude: {location.height:.2f}'
-            )
+            logger.info('Got location from GPS.')
+
+    logger.info('Generated the following location: '
+        f'lat: {location.lat:.5f} deg, '
+        f'lon: {location.lon:.5f} deg, '
+        f'altitude: {location.height:.2f} m.')
 
     return location
 
@@ -452,9 +457,9 @@ def main():
             loc = g.get_location(timeout, need_3d, err_max, margins)
             print(f'lat: {loc.lat:.5f}, lon: {loc.lon:.5f}, altitude: {loc.height:.2f}')
         finally:
-            print('fix_type: {}'.format(g.fix_type))
-            print('values:   {}'.format(g.values))
-            print('errors:   {}'.format(g.errors))
+            print(f'fix_type: {g.fix_type}')
+            print(f'values:   {g.values}')
+            print(f'errors:   {g.errors}')
 
 
 if __name__ == '__main__':

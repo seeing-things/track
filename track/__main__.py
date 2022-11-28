@@ -5,16 +5,20 @@
 This is the core program in this project. The software uses a control system to cause a telescope
 mount to track a target based on the target's position in the sky and the mount's encoder readings.
 """
+import logging
 import os
 import sys
 import click
 import astropy.units as u
 from astropy.coordinates import Longitude
-from track import control, laser, model, mounts, ntp, targets, telem
+from track import control, laser, logs, model, mounts, ntp, targets, telem
 from track.config import ArgParser, CONFIG_PATH
 from track.control import Tracker
 from track.gamepad import Gamepad
 from track.mounts import MeridianSide
+
+
+logger = logging.getLogger(__name__)
 
 
 def main():
@@ -52,11 +56,14 @@ def main():
     parser = ArgParser(additional_config_files=[os.path.join(CONFIG_PATH, 'track.cfg')])
     targets.add_program_arguments(parser)
     laser.add_program_arguments(parser)
+    logs.add_program_arguments(parser)
     mounts.add_program_arguments(parser, meridian_side_required=True)
     ntp.add_program_arguments(parser)
     telem.add_program_arguments(parser)
     control.add_program_arguments(parser)
     args = parser.parse_args()
+
+    logs.setup_logging_from_args(args, __package__)
 
     # Set priority of this thread to realtime. Do this before constructing objects since priority
     # is inherited and some critical threads are created by libraries we have no direct control
@@ -67,10 +74,9 @@ def main():
     if args.check_time_sync:
         try:
             ntp.check_ntp_status()
-        except ntp.NTPCheckFailure as e:
-            print('NTP check failed: ' + str(e))
+        except ntp.NTPCheckFailure:
+            logger.exception('NTP check failed.')
             if not click.confirm('Continue anyway?', default=True):
-                print('Aborting')
                 sys.exit(2)
 
     # Load a MountModel object
@@ -87,7 +93,7 @@ def main():
                     guide_cam_orientation=Longitude(guide_cam_orientation*u.deg))
 
     if 'mount_model' not in locals():
-        print('Aborting: No model could be loaded. To refresh stored model run align program.')
+        logger.error('No model could be loaded. To refresh stored model run align program.')
         sys.exit(1)
 
     # Create object with base type TelescopeMount
@@ -113,7 +119,7 @@ def main():
     try:
         laser_pointer = laser.make_laser_from_args(args)
     except OSError:
-        print('Could not connect to laser pointer FTDI device.')
+        logger.warning('Could not connect to laser pointer FTDI device.')
         laser_pointer = None
 
     telem_sources = {}
@@ -124,9 +130,9 @@ def main():
             game_pad.register_callback('BTN_SOUTH', laser_pointer.set)
         tracker.register_callback(gamepad_callback)
         telem_sources['gamepad'] = game_pad
-        print('Gamepad found and registered.')
+        logger.info('Gamepad found and registered.')
     except RuntimeError:
-        print('No gamepads found.')
+        logger.warning('No gamepads found.')
 
     if telem_logger is not None:
         telem_logger.register_sources(telem_sources)
@@ -136,14 +142,12 @@ def main():
     try:
         tracker.run(stopping_conditions)
     except KeyboardInterrupt:
-        print('Got CTRL-C, shutting down...')
+        logger.info('Got CTRL-C, shutting down.')
     finally:
         # don't rely on destructors to safe mount!
-        print('Safing mount...', end='', flush=True)
-        if mount.safe():
-            print('Mount safed successfully!')
-        else:
-            print('Warning: Mount may be in an unsafe state!')
+        logger.info('Safing mount.')
+        if not mount.safe():
+            logger.error('Safing failed; mount may be in an unsafe state.')
 
         try:
             game_pad.stop()

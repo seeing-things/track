@@ -14,6 +14,7 @@ things:
 4) Store the mount model parameters on disk for future use during the same observing session
 """
 
+import logging
 import os
 import sys
 import time
@@ -28,7 +29,7 @@ from astropy import units as u
 from astropy.io import fits
 from astropy.time import Time
 from astropy.coordinates import SkyCoord, Angle, Longitude
-from track import cameras, gps_client, model, mounts, ntp, telem
+from track import cameras, gps_client, logs, model, mounts, ntp, telem
 from track.cameras import Camera
 from track.control import Tracker, smallest_allowed_error
 from track.config import ArgParser, CONFIG_PATH, DATA_PATH
@@ -37,6 +38,9 @@ from track.mounts import MeridianSide, MountEncoderPositions, TelescopeMount
 from track.plate_solve import plate_solve, NoSolutionException
 from track.targets import FixedMountEncodersTarget
 from track.tsp import Destination, solve_route
+
+
+logger = logging.getLogger(__name__)
 
 
 class Position(Destination):
@@ -77,7 +81,6 @@ class Position(Destination):
 
         # scale by 1000 to minimize precision loss when quantizing to integer
         return int(1000 * max_error_mag)
-
 
 
 def generate_positions(
@@ -183,10 +186,8 @@ def attempt_plate_solving(
             camera_width=camera.field_of_view[1]
         )
     except NoSolutionException:
-        print('No solution.')
         return False
     else:
-        print('Solution found!')
         sc_eq.obstime = Time(timestamp, format='unix')
         sc_eq.location = location
         sc_topo = sc_eq.transform_to('altaz')
@@ -205,8 +206,8 @@ def attempt_plate_solving(
                 observations_dir,
                 f'camera_frame_{num_solutions_so_far:03d}.fits'
             ))
-        except OSError as e:
-            print('Trouble saving image: ' + str(e))
+        except OSError:
+            logger.exception('Trouble saving image to disk.')
         return True
 
 
@@ -263,18 +264,20 @@ def main():
     gps_client.add_program_arguments(parser)
     mounts.add_program_arguments(parser)
     cameras.add_program_arguments(parser)
+    logs.add_program_arguments(parser)
     ntp.add_program_arguments(parser)
     telem.add_program_arguments(parser)
     args = parser.parse_args()
+
+    logs.setup_logging_from_args(args, 'align')
 
     # Check if system clock is synchronized to GPS
     if args.check_time_sync:
         try:
             ntp.check_ntp_status()
-        except ntp.NTPCheckFailure as e:
-            print('NTP check failed: ' + str(e))
+        except ntp.NTPCheckFailure:
+            logger.exception('NTP check failed.')
             if not click.confirm('Continue anyway?', default=True):
-                print('Aborting')
                 sys.exit(2)
 
     mount = mounts.make_mount_from_args(args)
@@ -338,8 +341,8 @@ def main():
             )
 
             pos = target.get_position()
-            print(f'Moving to position {idx + 1} of {len(positions)}: '
-                  f'Az: {pos.topo.az.deg:.2f}, Alt: {pos.topo.alt.deg:.2f}')
+            logger.info(f'Moving to position {idx + 1} of {len(positions)}: '
+                f'Az: {pos.topo.az.deg:.2f}, Alt: {pos.topo.alt.deg:.2f}')
 
             tracker = Tracker(
                 mount=mount,
@@ -357,12 +360,12 @@ def main():
                 raise RuntimeError(f'Unexpected tracker stop reason: {stop_reason}')
             time.sleep(1.0)
 
-            print('Converged on the target position. Attempting plate solving.')
+            logger.info(f'Converged on position {idx + 1}. Attempting plate solving.')
 
             # plate solver doesn't always work on the first try
             for i in range(args.max_tries):
 
-                print(f'\tPlate solver attempt {i + 1} of {args.max_tries}...', end='', flush=True)
+                logger.info(f'Plate solver attempt {i + 1} of {args.max_tries}.')
 
                 if attempt_plate_solving(
                     mount=mount,
@@ -372,22 +375,26 @@ def main():
                     observations_dir=observations_dir,
                     num_solutions_so_far=num_solutions
                 ):
+                    logger.info(
+                        f'Plate solver solution found on attempt {i + 1} of {args.max_tries}.')
                     num_solutions += 1
                     break
 
-        print('Plate solver found solutions at {} of {} positions.'.format(
-            num_solutions,
-            len(positions)
-        ))
+                logger.warning(f'Plate solver failed on attempt {i + 1} of {args.max_tries}.')
+
+        logger.info(
+            f'Plate solver found solutions at {num_solutions} of {len(positions)} positions.')
 
         if num_solutions == 0:
-            print("Can't solve mount model without any usable observations. Aborting.")
+            logger.error('Plate solver failed at all positions.')
             sys.exit(1)
         elif num_solutions < args.min_positions:
             if not click.confirm(f'WARNING: You asked for at least {args.min_positions} positions '
                                  f'but only {num_solutions} can be used. Pointing accuracy may be '
                                  f'affected. Continue to solve for model parameters anyway?',
                                  default=True):
+                logger.error(f'Only {num_solutions} positions usable but {args.min_positions} '
+                    'were required.')
                 sys.exit(1)
 
         observations = pd.DataFrame(observations)
@@ -396,24 +403,25 @@ def main():
             observations_dir,
             'observations_dataframe.pickle'
         )
-        print(f'Saving observations to {observations_filename}')
+        logger.info(f'Saving observations to {observations_filename}')
         with open(observations_filename, 'wb') as f:
             pickle.dump(observations, f, pickle.HIGHEST_PROTOCOL)
 
         try:
-            print('Solving for mount model parameters...', end='', flush=True)
+            logger.info('Solving for mount model parameters.')
             model_params, result = model.solve_model(observations)
-            print('done.')
-            print(result)
+            logger.info(result)
 
             rms_error = np.sqrt(2 * result.cost / len(observations))
             if rms_error > args.max_rms_error:
-                if not click.confirm(f'WARNING: RMS error {rms_error:.4f} > '
-                                     f'{args.max_rms_error:.4f} degrees, save this solution '
-                                     f'anyway?', default=True):
+                logger.warning(f'Model solution RMS error {rms_error:.4f} > '
+                                     f'{args.max_rms_error:.4f} degrees')
+                if not click.confirm(f'RMS error {rms_error:.4f} > {args.max_rms_error:.4f} '
+                    'degrees, save this solution anyway?', default=True):
+                    logger.info('User rejected the model solution.')
                     sys.exit(1)
             else:
-                print(f'RMS error: {rms_error:.4f} degrees')
+                logger.info(f'Model solution RMS error: {rms_error:.4f} degrees')
 
             model_param_set = ModelParamSet(
                 model_params=model_params,
@@ -426,28 +434,25 @@ def main():
                 observations_dir,
                 'model_params.pickle'
             )
-            print(f'Saving model parameters to {params_filename}')
+            logger.info(f'Saving model parameters to {params_filename}')
             with open(params_filename, 'wb') as f:
                 pickle.dump(model_param_set, f, pickle.HIGHEST_PROTOCOL)
 
-            print('Making this set of model parameters the default')
+            logger.info('Making this set of model parameters the default.')
             model.save_default_param_set(model_param_set)
 
-        except model.NoSolutionException as e:
-            print('failed: {}'.format(str(e)))
+        except model.NoSolutionException:
+            logger.exception('Model solver failed.')
 
-    except RuntimeError as e:
-        print(str(e))
-        print('Alignment was not completed.')
+    except RuntimeError:
+        logger.exception('Alignment was not completed due to an unhandled exception.')
     except KeyboardInterrupt:
-        print('Got CTRL-C, shutting down...')
+        logger.info('Got CTRL-C, shutting down.')
     finally:
         # don't rely on destructors to safe mount!
-        print('Safing mount...', end='', flush=True)
-        if mount.safe():
-            print('Mount safed successfully!')
-        else:
-            print('Warning: Mount may be in an unsafe state!')
+        logger.info('Safing mount.')
+        if not mount.safe():
+            logger.error('Safing failed; mount may be in an unsafe state.')
 
         # remove observations directory if it is empty
         try:

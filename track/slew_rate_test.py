@@ -53,11 +53,11 @@ def main():
         direction = +1
 
         for axis in axes:
-            print('Testing ' + str(axis) + '...')
+            print(f'Testing {axis}.')
 
             for rate in rates:
 
-                print('Commanding slew at ' + str(rate) + ' arcseconds per second...')
+                print(f'Commanding slew at {rate} arcseconds per second.')
 
                 time_start = time.time()
                 while time.time() - time_start < SLEW_CHANGE_TIME:
@@ -76,13 +76,13 @@ def main():
                         break
 
                 rate_est[axis].append(position_change / time_elapsed)
-                print('\tmeasured rate: ' + str(rate_est[axis][-1] * 3600.0))
+                print(f'\tmeasured rate: {rate_est[axis][-1] * 3600.0}')
 
             mount.safe()
 
         print('Results:')
         for rate, rate_est_0, rate_est_1 in zip(rates, rate_est[axes[0]], rate_est[axes[1]]):
-            print(str(rate) + ', ' + str(3600 * rate_est_0) + ', ' + str(3600 * rate_est_1))
+            print(f'{rate}, {3600 * rate_est_0}, {3600 * rate_est_1}')
 
 
     except KeyboardInterrupt:

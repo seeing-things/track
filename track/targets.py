@@ -1,5 +1,6 @@
 """Targets for use in telescope tracking control loop."""
 
+import logging
 from math import inf
 from typing import List, Optional, Tuple, NamedTuple
 from abc import abstractmethod, ABC
@@ -23,6 +24,9 @@ from track.compvis import find_features, PreviewWindow
 from track.model import MountModel
 from track.mounts import MeridianSide, MountEncoderPositions, TelescopeMount
 from track.telem import TelemLogger
+
+
+logger = logging.getLogger(__name__)
 
 
 def spiral(elapsed_time: float, spiral_spacing_deg: float, velocity_deg_s: float) -> complex:
@@ -823,10 +827,10 @@ def make_target_from_args(
         raise ValueError('Spiral search only supported with --fuse')
 
     if args.target_type == 'flightclub':
-        print(f'In Flight Club trajectory mode using {args.file}')
         time_t0 = dateutil.parser.parse(args.time_t0)
         time_t0.replace(tzinfo=dateutil.tz.tzutc())
-        print(f'T0 interpreted as {time_t0}Z')
+        logger.info(
+            f'In Flight Club trajectory mode using {args.file}, T0 interpreted as {time_t0}Z')
         target = FlightclubLaunchTrajectoryTarget(
             filename=args.file,
             time_t0=Time(time_t0),
@@ -836,11 +840,12 @@ def make_target_from_args(
 
     # Create a PyEphem Body object corresonding to the TLE file
     elif args.target_type == 'tle':
-        print('In TLE file mode: \'{}\'.'.format(args.file))
+        logger.info(f'In TLE file mode: {args.file}')
         tle = []
         with open(args.file) as tlefile:
             for line in tlefile:
                 tle.append(line)
+                logger.info(line.strip())
         target = PyEphemTarget(
             target=ephem.readtle(tle[0], tle[1], tle[2]),
             location=mount_model.location,
@@ -849,7 +854,7 @@ def make_target_from_args(
         )
 
     elif args.target_type == 'camera':
-        print('In camera mode')
+        logger.info('In camera mode')
         camera = cameras.make_camera_from_args(args, video_mode=True)
         target = CameraTarget(
             camera=camera,
@@ -860,7 +865,7 @@ def make_target_from_args(
 
     # Create a PyEphem Body object corresonding to the given fixed coordinates
     elif args.target_type == 'coord-eq':
-        print(f'In fixed equatorial coordinate mode: (RA {args.ra}, dec {args.dec}).')
+        logger.info(f'In fixed equatorial coordinate mode: (RA {args.ra}, dec {args.dec}).')
         # Intentionally not using constructor arguments to `ephem.FixedBody()`; they don't work
         fixed_body = ephem.FixedBody()
         fixed_body._ra = np.radians(args.ra)  # pylint: disable=protected-access
@@ -873,7 +878,7 @@ def make_target_from_args(
         )
 
     elif args.target_type == 'coord-topo':
-        print('In fixed topocentric coordinate mode: (AZ {}, ALT {}).'.format(args.az, args.alt))
+        logger.info(f'In fixed topocentric coordinate mode: (AZ {args.az}, ALT {args.alt}).')
         target = FixedTopocentricTarget(
             SkyCoord(args.az * u.deg, args.alt * u.deg, frame='altaz'),
             mount_model,
@@ -882,7 +887,7 @@ def make_target_from_args(
 
     # Get the PyEphem Body object corresonding to the given named star
     elif args.target_type == 'star':
-        print('In named star mode: \'{}\''.format(args.name))
+        logger.info(f'In named star mode: {args.name}')
         target = PyEphemTarget(
             target=ephem.star(args.name),
             location=mount_model.location,
@@ -892,7 +897,7 @@ def make_target_from_args(
 
     # Get the PyEphem Body object corresonding to the given named solar system body
     elif args.target_type == 'solarsystem':
-        print('In named solar system body mode: \'{}\''.format(args.name))
+        logger.info(f'In named solar system body mode: {args.name}')
         # pylint: disable=protected-access
         ss_objs = [name for _, _, name in ephem._libastro.builtin_planets()]
         if args.name in ss_objs:
@@ -915,7 +920,7 @@ def make_target_from_args(
         raise ValueError(f'Invalid target-type {args.target_type}')
 
     if args.fuse:
-        print('Sensor fusion with camera enabled')
+        logger.info('Sensor fusion with camera enabled')
         blind_target = target
         camera = cameras.make_camera_from_args(args, video_mode=True)
         camera_target = CameraTarget(
