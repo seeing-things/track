@@ -14,6 +14,7 @@ things:
 4) Store the mount model parameters on disk for future use during the same observing session
 """
 
+import atexit
 import logging
 import os
 import sys
@@ -211,6 +212,14 @@ def attempt_plate_solving(
         return True
 
 
+def remove_empty_dir(directory: str) -> None:
+    """Remove a directory if it exists and is empty."""
+    try:
+        os.rmdir(directory)
+    except (OSError, NameError):
+        pass
+
+
 def main():
     """Run the alignment procedure! See module docstring for a description."""
 
@@ -280,8 +289,6 @@ def main():
             if not click.confirm('Continue anyway?', default=True):
                 sys.exit(2)
 
-    mount = mounts.make_mount_from_args(args)
-
     # Get location of observer from arguments or from GPS
     location = gps_client.make_location_from_args(args)
 
@@ -293,44 +300,45 @@ def main():
     )
 
     camera = cameras.make_camera_from_args(args)
-
     telem_logger = telem.make_telem_logger_from_args(args)
 
     if args.meridian_side is not None:
         meridian_side = MeridianSide[args.meridian_side.upper()]
     else:
         meridian_side = None
-    positions = generate_positions(
-        min_positions=args.min_positions,
-        mount_model=starter_mount_model,
-        mount=mount,
-        min_altitude=Angle(args.min_alt*u.deg),
-        meridian_side=meridian_side
-    )
 
-    # add the park position to the start of the list to serve as the "depot" in the route
-    park_encoder_positions = mount.get_position()
-    positions.insert(0, Position(
-        encoder_positions=park_encoder_positions,
-        mount=mount,
-    ))
+    with mounts.make_mount_from_args(args) as mount:
 
-    # use travelling salesman solver to sort positions in the order that will take the least time
-    positions = solve_route(positions)
+        positions = generate_positions(
+            min_positions=args.min_positions,
+            mount_model=starter_mount_model,
+            mount=mount,
+            min_altitude=Angle(args.min_alt*u.deg),
+            meridian_side=meridian_side
+        )
 
-    # mount is already at the starting position so don't need to go there
-    del positions[0]
+        # add the park position to the start of the list to serve as the "depot" in the route
+        park_encoder_positions = mount.get_position()
+        positions.insert(0, Position(
+            encoder_positions=park_encoder_positions,
+            mount=mount,
+        ))
 
-    # directory in which to place observation data for debugging purposes
-    observations_dir = os.path.join(
-        DATA_PATH,
-        'alignment_' + datetime.utcnow().isoformat(timespec='seconds').replace(':', '')
-    )
-    os.makedirs(DATA_PATH, exist_ok=True)
-    os.mkdir(observations_dir)
+        # use travelling salesman solver to sort positions in the order that takes the least time
+        positions = solve_route(positions)
 
-    # pylint: disable=broad-except
-    try:
+        # mount is already at the starting position so don't need to go there
+        del positions[0]
+
+        # directory in which to place observation data for debugging purposes
+        observations_dir = os.path.join(
+            DATA_PATH,
+            'alignment_' + datetime.utcnow().isoformat(timespec='seconds').replace(':', '')
+        )
+        os.makedirs(DATA_PATH, exist_ok=True)
+        os.mkdir(observations_dir)
+        atexit.register(remove_empty_dir, observations_dir)
+
         observations = []
         num_solutions = 0
         for idx, position in enumerate(positions):
@@ -350,8 +358,6 @@ def main():
                 target=target,
                 telem_logger=telem_logger,
             )
-            if telem_logger is not None:
-                telem_logger.register_sources({'tracker': tracker})
             stop_reason = tracker.run(tracker.StoppingConditions(
                 timeout=args.timeout, error_threshold=Angle(2.0 * u.deg)
             ))
@@ -382,83 +388,63 @@ def main():
 
                 logger.warning(f'Plate solver failed on attempt {i + 1} of {args.max_tries}.')
 
-        logger.info(
-            f'Plate solver found solutions at {num_solutions} of {len(positions)} positions.')
+    logger.info(
+        f'Plate solver found solutions at {num_solutions} of {len(positions)} positions.')
 
-        if num_solutions == 0:
-            logger.error('Plate solver failed at all positions.')
+    if num_solutions == 0:
+        logger.error('Plate solver failed at all positions.')
+        sys.exit(1)
+    elif num_solutions < args.min_positions:
+        if not click.confirm(f'WARNING: You asked for at least {args.min_positions} positions '
+                            f'but only {num_solutions} can be used. Pointing accuracy may be '
+                            f'affected. Continue to solve for model parameters anyway?',
+                            default=True):
+            logger.error(f'Only {num_solutions} positions usable but {args.min_positions} '
+                'were required.')
             sys.exit(1)
-        elif num_solutions < args.min_positions:
-            if not click.confirm(f'WARNING: You asked for at least {args.min_positions} positions '
-                                 f'but only {num_solutions} can be used. Pointing accuracy may be '
-                                 f'affected. Continue to solve for model parameters anyway?',
-                                 default=True):
-                logger.error(f'Only {num_solutions} positions usable but {args.min_positions} '
-                    'were required.')
-                sys.exit(1)
 
-        observations = pd.DataFrame(observations)
+    observations = pd.DataFrame(observations)
 
-        observations_filename = os.path.join(
-            observations_dir,
-            'observations_dataframe.pickle'
-        )
-        logger.info(f'Saving observations to {observations_filename}')
-        with open(observations_filename, 'wb') as f:
-            pickle.dump(observations, f, pickle.HIGHEST_PROTOCOL)
+    observations_filename = os.path.join(
+        observations_dir,
+        'observations_dataframe.pickle'
+    )
+    logger.info(f'Saving observations to {observations_filename}')
+    with open(observations_filename, 'wb') as f:
+        pickle.dump(observations, f, pickle.HIGHEST_PROTOCOL)
 
-        try:
-            logger.info('Solving for mount model parameters.')
-            model_params, result = model.solve_model(observations)
-            logger.info(result)
+    logger.info('Solving for mount model parameters.')
+    model_params, result = model.solve_model(observations)
+    logger.info(result)
 
-            rms_error = np.sqrt(2 * result.cost / len(observations))
-            if rms_error > args.max_rms_error:
-                logger.warning(f'Model solution RMS error {rms_error:.4f} > '
-                                     f'{args.max_rms_error:.4f} degrees')
-                if not click.confirm(f'RMS error {rms_error:.4f} > {args.max_rms_error:.4f} '
-                    'degrees, save this solution anyway?', default=True):
-                    logger.info('User rejected the model solution.')
-                    sys.exit(1)
-            else:
-                logger.info(f'Model solution RMS error: {rms_error:.4f} degrees')
+    rms_error = np.sqrt(2 * result.cost / len(observations))
+    if rms_error > args.max_rms_error:
+        logger.warning(f'Model solution RMS error {rms_error:.4f} > '
+                            f'{args.max_rms_error:.4f} degrees')
+        if not click.confirm(f'RMS error {rms_error:.4f} > {args.max_rms_error:.4f} '
+            'degrees, save this solution anyway?', default=True):
+            logger.info('User rejected the model solution.')
+            sys.exit(1)
+    else:
+        logger.info(f'Model solution RMS error: {rms_error:.4f} degrees')
 
-            model_param_set = ModelParamSet(
-                model_params=model_params,
-                guide_cam_orientation=Longitude(args.guide_cam_orientation*u.deg),
-                location=location,
-                timestamp=time.time(),
-            )
+    model_param_set = ModelParamSet(
+        model_params=model_params,
+        guide_cam_orientation=Longitude(args.guide_cam_orientation*u.deg),
+        location=location,
+        timestamp=time.time(),
+    )
 
-            params_filename = os.path.join(
-                observations_dir,
-                'model_params.pickle'
-            )
-            logger.info(f'Saving model parameters to {params_filename}')
-            with open(params_filename, 'wb') as f:
-                pickle.dump(model_param_set, f, pickle.HIGHEST_PROTOCOL)
+    params_filename = os.path.join(
+        observations_dir,
+        'model_params.pickle'
+    )
+    logger.info(f'Saving model parameters to {params_filename}')
+    with open(params_filename, 'wb') as f:
+        pickle.dump(model_param_set, f, pickle.HIGHEST_PROTOCOL)
 
-            logger.info('Making this set of model parameters the default.')
-            model.save_default_param_set(model_param_set)
-
-        except model.NoSolutionException:
-            logger.exception('Model solver failed.')
-
-    except RuntimeError:
-        logger.exception('Alignment was not completed due to an unhandled exception.')
-    except KeyboardInterrupt:
-        logger.info('Got CTRL-C, shutting down.')
-    finally:
-        # don't rely on destructors to safe mount!
-        logger.info('Safing mount.')
-        if not mount.safe():
-            logger.error('Safing failed; mount may be in an unsafe state.')
-
-        # remove observations directory if it is empty
-        try:
-            os.rmdir(observations_dir)
-        except (OSError, NameError):
-            pass
+    logger.info('Making this set of model parameters the default.')
+    model.save_default_param_set(model_param_set)
 
 
 if __name__ == "__main__":

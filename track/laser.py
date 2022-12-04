@@ -6,7 +6,9 @@ pointer allow the laser pointer on/off state to be controlled by the voltage lev
 The details of that electrical interface are not specified.
 """
 
+from __future__ import annotations
 import logging
+from typing import Optional
 from pyftdi.ftdi import Ftdi
 from configargparse import Namespace
 from track.config import ArgParser
@@ -41,7 +43,12 @@ class LaserPointer:
         ftdi: An object of type pyftdi.ftdi.Ftdi.
     """
 
-    def __init__(self, ftdi_pid='232r', serial_num=None, laser_pin=PIN_CTS):
+    def __init__(
+            self,
+            ftdi_pid: str = '232r',
+            serial_num: Optional[str] = None,
+            laser_pin: int = PIN_CTS,
+        ):
         """Inits LaserPointer object.
 
         Initializes a LaserPointer object by constructing an Ftdi object and opening the desired
@@ -55,15 +62,21 @@ class LaserPointer:
                 device that controls the laser pointer.
         """
         self.laser_pin = laser_pin
-
         self.ftdi = Ftdi()
 
-        self.ftdi.open_bitbang(
-            vendor=Ftdi.VENDOR_IDS['ftdi'],
-            product=Ftdi.PRODUCT_IDS[Ftdi.FTDI_VENDOR][ftdi_pid],
-            serial=serial_num,        # serial number of FT232RQ in the laser FTDI cable
-            latency=Ftdi.LATENCY_MAX, # 255ms; reduce if necessary (at cost of higher CPU usage)
-        )
+        try:
+            self.ftdi.open_bitbang(
+                vendor=Ftdi.VENDOR_IDS['ftdi'],
+                product=Ftdi.PRODUCT_IDS[Ftdi.FTDI_VENDOR][ftdi_pid],
+                serial=serial_num,        # serial number of FT232RQ in the laser FTDI cable
+                latency=Ftdi.LATENCY_MAX, # 255ms; reduce if necessary (at cost of higher CPU usage)
+            )
+        except OSError:
+            logger.warning('Could not connect to laser pointer FTDI device.')
+            self.connected = False
+            return
+
+        self.connected = True
 
         # set laser_pin as output, all others as inputs
         self.ftdi.set_bitmode(self.laser_pin, Ftdi.BitMode.BITBANG)
@@ -72,15 +85,23 @@ class LaserPointer:
         # make sure laser is disabled by default
         self.set(False)
 
-    def __del__(self):
-        """Try to make sure laser is disabled on shutdown."""
-        try:
+    def __enter__(self) -> Optional[LaserPointer]:
+        """Support usage of this class in `with` statements.
+
+        Returns:
+            `self` if a laser pointer was found, otherwise `None`.
+        """
+        return self if self.connected else None
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Shut off laser and disconnect."""
+        if self.connected:
             self.set(False)
             self.ftdi.close()
-        except AttributeError:  # happens when no laser was present at construction time
-            pass
-        except Exception:  # pylint: disable=broad-except
-            logger.exception('Got exception while trying to disable laser pointer.')
+        if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+            logger.info(f'Handling {type(exc_value).__name__}')
+            return True  # prevent exception propagation
+        return False
 
     def set(self, enable):
         """Sets the state of the laser pointer.

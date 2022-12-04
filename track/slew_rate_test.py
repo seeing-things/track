@@ -2,12 +2,10 @@
 
 """Test to compare commanded slew rates to actual slew rates."""
 
-import sys
 import time
 import astropy.units as u
 from astropy.coordinates import Longitude
-from track.config import ArgParser
-from track.mounts import LosmandyGeminiMount, NexStarMount
+from track import config, mounts
 
 SLEW_CHANGE_TIME = 3.0
 TIME_LIMIT = 60.0
@@ -16,44 +14,23 @@ SLEW_LIMIT = 20.0
 def main():
     """See module docstring"""
 
-    parser = ArgParser()
-    parser.add_argument(
-        '--mount-type',
-        help='select mount type (nexstar or gemini)',
-        default='gemini'
-    )
-    parser.add_argument(
-        '--mount-path',
-        help='serial device node or hostname for mount command interface',
-        default='/dev/ttyACM0'
-    )
+    parser = config.ArgParser()
+    mounts.add_program_arguments(parser)
     args = parser.parse_args()
 
-    # Create object with base type TelescopeMount
-    if args.mount_type == 'nexstar':
-        mount = NexStarMount(args.mount_path)
-    elif args.mount_type == 'gemini':
-        mount = LosmandyGeminiMount(args.mount_path)
-    else:
-        print('mount-type not supported: ' + args.mount_type)
-        sys.exit(1)
+    # rates to test in arcseconds per second
+    rates = [2**x for x in range(14)]
+    rates.append(16319)
+    rate_est = {}
 
-    axes = mount.AxisName
-
-    # pylint: disable=too-many-nested-blocks
-    try:
-        # rates to test in arcseconds per second
-        rates = [2**x for x in range(14)]
-        rates.append(16319)
-
-        rate_est = {}
-        for axis in axes:
-            rate_est[axis] = []
+    with mounts.make_mount_from_args(args) as mount:
+        axes = mount.AxisName
 
         direction = +1
 
         for axis in axes:
             print(f'Testing {axis}.')
+            rate_est[axis] = []
 
             for rate in rates:
 
@@ -78,22 +55,10 @@ def main():
                 rate_est[axis].append(position_change / time_elapsed)
                 print(f'\tmeasured rate: {rate_est[axis][-1] * 3600.0}')
 
-            mount.safe()
+    print('Results:')
+    for rate, rate_est_0, rate_est_1 in zip(rates, rate_est[axes[0]], rate_est[axes[1]]):
+        print(f'{rate}, {3600 * rate_est_0}, {3600 * rate_est_1}')
 
-        print('Results:')
-        for rate, rate_est_0, rate_est_1 in zip(rates, rate_est[axes[0]], rate_est[axes[1]]):
-            print(f'{rate}, {3600 * rate_est_0}, {3600 * rate_est_1}')
-
-
-    except KeyboardInterrupt:
-        print('Got CTRL-C, shutting down...')
-    finally:
-        # don't rely on destructors to safe mount!
-        print('Safing mount...')
-        if mount.safe():
-            print('Mount safed successfully!')
-        else:
-            print('Warning: Mount may be in an unsafe state!')
 
 if __name__ == "__main__":
     main()

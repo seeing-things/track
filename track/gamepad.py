@@ -4,13 +4,14 @@ Defines a single class Gamepad that provide support for game controller interfac
 program the integrated x- and y- values are printed to the console.
 """
 
+from __future__ import annotations
 from datetime import datetime
 import logging
 import os
 import signal
 import threading
 import time
-from typing import List
+from typing import List, Optional
 import selectors
 import inputs
 import numpy as np
@@ -66,10 +67,6 @@ class Gamepad(TelemSource):
         ):
         """Inits Gamepad object.
 
-        Initializes a Gamepad object and starts two daemon threads to read
-        input from the gamepad and to integrate the analog stick inputs. This
-        will use the first gamepad found by the inputs package.
-
         Args:
             left_gain: Gain for the left analog stick integrator input.
             right_gain: Gain for the right analog stick integrator input.
@@ -88,10 +85,14 @@ class Gamepad(TelemSource):
         self.int_limit = int_limit
         self.callbacks = {}
         self.state = {'ABS_X': 0, 'ABS_Y': 0, 'ABS_RX': 0, 'ABS_RY': 0}
+
         num_gamepads_found = len(inputs.devices.gamepads)
-        if num_gamepads_found < 1:
-            raise RuntimeError('No gamepads found')
-        elif num_gamepads_found > 1:
+        if num_gamepads_found == 0:
+            logger.warning('No gamepads found.')
+            self.gamepad = None
+            return
+
+        if num_gamepads_found > 1:
             print(f'Found {num_gamepads_found} gamepads:')
             for idx, gamepad in enumerate(inputs.devices.gamepads):
                 print(f'{idx:2d}: {gamepad.name}')
@@ -118,6 +119,26 @@ class Gamepad(TelemSource):
         self.input_thread.start()
         self.integrator_thread.start()
 
+        logger.info('Gamepad found and registered.')
+
+    def __enter__(self) -> Optional[Gamepad]:
+        """Support usage of this class in `with` statements.
+
+        Returns:
+            `self` if a gamepad was found, otherwise `None`.
+        """
+        return None if self.gamepad is None else self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        """Stops the threads from running and disables gamepad access."""
+        if self.gamepad is not None:
+            self.stop()
+            self.sel.unregister(self.gamepad._character_device)
+            self.gamepad = None
+        if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+            logger.info(f'Handling {type(exc_value).__name__}')
+            return True  # prevent exception propagation
+        return False
 
     def stop(self):
         """Stops the threads from running."""
@@ -144,6 +165,8 @@ class Gamepad(TelemSource):
 
     def register_callback(self, event_code=None, callback=None):
         """Register a callback function to be called when a particular gamepad event occurs.
+
+        Note that the callback will not be called from the main thread.
 
         Args:
             event_code: The event code as a string. For example, if set to 'ABS_X', the callback
@@ -282,12 +305,8 @@ def main():
         level=logging.DEBUG,
         format='%(message)s',
     )
-    gamepad = Gamepad()
-    try:
+    with Gamepad():
         signal.pause()
-    except KeyboardInterrupt:
-        gamepad.stop()
-        print('goodbye')
 
 if __name__ == "__main__":
     main()

@@ -12,6 +12,7 @@ modify them to suit the needs of this project was deemed to be higher than the e
 just roll our own solution that provides exactly what we need in a lightweight and tailored manner.
 """
 
+from __future__ import annotations
 from abc import ABC, abstractmethod
 import enum
 from enum import IntEnum
@@ -65,6 +66,18 @@ class TelescopeMount(ABC):
 
     This class provides some abstract methods to provide a common interface for telescope mounts.
     """
+
+    def __enter__(self) -> TelescopeMount:
+        """Support usage of this class in `with` statements."""
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        """Stop mount motion."""
+        self.safe()
+        if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+            logger.info(f'Handling {type(exc_value).__name__}')
+            return True  # prevent exception propagation
+        return False
 
     @property
     @abstractmethod

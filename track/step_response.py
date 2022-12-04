@@ -24,11 +24,9 @@ def main():
     )
     args = parser.parse_args()
 
-    mount = mounts.make_mount_from_args(args)
-
     step_responses = {}
     direction = +1.0
-    try:
+    with mounts.make_mount_from_args(args) as mount:
         for step_magnitude in np.arange(0.5, 4.5, 0.5):
             positions = []
             position_start = mount.get_position()[args.axis]
@@ -52,16 +50,6 @@ def main():
 
             step_responses[step_magnitude] = pd.DataFrame(positions)
 
-    except KeyboardInterrupt:
-        print('Got CTRL-C, shutting down...')
-    finally:
-        # don't rely on destructors to safe mount!
-        print('Safing mount...')
-        if mount.safe():
-            print('Mount safed successfully!')
-        else:
-            print('Warning: Mount may be in an unsafe state!')
-
     # plot step responses
     for step_magnitude, response in step_responses.items():
         step_response = np.diff(response.position) / np.diff(response.time)
@@ -72,7 +60,7 @@ def main():
         )
 
     # plot acceleration limit line
-    t = np.linspace(0, 0.5, 1e3)
+    t = np.linspace(0, 0.5, 1000)
     a = 10*t  # 10 degrees per second squared -- the default for G11 mount when this was written
     plt.plot(t, a, 'r', label='accel limit')
 

@@ -1,5 +1,6 @@
 """Telemetry logging to a time series database."""
 
+from __future__ import annotations
 from abc import ABC, abstractmethod
 import logging
 import os
@@ -137,6 +138,17 @@ class TelemLogger:
                 name='TelemLogger: worker thread'
             )
             self.running = False
+
+    def __enter__(self) -> TelemLogger:
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        self.stop()
+        if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+            logger.info(f'Handling {type(exc_value).__name__}')
+            return True  # prevent exception propagation
+        return False
 
     def start(self) -> None:
         """Start sampling telemetry asynchronously.

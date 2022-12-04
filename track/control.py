@@ -648,6 +648,7 @@ class Tracker:
                 points.append(pt)
 
             self.telem_logger.post_points(points)
+            self.telem_logger.poll_sources()  # poll all other telem sources
 
         self.num_iterations += 1
         return stop_reason

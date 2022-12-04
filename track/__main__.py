@@ -96,66 +96,36 @@ def main():
         logger.error('No model could be loaded. To refresh stored model run align program.')
         sys.exit(1)
 
-    # Create object with base type TelescopeMount
-    mount = mounts.make_mount_from_args(args)
+    with mounts.make_mount_from_args(args) as mount, \
+        laser.make_laser_from_args(args) as laser_pointer, \
+        Gamepad() as game_pad:
 
-    telem_logger = telem.make_telem_logger_from_args(args)
+        telem_logger = telem.make_telem_logger_from_args(args)
 
-    target = targets.make_target_from_args(
-        args,
-        mount,
-        mount_model,
-        MeridianSide[args.meridian_side.upper()],
-        telem_logger=telem_logger,
-    )
+        target = targets.make_target_from_args(
+            args,
+            mount,
+            mount_model,
+            MeridianSide[args.meridian_side.upper()],
+            telem_logger=telem_logger,
+        )
 
-    tracker = Tracker(
-        mount=mount,
-        mount_model=mount_model,
-        target=target,
-        telem_logger=telem_logger,
-    )
+        tracker = Tracker(
+            mount=mount,
+            mount_model=mount_model,
+            target=target,
+            telem_logger=telem_logger,
+        )
 
-    try:
-        laser_pointer = laser.make_laser_from_args(args)
-    except OSError:
-        logger.warning('Could not connect to laser pointer FTDI device.')
-        laser_pointer = None
+        if game_pad is not None:
+            if laser_pointer is not None:
+                game_pad.register_callback('BTN_SOUTH', laser_pointer.set)
+            tracker.register_callback(gamepad_callback)
+            if telem_logger is not None:
+                telem_logger.register_sources({'gamepad': game_pad})
 
-    telem_sources = {}
-    try:
-        # Create gamepad object and register callback
-        game_pad = Gamepad()
-        if laser_pointer is not None:
-            game_pad.register_callback('BTN_SOUTH', laser_pointer.set)
-        tracker.register_callback(gamepad_callback)
-        telem_sources['gamepad'] = game_pad
-        logger.info('Gamepad found and registered.')
-    except RuntimeError:
-        logger.warning('No gamepads found.')
-
-    if telem_logger is not None:
-        telem_logger.register_sources(telem_sources)
-        telem_logger.start()
-
-    stopping_conditions = control.make_stop_conditions_from_args(args)
-    try:
+        stopping_conditions = control.make_stop_conditions_from_args(args)
         tracker.run(stopping_conditions)
-    except KeyboardInterrupt:
-        logger.info('Got CTRL-C, shutting down.')
-    finally:
-        # don't rely on destructors to safe mount!
-        logger.info('Safing mount.')
-        if not mount.safe():
-            logger.error('Safing failed; mount may be in an unsafe state.')
-
-        try:
-            game_pad.stop()
-        except UnboundLocalError:
-            pass
-
-        if telem_logger is not None:
-            telem_logger.stop()
 
 if __name__ == "__main__":
     main()

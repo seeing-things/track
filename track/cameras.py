@@ -6,7 +6,9 @@ sensor to be paired with computer vision algorithms that can estimate the positi
 target.
 """
 
-from abc import ABC, abstractmethod
+from __future__ import annotations
+from abc import abstractmethod
+from contextlib import AbstractContextManager
 import logging
 from typing import Tuple
 from math import inf
@@ -32,7 +34,7 @@ from track.config import ArgParser
 logger = logging.getLogger(__name__)
 
 
-class Camera(ABC):
+class Camera(AbstractContextManager):
     """Abstract base class for cameras"""
 
     @property
@@ -305,9 +307,15 @@ class ASICamera(Camera):
         )
         self.video_mode = video_mode
 
-    def __del__(self):
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        """Close camera if it's open."""
         if hasattr(self, 'info') and self.info is not None:
             ASICheck(asi.ASICloseCamera(self.info.CameraID))
+            logger.info(f'Closed camera {self.info.Name}')
+        if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+            logger.info(f'Handling {type(exc_value).__name__}')
+            return True  # prevent exception propagation
+        return False
 
     def _set_ctrl(self, ctrl, value: int):
         # auto mode always disabled since we generally don't trust it
@@ -545,12 +553,18 @@ class WebCam(Camera):
 
         self.start()
 
-    def __del__(self):
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        """Clean up resources."""
         self.stop()
         for bufmap in self.bufmaps:
             bufmap.close()
         if self.dev_fd != -1:
             os.close(self.dev_fd)
+        logger.info('Closed webcam.')
+        if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+            logger.info(f'Handling {type(exc_value).__name__}')
+            return True  # prevent exception propagation
+        return False
 
     @property
     def frame_shape(self) -> Tuple[int, int]:
