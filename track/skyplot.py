@@ -71,7 +71,7 @@ def fill_to_horizon(
         ax: matplotlib.axes.Axes,
         az: np.ndarray,
         alt: np.ndarray,
-        alpha: float = 0.2,
+        alpha: float = 1.0,
         color=None
     ) -> None:
     """Fill the region between a curve and the horizon."""
@@ -91,7 +91,7 @@ def fill_to_zenith(
         ax: matplotlib.axes.Axes,
         az: np.ndarray,
         alt: np.ndarray,
-        alpha: float = 0.2,
+        alpha: float = 1.0,
         color: Optional[str] = None
     ) -> None:
     """Fill the region between a curve and zenith."""
@@ -139,7 +139,7 @@ def make_sky_plot() -> matplotlib.axes.Axes:
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     """
 
-    # fig, ax = plt.subplots(subplot_kw={'projection': 'polar',})
+    plt.style.use('dark_background')
     ax = plt.gca(projection='polar')
     ax.set_theta_offset(np.pi/2)
     ax.set_theta_direction(-1)
@@ -177,8 +177,8 @@ def make_sky_plot() -> matplotlib.axes.Axes:
             theta_labels.append(f'{label_angle:.0f}{degree_sign}')
 
     # Set ticks and labels.
-    ax.set_rgrids(range(1, 106, 15), r_labels, angle=-45)
-    ax.set_thetagrids(range(0, 360, 45), theta_labels)
+    ax.set_rgrids(range(1, 106, 15), r_labels, angle=-45, color='black')
+    ax.set_thetagrids(range(0, 360, 45), theta_labels, color='#bbbbbb')
 
     return ax
 
@@ -316,24 +316,30 @@ def plot_reachable_zone(
     )
     ax.plot(np.radians(mount_pole_topo.az.deg), 90.0 - mount_pole_topo.alt.deg, 'k.')
 
+    # start with a white background in the polar plot area since the filled area colors look better
+    # alpha-blended with a white background versus a black background
+    fill_to_horizon(ax, np.linspace(0, 360, 100), 90*np.ones(100), color='#bbbbbb', alpha=1)
+
+    alpha = 0.6
+
     for meridian_side in MeridianSide:
         if meridian_side == MeridianSide.EAST:
-            color = 'blue'
+            color = 'tab:blue'
             legend_label = 'east of mount meridian'
             axis_1_range = np.linspace(0, 180, 100) + mount_model.model_params.axis_1_offset.deg
             az = np.linspace(mount_pole_topo.az.deg, mount_pole_topo.az.deg + 180, 100)
         else:
-            axis_1_range = np.linspace(180, 360, 100) + mount_model.model_params.axis_1_offset.deg
-            color = 'red'
+            color = 'tab:red'
             legend_label = 'west of mount meridian'
+            axis_1_range = np.linspace(180, 360, 100) + mount_model.model_params.axis_1_offset.deg
             az = np.linspace(mount_pole_topo.az.deg - 180, mount_pole_topo.az.deg, 100)
 
         # add a circle patch outside the visible area of the plot purely for the purpose of
         # generating an entry in the legend for this region
-        ax.add_patch(Circle((0, 100), radius=0, color=color, alpha=0.2, label=legend_label))
+        ax.add_patch(Circle((0, 100), radius=0, color=color, alpha=alpha, label=legend_label))
 
         alt = 90*np.ones_like(az)
-        fill_to_horizon(ax, az, alt, color=color)
+        fill_to_horizon(ax, az, alt, color=color, alpha=alpha)
 
         for axis_0 in (axis_0_west_limit, axis_0_east_limit):
             az = []
@@ -349,16 +355,16 @@ def plot_reachable_zone(
                 alt.append(topo.alt.deg)
             az = np.array(az)
             alt = np.array(alt)
-            ax.plot(np.radians(az), 90.0 - alt, ':', color=color)
+            ax.plot(np.radians(az), 90.0 - alt, ':', color='black')
 
             if axis_0 == axis_0_east_limit and meridian_side == MeridianSide.EAST:
-                fill_to_horizon(ax, az, alt, color=color)
+                fill_to_horizon(ax, az, alt, color=color, alpha=alpha)
             elif axis_0 == axis_0_west_limit and meridian_side == MeridianSide.EAST:
-                fill_to_zenith(ax, az, alt, color=color)
+                fill_to_zenith(ax, az, alt, color=color, alpha=alpha)
             elif axis_0 == axis_0_east_limit and meridian_side == MeridianSide.WEST:
-                fill_to_zenith(ax, az, alt, color=color)
+                fill_to_zenith(ax, az, alt, color=color, alpha=alpha)
             elif axis_0 == axis_0_west_limit and meridian_side == MeridianSide.WEST:
-                fill_to_horizon(ax, az, alt, color=color)
+                fill_to_horizon(ax, az, alt, color=color, alpha=alpha)
 
 
 def plot_mount_motion(
@@ -498,6 +504,9 @@ def main():
         bbox_to_anchor=(0.8, 1.4),
         loc='upper left',
         borderaxespad=0,
+        facecolor='#bbbbbb',
+        framealpha=1,
+        labelcolor='black',
     )
     # Shrink current axis by 20% so the legend will fit inside the figure window because matplotlib
     # developers apparently don't use their own code
