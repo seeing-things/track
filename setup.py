@@ -99,7 +99,8 @@ setup(
         'matplotlib>=2.1',
         'MonthDelta>=1.0b',
         'numpy',
-        'opencv-python',
+        # <4.6 have a nasty bug; see https://github.com/seeing-things/track/issues/236
+        'opencv-python>=4.6.0.66',
         'ortools',
         'pandas',
         'point @ https://github.com/seeing-things/point/tarball/master',
