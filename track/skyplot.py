@@ -405,7 +405,7 @@ def main():
 
     parser = ArgParser(description='Make a plot of the sky to plan and evaluate tracking')
     parser.add_argument(
-        '--tle-filename',
+        '--tle',
         help='filename of two-line element (TLE) target ephemeris'
     )
     parser.add_argument(
@@ -480,14 +480,14 @@ def main():
         axis_0_east_limit=args.axis_east_limit
     )
 
-    if args.tle_filename:
+    if args.tle:
         print('Searching for first pass within the following time range:')
         print(time_start.isoformat() + 'Z')
         print(time_stop.isoformat() + 'Z')
 
         time_rise, time_set = plot_tle(
             ax,
-            args.tle_filename,
+            args.tle,
             mount_model.location,
             time_start,
             time_stop
