@@ -78,6 +78,7 @@ class PreviewWindow:
             crosshairs_gap_to_height: float = 0.1,
             target_position_desired: Optional[Tuple[float, float]] = None,
             set_target_position_desired_on_click: bool = False,
+            window_title: str = 'track: Guidescope Camera',
         ):
         """Constructs an instance of PreviewWindow.
 
@@ -92,20 +93,22 @@ class PreviewWindow:
                 frame is used by default.
             set_target_position_desired_on_click: Allow the desired position of the target within
                 the camera frame to be updated by mouse click on the preview window.
+            window_title: Text to put in the title bar of the window.
         """
         self.frame_width = int(frame_width)
         self.frame_height = int(frame_height)
+        self.window_title = window_title
         self.frame_center_px = (self.frame_width // 2, self.frame_height // 2)
         self.gap_px = int(crosshairs_gap_to_height / 2 * self.frame_height)
-        cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('frame', frame_width, frame_height)
+        cv2.namedWindow(window_title, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(window_title, frame_width, frame_height)
 
         if target_position_desired is None:
             self.target_position_desired = self.frame_center_px
         else:
             self.target_position_desired = target_position_desired
         if set_target_position_desired_on_click:
-            cv2.setMouseCallback('frame', self.mouse_callback)
+            cv2.setMouseCallback(window_title, self.mouse_callback)
 
     # pylint: disable=unused-argument
     def mouse_callback(self, event, x, y, flags, userdata):
@@ -202,5 +205,5 @@ class PreviewWindow:
             )
 
         # display the frame in a window
-        cv2.imshow('frame', frame_annotated)
+        cv2.imshow(self.window_title, frame_annotated)
         cv2.waitKey(1)

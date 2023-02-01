@@ -140,7 +140,8 @@ def make_sky_plot() -> matplotlib.axes.Axes:
     """
 
     plt.style.use('dark_background')
-    ax = plt.gca(projection='polar')
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    fig.canvas.manager.set_window_title('Skyplot')
     ax.set_theta_offset(np.pi/2)
     ax.set_theta_direction(-1)
     ax.set_rlim(1, 91)
