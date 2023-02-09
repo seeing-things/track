@@ -17,9 +17,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import ndimage
 from scipy.optimize import curve_fit
-from track import cameras, focusers, logs
+from track import cameras, focusers, logs, targets
 from track.config import ArgParser, CONFIG_PATH, DATA_PATH
 from track.mounts import MeridianSide
+from track.targets import TargetType
 
 
 logger = logging.getLogger(__name__)
@@ -278,12 +279,12 @@ def main():
     """Run the full autofocus algorithm."""
 
     parser = ArgParser(additional_config_files=[os.path.join(CONFIG_PATH, 'autofocus.cfg')])
-    parser.add_argument('star', help='Name of bright star')
     parser.add_argument(
         '--meridian-side',
         help='side of meridian for equatorial mounts to prefer',
         required=True,
-        choices=tuple(m.name.lower() for m in MeridianSide),
+        type=str.upper,
+        choices=tuple(m.name for m in MeridianSide),
     )
     parser.add_argument(
         '--save-debug-files',
@@ -298,9 +299,25 @@ def main():
     cameras.add_program_arguments(parser)
     focusers.add_program_arguments(parser)
     logs.add_program_arguments(parser)
+    targets.add_program_arguments(
+        parser,
+        allowed_types=TargetType.STAR | TargetType.EQUATORIAL,
+        allow_sensor_fusion=False,
+    )
     args = parser.parse_args()
 
     logs.setup_logging_from_args(args, 'autofocus')
+
+    target_args = [args.target_type]
+    if args.target_type == 'star':
+        target_args.append(args.star)
+        star_name = args.star.capitalize()
+    elif args.target_type == 'coord-eq':
+        # str() of a float is guaranteed to have enough precision such that when converted back to
+        # a float it will be exactly the same as the original float.
+        target_args.append(str(args.ra))
+        target_args.append(str(args.dec))
+        star_name = 'the bright star'
 
     camera = cameras.make_camera_from_args(args)
     focuser = focusers.make_focuser_from_args(args)
@@ -308,7 +325,7 @@ def main():
 
     # Run the `track` program to get the mount pointed at the approximate location of the star.
     # Need to wait until the star is within the main camera's field of view before proceeding.
-    logger.info(f'Moving mount until centered on {args.star}.')
+    logger.info(f'Moving mount until centered on {star_name}.')
     subprocess.run(
         args=[
             'track',
@@ -316,14 +333,12 @@ def main():
             '--fuse',
             f'--meridian-side={args.meridian_side}',
             '--stop-when-converged-angle=0.1',  # stop when within this many degrees of target
-            'star',
-            args.star,
-        ],
+        ] + target_args,
         check=True,
     )
 
     # Run the `track` program as a subprocess in the background to continue tracking the star
-    logger.info(f'Continuing to track {args.star}.')
+    logger.info(f'Continuing to track {star_name}.')
     # pylint: disable=consider-using-with
     track_process = subprocess.Popen(
         args=[
@@ -331,9 +346,7 @@ def main():
             '--no-console-logs',  # confusing to have logs from multiple processes
             f'--meridian-side={args.meridian_side}',
             '--fuse',
-            'star',
-            args.star,
-        ]
+        ] + target_args
     )
     atexit.register(terminate_subprocess, track_process)
     time.sleep(5)  # mount will jump a bit when track process restarts
@@ -370,6 +383,9 @@ def main():
         num=20,
         dtype=int)
     autofocus(camera, focuser, positions, output_dir=output_dir, show_plot=args.plot)
+
+    if (returncode := track_process.poll()) is not None:
+        logger.error(f'track subprocess ended prematurely with exit code {returncode}')
 
     time_elapsed = time.perf_counter() - time_start
     logger.info(f'Elapsed time: {time_elapsed} s')

@@ -85,6 +85,7 @@ setup(
             'autofocus = track.autofocus:main',
             'fetch_tles = track.fetch_tles:main',
             'gamepad = track.gamepad_control:main',
+            'bootstrap = track.bootstrap:main',
             'make_offline_ready = track.make_offline_ready:main',
             'object_position = track.object_position:main',
             'skyplot = track.skyplot:main',

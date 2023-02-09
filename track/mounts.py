@@ -190,6 +190,11 @@ class TelescopeMount(ABC):
         """
 
 
+    @abstractmethod
+    def reachable(self, position: MountEncoderPositions) -> bool:
+        """Test whether a set of encoder positions is reachable by the mount or not."""
+
+
     def predict(
             self,
             times_from_start: np.ndarray,
@@ -465,6 +470,13 @@ class NexStarMount(TelescopeMount):
         return MountEncoderPositions(None, Longitude(-90*u.deg, wrap_angle=180*u.deg))
 
 
+    def reachable(self, position: MountEncoderPositions) -> bool:
+        if ((position[self.AxisName.ALTITUDE].deg > self.alt_max_limit) or
+            (position[self.AxisName.ALTITUDE].deg < self.alt_min_limit)):
+            return False
+        return True
+
+
 class LosmandyGeminiMount(TelescopeMount):
     """Interface class for Losmandy equatorial mounts with Gemini 2.
 
@@ -651,6 +663,13 @@ class LosmandyGeminiMount(TelescopeMount):
         return MountEncoderPositions(Longitude(0*u.deg), Longitude(0*u.deg))
 
 
+    def reachable(self, position: MountEncoderPositions) -> bool:
+        if ((position[self.AxisName.RIGHT_ASCENSION].deg < 180 - self.ra_west_limit) or
+            (position[self.AxisName.RIGHT_ASCENSION].deg > 180 + self.ra_east_limit)):
+            return False
+        return True
+
+
 def add_program_arguments(parser: ArgParser, meridian_side_required: bool = False) -> None:
     """Add program arguments for all mounts.
 
@@ -682,7 +701,8 @@ def add_program_arguments(parser: ArgParser, meridian_side_required: bool = Fals
         '--meridian-side',
         help='side of meridian for equatorial mounts to prefer',
         required=meridian_side_required,
-        choices=tuple(m.name.lower() for m in MeridianSide),
+        type=str.upper,
+        choices=tuple(m.name for m in MeridianSide),
     )
 
 

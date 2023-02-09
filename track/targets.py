@@ -1,5 +1,6 @@
 """Targets for use in telescope tracking control loop."""
 
+import enum
 import logging
 from math import inf
 from typing import Callable, List, Optional, Tuple, NamedTuple
@@ -739,80 +740,115 @@ class SensorFusionTarget(Target):
         self._post_telemetry()
 
 
-def add_program_arguments(parser: ArgParser) -> None:
+class TargetType(enum.Flag):
+    """All supported target types"""
+    NONE = 0
+    FLIGHTCLUB = enum.auto()
+    TLE = enum.auto()
+    CAMERA = enum.auto()
+    EQUATORIAL = enum.auto()
+    TOPOCENTRIC = enum.auto()
+    STAR = enum.auto()
+    SOLARSYSTEM = enum.auto()
+    OVERHEAD_PASS = enum.auto()
+
+    @classmethod
+    def all(cls):
+        """Returns the union of all target types"""
+        retval = cls.NONE
+        for member in cls.__members__.values():
+            retval |= member
+        return retval
+
+
+def add_program_arguments(
+        parser: ArgParser,
+        allowed_types: TargetType = TargetType.all(),
+        allow_sensor_fusion: bool = True
+    ) -> None:
     """Add program arguments relevant to targets.
 
     Args:
         parser: The instance of ArgParser to which this function will add arguments.
+        allowed_types: Set of target types to allow.
+        allow_sensor_fusion: Allow sensor fusion options.
     """
-    target_group = parser.add_argument_group(
-        title='General Target Options',
-        description='Options that apply to all targets',
-    )
-
-    target_group.add_argument(
-        '--fuse',
-        help='use sensor fusion of selected target with camera',
-        action='store_true',
-    )
-    target_group.add_argument(
-        '--fusion-gain',
-        help='gain for sensor fusion',
-        type=float,
-        default=5e-2,
-    )
-    target_group.add_argument(
-        '--spiral-search',
-        help='perform a spiral search until target is detected in camera (sensor fusion mode only)',
-        action='store_true',
-    )
+    if allow_sensor_fusion:
+        target_group = parser.add_argument_group(
+            title='General Target Options',
+            description='Options that apply to all targets',
+        )
+        target_group.add_argument(
+            '--fuse',
+            help='use sensor fusion of selected target with camera',
+            action='store_true',
+        )
+        target_group.add_argument(
+            '--fusion-gain',
+            help='gain for sensor fusion',
+            type=float,
+            default=5e-2,
+        )
+        target_group.add_argument(
+            '--spiral-search',
+            help='spiral search until target is detected in camera (sensor fusion mode only)',
+            action='store_true',
+        )
 
     subparsers = parser.add_subparsers(title='target types', dest='target_type')
     subparsers.required = True
 
-    parser_flightclub = subparsers.add_parser(
-        'flightclub',
-        help='Flightclub.io trajectory CSV file'
-    )
-    parser_flightclub.add_argument('file', help='filename of CSV file')
-    parser_flightclub.add_argument(
-        'time_t0',
-        help='Launch T0 in UTC. Many natural language date formats are supported.',
-        type=str,
-    )
+    if TargetType.FLIGHTCLUB in allowed_types:
+        parser_flightclub = subparsers.add_parser(
+            'flightclub',
+            help='Flightclub.io trajectory CSV file'
+        )
+        parser_flightclub.add_argument('file', help='filename of CSV file')
+        parser_flightclub.add_argument(
+            'time_t0',
+            help='Launch T0 in UTC. Many natural language date formats are supported.',
+            type=str,
+        )
 
-    parser_tle = subparsers.add_parser('tle', help='TLE file')
-    parser_tle.add_argument('file', help='filename of two-line element (TLE) target ephemeris')
+    if TargetType.TLE in allowed_types:
+        parser_tle = subparsers.add_parser('tle', help='TLE file')
+        parser_tle.add_argument('file', help='filename of two-line element (TLE) target ephemeris')
 
-    subparsers.add_parser('camera', help='follows bright target detected in camera')
-    cameras.add_program_arguments(parser)
+    if TargetType.CAMERA in allowed_types:
+        subparsers.add_parser('camera', help='follows bright target detected in camera')
+        cameras.add_program_arguments(parser)
 
-    parser_coord_eq = subparsers.add_parser('coord-eq', help='fixed equatorial coordinate')
-    parser_coord_eq.add_argument('ra', help='right ascension [deg]', type=float)
-    parser_coord_eq.add_argument('dec', help='declination [deg]', type=float)
+    if TargetType.EQUATORIAL in allowed_types:
+        parser_coord_eq = subparsers.add_parser('coord-eq', help='fixed equatorial coordinate')
+        parser_coord_eq.add_argument('ra', help='right ascension [deg]', type=float)
+        parser_coord_eq.add_argument('dec', help='declination [deg]', type=float)
 
-    parser_coord_topo = subparsers.add_parser('coord-topo', help='fixed topocentric coordinate')
-    parser_coord_topo.add_argument('az', help='azimuth [deg]', type=float)
-    parser_coord_topo.add_argument('alt', help='altitude [deg]', type=float)
+    if TargetType.TOPOCENTRIC in allowed_types:
+        parser_coord_topo = subparsers.add_parser('coord-topo', help='fixed topocentric coordinate')
+        parser_coord_topo.add_argument('az', help='azimuth [deg]', type=float)
+        parser_coord_topo.add_argument('alt', help='altitude [deg]', type=float)
 
-    parser_star = subparsers.add_parser('star', help='named star')
-    parser_star.add_argument(
-        'name',
-        help='name of star',
-        type=str.title,  # capitalize first letter of every word in string
-        choices=sorted(ephem.stars.stars.keys()),
-    )
+    if TargetType.STAR in allowed_types:
+        parser_star = subparsers.add_parser('star', help='named star')
+        parser_star.add_argument(
+            'name',
+            help='name of star',
+            type=str.title,  # capitalize first letter of every word in string
+            choices=sorted(ephem.stars.stars.keys()),
+        )
 
-    parser_solarsystem = subparsers.add_parser('solarsystem', help='named solar system body')
-    parser_solarsystem.add_argument(
-        'name',
-        help='name of planet or moon',
-        type=str.capitalize,
-        # pylint: disable=protected-access
-        choices=[planet[2] for planet in ephem._libastro.builtin_planets()]
-    )
+    if TargetType.SOLARSYSTEM in allowed_types:
+        parser_solarsystem = subparsers.add_parser('solarsystem', help='named solar system body')
+        parser_solarsystem.add_argument(
+            'name',
+            help='name of planet or moon',
+            type=str.capitalize,
+            # pylint: disable=protected-access
+            choices=[planet[2] for planet in ephem._libastro.builtin_planets()]
+        )
 
-    subparsers.add_parser('overhead-pass', help='simulated overhead pass')
+    if TargetType.OVERHEAD_PASS in allowed_types:
+        subparsers.add_parser('overhead-pass', help='simulated overhead pass')
 
 
 def make_target_from_args(
