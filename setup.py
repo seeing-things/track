@@ -89,6 +89,7 @@ setup(
         'astropy-healpix>=0.4',
         'bs4>=0.0.1',
         'click>=7.0',
+        'coloredlogs>=15.0',
         'ConfigArgParse>=1.0',
         'ephem>=3.7',
         'gps>=3.19',

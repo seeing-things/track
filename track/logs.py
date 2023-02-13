@@ -10,6 +10,7 @@ import sys
 import time
 from typing import Optional
 import appdirs
+import coloredlogs
 from configargparse import Namespace
 from track.config import ArgParser
 
@@ -82,7 +83,7 @@ def setup(program_name: str, console_level: int, file_level: int) -> None:
     root_logger.setLevel(min(file_level, console_level))
 
     formatter = logging.Formatter(
-        fmt='%(asctime)s %(name)s %(levelname)s %(message)s',
+        fmt='[%(asctime)s.%(msecs)d] [%(name)s] [%(levelname)s] %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     formatter.converter = time.gmtime  # use UTC rather than local time
@@ -96,6 +97,24 @@ def setup(program_name: str, console_level: int, file_level: int) -> None:
     file_handler.setLevel(file_level)
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
+
+    formatter = coloredlogs.ColoredFormatter(
+        fmt='[%(asctime)s.%(msecs)d] [%(name)s] [%(levelname)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        level_styles={
+            'critical': {'color': 'red', 'bold': True},
+            'error': {'color': 'red', 'bright': True},
+            'warning': {'color': 'yellow', 'bright': True},
+            'info': {'color': 'white'},
+            'debug': {'color': 'white', 'faint': True},
+        },
+        field_styles={
+            'asctime': {'color': 'green'},
+            'name': {'color': 'blue', 'bright': True},
+            'levelname': {'color': 'magenta'},
+        },
+    )
+    formatter.converter = time.gmtime  # use UTC rather than local time
 
     console_handler = logging.StreamHandler()
     console_handler.setLevel(console_level)
