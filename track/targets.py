@@ -2,7 +2,7 @@
 
 import logging
 from math import inf
-from typing import List, Optional, Tuple, NamedTuple
+from typing import Callable, List, Optional, Tuple, NamedTuple
 from abc import abstractmethod, ABC
 from functools import lru_cache
 from datetime import datetime
@@ -325,6 +325,7 @@ class CameraTarget(Target):
             meridian_side: Optional[MeridianSide] = None,
             camera_timeout: float = inf,
             telem_logger: Optional[TelemLogger] = None,
+            separation_callback: Optional[Callable[[Angle], None]] = None,
         ):
         """Construct an instance of CameraTarget
 
@@ -339,12 +340,16 @@ class CameraTarget(Target):
                 `compute_error()`. If `inf`, `compute_error()` will block indefinitely.
             telem_logger: Optional instance of `TelemLogger` to which telemetry points will be
                 written.
+            separation_callback: Will be called every time `process_sensor_data()` is called if a
+                target is detected. The separation angle between the target and the center of the
+                frame is passed as an argument to the callback.
         """
         self.camera = camera
         self.camera_timeout = camera_timeout
         self.mount = mount
         self.mount_model = mount_model
         self.telem_logger = telem_logger
+        self.separation_callback = separation_callback
         self.guide_cam_align_error = mount_model.model_param_set.guide_cam_align_error
         self.guide_cam_align_error_px = (
             self.guide_cam_align_error.deg
@@ -541,6 +546,11 @@ class CameraTarget(Target):
         target_x_px, target_y_px = self._get_keypoint_xy(target_keypoint)
         target_x = Angle(target_x_px * self.camera.pixel_scale * self.camera.binning * u.deg)
         target_y = Angle(target_y_px * self.camera.pixel_scale * self.camera.binning * u.deg)
+
+        if self.separation_callback is not None:
+            # This measures separation from center of camera frame and does not take into account
+            # guidscope alignment offset.
+            self.separation_callback(abs(target_x + 1j*target_y))
 
         if self.telem_logger is not None:
             p = Point('camera_target')
@@ -811,6 +821,7 @@ def make_target_from_args(
         mount_model: MountModel,
         meridian_side: MeridianSide,
         telem_logger: Optional[TelemLogger] = None,
+        camera_separation_callback: Optional[Callable[[Angle], None]] = None,
     ) -> Target:
     """Construct the appropriate target based on the program arguments provided.
 
@@ -820,6 +831,8 @@ def make_target_from_args(
         mount_model: Instance of MountModel.
         meridian_side: Desired side of mount-relative meridian.
         telem_logger: Telemetry logger object.
+        camera_separation_callback: Passed to `CameraTarget` constructor if a `CameraTarget` is
+            created.
     """
     if args.target_type == 'camera' and args.fuse:
         raise ValueError('Cannot fuse camera target with itself')
@@ -862,6 +875,7 @@ def make_target_from_args(
             mount=mount,
             mount_model=mount_model,
             telem_logger=telem_logger,
+            separation_callback=camera_separation_callback,
         )
 
     # Create a PyEphem Body object corresonding to the given fixed coordinates
@@ -922,6 +936,7 @@ def make_target_from_args(
             mount=mount,
             mount_model=mount_model,
             telem_logger=telem_logger,
+            separation_callback=camera_separation_callback,
         )
         target = SensorFusionTarget(
             blind_target=blind_target,

@@ -5,12 +5,16 @@
 This is the core program in this project. The software uses a control system to cause a telescope
 mount to track a target based on the target's position in the sky and the mount's encoder readings.
 """
+from __future__ import annotations
+from functools import partial
 import logging
 import os
+import signal
 import sys
+from typing import Callable
 import click
 import astropy.units as u
-from astropy.coordinates import Longitude
+from astropy.coordinates import Angle, Longitude
 from track import control, laser, logs, model, mounts, ntp, targets, telem
 from track.config import ArgParser, CONFIG_PATH
 from track.control import Tracker
@@ -19,6 +23,44 @@ from track.mounts import MeridianSide
 
 
 logger = logging.getLogger(__name__)
+
+
+def make_camera_separation_callback(
+        pid_to_signal: int | None = None,
+        separation_threshold: float | None = None,
+    ) -> Callable[[Angle], None] | None:
+    """Make callable that sends SIGUSR1 to another process when target is near center of camera.
+
+    The purpose of this is to provide a synchronization mechanism between this program and the
+    `align_guidescope` program, which needs to wait until a star is centered in the camera frame
+    before proceeding.
+
+    Args:
+        pid_to_signal: The process id (PID) to which SIGUSR1 will be sent by the returned function.
+        separation_threshold: The returned function accepts a separation angle as the single
+            argument. When the argument is below this threshold in degrees, the function will send
+            SIGUSR1.
+
+    Returns:
+        A function that may be passed to `targets.make_target_from_args()`, or None if both
+        arguments are None.
+    """
+    def camera_separation_callback(
+        separation: Angle,
+        separation_threshold: Angle,
+        pid: int,
+    ) -> None:
+        if separation < separation_threshold:
+            os.kill(pid, signal.SIGUSR1)
+
+    if pid_to_signal is not None:
+        logger.debug(f'Will send SIGUSR1 to PID {pid_to_signal} when star is centered in camera.')
+        return partial(
+            camera_separation_callback,
+            pid=pid_to_signal,
+            separation_threshold=Angle(u.deg * separation_threshold)
+        )
+    return None
 
 
 def main():
@@ -58,7 +100,26 @@ def main():
     ntp.add_program_arguments(parser)
     telem.add_program_arguments(parser)
     control.add_program_arguments(parser)
+    signal_group = parser.add_argument_group(
+        title='Signal Options',
+        description='Options that pertain to sending synchronization signals to other processes',
+    )
+    signal_group.add_argument(
+        '--pid-to-signal',
+        help='send SIGUSR1 to the process with this PID when target is within signal-angle of '
+            'camera frame center',
+        type=int,
+    )
+    signal_group.add_argument(
+        '--signal-angle',
+        help='SIGUSR1 sent when target to frame center separation is below this angle in degrees',
+        type=float,
+    )
     args = parser.parse_args()
+
+    if args.pid_to_signal is not None and args.signal_angle is None:
+        # pylint: disable=not-callable
+        parser.error('--pid-to-signal requires --signal-angle')
 
     logs.setup_logging_from_args(args, __package__)
 
@@ -107,6 +168,10 @@ def main():
             mount_model,
             MeridianSide[args.meridian_side.upper()],
             telem_logger=telem_logger,
+            camera_separation_callback=make_camera_separation_callback(
+                pid_to_signal=args.pid_to_signal,
+                separation_threshold=args.signal_angle,
+            ),
         )
 
         tracker = Tracker(
