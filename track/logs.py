@@ -63,7 +63,12 @@ def get_git_commit_hash() -> Optional[str]:
     return commit_hash
 
 
-def setup(program_name: str, console_level: int, file_level: int) -> None:
+def setup(
+        program_name: str,
+        console_level: int,
+        file_level: int,
+        enable_console_logging: bool,
+    ) -> None:
     """Setup logging for the package.
 
     This sets up logging to both the console and a log file. This should ideally be called before
@@ -75,6 +80,7 @@ def setup(program_name: str, console_level: int, file_level: int) -> None:
         program_name: Name of the program. The log file will be the program name with .log appended.
         console_level: Log level for the console handler.
         file_level: Log level for the file handler.
+        enable_console_logging: Enable logging to the console (stdout).
     """
 
     log_filename = os.path.join(LOG_PATH, f'{program_name}.log')
@@ -98,28 +104,29 @@ def setup(program_name: str, console_level: int, file_level: int) -> None:
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
 
-    formatter = coloredlogs.ColoredFormatter(
-        fmt='[%(asctime)s.%(msecs)d] [%(name)s] [%(levelname)s] %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S',
-        level_styles={
-            'critical': {'color': 'red', 'bold': True},
-            'error': {'color': 'red', 'bright': True},
-            'warning': {'color': 'yellow', 'bright': True},
-            'info': {'color': 'white'},
-            'debug': {'color': 'white', 'faint': True},
-        },
-        field_styles={
-            'asctime': {'color': 'green'},
-            'name': {'color': 'blue', 'bright': True},
-            'levelname': {'color': 'magenta'},
-        },
-    )
-    formatter.converter = time.gmtime  # use UTC rather than local time
+    if enable_console_logging:
+        formatter = coloredlogs.ColoredFormatter(
+            fmt='[%(asctime)s.%(msecs)d] [%(name)s] [%(levelname)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S',
+            level_styles={
+                'critical': {'color': 'red', 'bold': True},
+                'error': {'color': 'red', 'bright': True},
+                'warning': {'color': 'yellow', 'bright': True},
+                'info': {'color': 'white'},
+                'debug': {'color': 'white', 'faint': True},
+            },
+            field_styles={
+                'asctime': {'color': 'green'},
+                'name': {'color': 'blue', 'bright': True},
+                'levelname': {'color': 'magenta'},
+            },
+        )
+        formatter.converter = time.gmtime  # use UTC rather than local time
 
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(console_level)
-    console_handler.setFormatter(formatter)
-    root_logger.addHandler(console_handler)
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(console_level)
+        console_handler.setFormatter(formatter)
+        root_logger.addHandler(console_handler)
 
     # Called when an exception is unhandled. The default hook prints the traceback to stdout.
     sys.excepthook = lambda *args: logger.critical('Unhandled exception.', exc_info=args)
@@ -129,6 +136,7 @@ def setup(program_name: str, console_level: int, file_level: int) -> None:
     logger.critical(f'{__package__} package version {metadata.version(__package__)}')
     if (commit_hash := get_git_commit_hash()) is not None:
         logger.critical(f'Git commit: {commit_hash}')
+    logger.debug(f'PID: {os.getpid()}')
     logger.info(f'Console log level set to {LogLevel(console_level).name}')
     logger.info(f'File log level set to {LogLevel(file_level).name}')
     logger.info(f'Log file: {log_filename}')
@@ -156,6 +164,12 @@ def add_program_arguments(parser: ArgParser) -> None:
         choices=tuple(l.name for l in LogLevel),
         default=LogLevel.WARNING.name,
     )
+    logging_group.add_argument(
+        '--no-console-logs',
+        help='disable logging to the console',
+        action='store_false',
+        dest='enable_console_logging',
+    )
 
 
 def setup_logging_from_args(args: Namespace, program_name: str) -> None:
@@ -164,4 +178,5 @@ def setup_logging_from_args(args: Namespace, program_name: str) -> None:
         program_name,
         console_level=LogLevel[args.console_log_level.upper()],
         file_level=LogLevel[args.file_log_level.upper()],
+        enable_console_logging=args.enable_console_logging,
     )
