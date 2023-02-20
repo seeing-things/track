@@ -743,7 +743,7 @@ class WebCam(Camera):
         self._v4l2_ioctl_nonfatal(
             v4l2.VIDIOC_S_CTRL,
             ctrl,
-            'failed to set control: {}'.format(desc)
+            f'failed to set control: {desc}'
         )
 
     def _set_jpeg_quality(self, quality):
@@ -847,10 +847,10 @@ class WebCam(Camera):
         # find and create a not-yet-existent 'webcam_dump_####' directory
         num = 0
         while True:
-            self.dump_dir = frame_dump_dir + '/webcam_dump_{:04d}'.format(num)
+            self.dump_dir = os.path.join(frame_dump_dir, f'webcam_dump_{num:04d}')
             try:
                 os.makedirs(self.dump_dir)
-            except (IOError, OSError) as e:
+            except OSError as e:
                 if e.errno == errno.EEXIST:
                     num += 1
                 else:
@@ -859,7 +859,7 @@ class WebCam(Camera):
                 break
 
     def _dump_one(self, jpeg):
-        file_name = 'frame_{:06d}.jpg'.format(self.dump_idx)
+        file_name = f'frame_{self.dump_idx:06d}.jpg'
         self.dump_idx += 1
 
         file_path = os.path.join(self.dump_dir, file_name)

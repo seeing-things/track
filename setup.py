@@ -119,9 +119,10 @@ setup(
     entry_points={
         'console_scripts':[
             'align = track.align:main',
-            'autofocus = track.autofocus:main',
-            'gamepad = track.gamepad_control:main',
             'align_guidescope = track.align_guidescope:main',
+            'autofocus = track.autofocus:main',
+            'fetch_tles = track.fetch_tles:main',
+            'gamepad = track.gamepad_control:main',
             'object_position = track.object_position:main',
             'skyplot = track.skyplot:main',
             'startracker = track.startracker:main',

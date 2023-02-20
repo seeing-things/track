@@ -29,7 +29,7 @@ from astropy_healpix import HEALPix
 from astropy import units as u
 from astropy.io import fits
 from astropy.time import Time
-from astropy.coordinates import SkyCoord, Angle, Longitude
+from astropy.coordinates import SkyCoord, Angle, EarthLocation, Longitude
 from track import cameras, gps_client, logs, model, mounts, ntp, telem
 from track.cameras import Camera
 from track.control import Tracker, smallest_allowed_error
@@ -106,6 +106,8 @@ def generate_positions(
     Args:
         min_positions: Minimum number of positions. The actual number of positions returned may be
             larger than requested.
+        mount_model: An instance of the mount model.
+        mount: A mount interface object.
         min_altitude: Restrict positions to be above this altitude.
         meridian_side: If specified, restricts positions to only be on this side of the meridian,
             where meridian is defined as the great circle passing through local zenith and the
@@ -156,7 +158,7 @@ def generate_positions(
 def attempt_plate_solving(
         camera: Camera,
         mount: TelescopeMount,
-        location,
+        location: EarthLocation,
         observations: List,
         observations_dir: str,
         num_solutions_so_far: int,

@@ -11,7 +11,7 @@ import os
 import signal
 import threading
 import time
-from typing import List, Optional
+from typing import Callable, List, Optional
 import selectors
 import inputs
 import numpy as np
@@ -163,16 +163,20 @@ class Gamepad(TelemSource):
         else:
             return self.get_proportional()
 
-    def register_callback(self, event_code=None, callback=None):
+    def register_callback(
+            self,
+            event_code: Optional[str] = None,
+            callback: Optional[Callable[[int], None]] = None
+        ):
         """Register a callback function to be called when a particular gamepad event occurs.
 
-        Note that the callback will not be called from the main thread.
+        The callback will not be called from the main thread.
 
         Args:
-            event_code: The event code as a string. For example, if set to 'ABS_X', the callback
-                function will be called anytime an event with that code id detected.
+            event_code: The event code. For example, if set to 'ABS_X', the callback function will
+                be called anytime an event with that code id detected.
             callback: Function to be called. The function should take a single argument which will
-                be set to event.state for the matching event code. Set to None to remove the
+                be set to `event.state` for the matching event code. Set to None to remove the
                 callback for this code. Only one callback can be registered per event code.
         """
         self.callbacks[event_code] = callback

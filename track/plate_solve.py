@@ -62,8 +62,8 @@ def plate_solve(frame: np.ndarray, camera_width: Optional[float] = None) -> Tupl
             '--no-plots',
         ]
         if camera_width is not None:
-            args.append('--scale-low={:.2f}'.format(camera_width - 0.1))
-            args.append('--scale-high={:.2f}'.format(camera_width + 0.1))
+            args.append(f'--scale-low={camera_width - 0.1:.2f}')
+            args.append(f'--scale-high={camera_width + 0.1:.2f}')
         args.append(frame_filename)
 
         # Call astrometry.net binary solve-field

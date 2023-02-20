@@ -411,18 +411,8 @@ class CameraTarget(Target):
             Target position in mount frame
         """
 
-        # Current position of mount is assumed to be the position of the center of the camera frame
-        # FIXME: This isn't going to be very accurate since we are not getting the mount position
-        # as close in time as possible to when the camera frame was captured. What we *really* need
-        # are a couple of things:
-        # 1. A reasonable estimate of the actual time when the camera frame was captured (not just
-        #    when the function to get the frame data returns, since there is hidden latency there)
-        # 2. A way to get the mount's position corresponding to that past time. We have the ability
-        #    to predict future mount positions but not a way to go back and get past positions
-        #    (and interpolate between them). Maybe it would be reasonable for the mount to cache
-        #    past positions in a limited-length deque with timestamps to make this past position
-        #    lookup possible. Maybe add another argument to `get_position()` to specify the desired
-        #    past time.
+        # Mount position is not queried at the exact same time that the camera frame was obtained.
+        # The unknown time offset contributes to error in the transformation.
         mount_enc_positions = self.mount.get_position()
         mount_coord, mount_meridian_side = self.mount_model.encoders_to_spherical(
             mount_enc_positions
@@ -516,10 +506,7 @@ class CameraTarget(Target):
         return self.target_position
 
     def process_camera_frame(self) -> Tuple[Time, Angle, Angle]:
-        """Get frame from camera and find target using computer vision
-
-        Args:
-            telem: Dict into which telemetry channels will be added
+        """Get frame from camera and find target using computer vision.
 
         Returns:
             Tuple containing:
@@ -798,10 +785,21 @@ def add_program_arguments(parser: ArgParser) -> None:
     parser_coord_topo.add_argument('alt', help='altitude [deg]', type=float)
 
     parser_star = subparsers.add_parser('star', help='named star')
-    parser_star.add_argument('name', help='name of star')
+    parser_star.add_argument(
+        'name',
+        help='name of star',
+        type=str.title,  # capitalize first letter of every word in string
+        choices=sorted(ephem.stars.stars.keys()),
+    )
 
     parser_solarsystem = subparsers.add_parser('solarsystem', help='named solar system body')
-    parser_solarsystem.add_argument('name', help='name of planet or moon')
+    parser_solarsystem.add_argument(
+        'name',
+        help='name of planet or moon',
+        type=str.capitalize,
+        # pylint: disable=protected-access
+        choices=[planet[2] for planet in ephem._libastro.builtin_planets()]
+    )
 
     subparsers.add_parser('overhead-pass', help='simulated overhead pass')
 
@@ -817,8 +815,10 @@ def make_target_from_args(
 
     Args:
         args: Set of program arguments.
+        mount: Mount interface object.
         mount_model: Instance of MountModel.
         meridian_side: Desired side of mount-relative meridian.
+        telem_logger: Telemetry logger object.
     """
     if args.target_type == 'camera' and args.fuse:
         raise ValueError('Cannot fuse camera target with itself')
@@ -898,20 +898,13 @@ def make_target_from_args(
     # Get the PyEphem Body object corresonding to the given named solar system body
     elif args.target_type == 'solarsystem':
         logger.info(f'In named solar system body mode: {args.name}')
-        # pylint: disable=protected-access
-        ss_objs = [name for _, _, name in ephem._libastro.builtin_planets()]
-        if args.name in ss_objs:
-            body_type = getattr(ephem, args.name)
-            target = PyEphemTarget(
-                target=body_type(),
-                location=mount_model.location,
-                mount_model=mount_model,
-                meridian_side=meridian_side,
-            )
-        else:
-            raise Exception(
-                'The solar system body \'{}\' isn\'t present in PyEphem.'.format(args.name)
-            )
+        body_type = getattr(ephem, args.name)
+        target = PyEphemTarget(
+            target=body_type(),
+            location=mount_model.location,
+            mount_model=mount_model,
+            meridian_side=meridian_side,
+        )
 
     elif args.target_type == 'overhead-pass':
         target = OverheadPassTarget(mount_model, meridian_side)

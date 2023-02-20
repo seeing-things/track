@@ -30,6 +30,7 @@ def add_arrow(line: matplotlib.lines.Line2D, size: int = 15, color: str = None) 
 
     Args:
         line: Line2D object
+        size: Size of the arrow annotation
         color: If None, line color is taken
     """
     if color is None:
@@ -50,7 +51,7 @@ def add_arrow(line: matplotlib.lines.Line2D, size: int = 15, color: str = None) 
     line.axes.annotate('',
         xytext=(theta[ind-1], radius[ind-1]),
         xy=(theta[ind], radius[ind]),
-        arrowprops=dict(arrowstyle="-|>", color=color),
+        arrowprops={'arrowstyle': '-|>', 'color': color},
         size=size
     )
 
@@ -147,7 +148,7 @@ def make_sky_plot() -> matplotlib.axes.Axes:
     ax.set_rlim(1, 91)
     ax.grid(True, which='major')
 
-    degree_sign = u'\N{DEGREE SIGN}'
+    degree_sign = '\N{DEGREE SIGN}'
 
     # For positively-increasing range (e.g., range(1, 90, 15)),
     # labels go from middle to outside.

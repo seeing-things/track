@@ -265,6 +265,7 @@ class SERReader:
             filename: Filename of SER file to read.
         """
 
+        # pylint: disable=consider-using-with
         self.file = open(filename, 'rb')
 
         # read in the header
@@ -378,6 +379,7 @@ class SERWriter:
         self.add_trailer = add_trailer
         self.timestamps = []
 
+        # pylint: disable=consider-using-with
         self.file = open(filename, 'wb')
         # header will be written on close, seek past it for now
         self.file.seek(SERHeader.SIZE_BYTES, SEEK_SET)

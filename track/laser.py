@@ -103,7 +103,7 @@ class LaserPointer:
             return True  # prevent exception propagation
         return False
 
-    def set(self, enable):
+    def set(self, enable: bool) -> None:
         """Sets the state of the laser pointer.
 
         Args:
@@ -114,7 +114,7 @@ class LaserPointer:
         else:
             self.ftdi.write_data(bytes([self.laser_pin]))
 
-    def get(self):
+    def get(self) -> bool:
         """Gets the current state of the laser pointer.
 
         This reads the current state from FTDI device and does not rely on any state information

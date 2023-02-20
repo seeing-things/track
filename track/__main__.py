@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 def main():
     """See module docstring"""
 
-    def gamepad_callback(_tracker: Tracker) -> bool:
+    def gamepad_callback(_unused: Tracker) -> bool:
         """Callback for gamepad control.
 
         Allows manual control of the slew rate via a gamepad when the 'B' button is held down,
@@ -32,9 +32,6 @@ def main():
         calls it on each control cycle.
 
         Defined inside main() so this has easy access to objects that are within that scope.
-
-        Args:
-            _tracker: A reference to an object of type Tracker. Not used internally.
 
         Returns:
             True when the 'B' button is depressed which disables the normal control path. False

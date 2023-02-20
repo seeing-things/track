@@ -649,7 +649,7 @@ class LosmandyGeminiMount(TelescopeMount):
         return MountEncoderPositions(Longitude(0*u.deg), Longitude(0*u.deg))
 
 
-def add_program_arguments(parser: ArgParser, meridian_side_required=False) -> None:
+def add_program_arguments(parser: ArgParser, meridian_side_required: bool = False) -> None:
     """Add program arguments for all mounts.
 
     Args:

@@ -90,6 +90,7 @@ def main():
     # the next steps are performed simultaneously.
     print(f'Starting spiral search for {args.star}. Wait until the star is centered in the preview '
         'window before answering the question below.')
+    # pylint: disable=consider-using-with
     track_process = subprocess.Popen(
         args=[
             'track',

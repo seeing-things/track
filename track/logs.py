@@ -155,13 +155,13 @@ def add_program_arguments(parser: ArgParser) -> None:
     logging_group.add_argument(
         '--console-log-level',
         help='log level for console',
-        choices=tuple(l.name for l in LogLevel),
+        choices=tuple(level.name for level in LogLevel),
         default=LogLevel.INFO.name,
     )
     logging_group.add_argument(
         '--file-log-level',
         help='log level for log file',
-        choices=tuple(l.name for l in LogLevel),
+        choices=tuple(level.name for level in LogLevel),
         default=LogLevel.WARNING.name,
     )
     logging_group.add_argument(

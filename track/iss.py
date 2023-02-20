@@ -32,7 +32,10 @@ def main():
     args = parser.parse_args()
 
     # Grab the latest space station TLE file from Celestrak
-    stations = requests.get('http://celestrak.com/NORAD/elements/stations.txt').text.splitlines()
+    stations = requests.get(
+        'http://celestrak.com/NORAD/elements/stations.txt',
+        timeout=10
+    ).text.splitlines()
 
     # Top entry in the station.txt file should be for ISS
     iss = ephem.readtle(str(stations[0]), str(stations[1]), str(stations[2]))

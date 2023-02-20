@@ -322,6 +322,7 @@ def main():
 
     # Run the `track` program as a subprocess in the background to continue tracking the star
     logger.info(f'Continuing to track {args.star}.')
+    # pylint: disable=consider-using-with
     track_process = subprocess.Popen(
         args=[
             'track',

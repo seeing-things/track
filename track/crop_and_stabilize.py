@@ -49,7 +49,7 @@ def main():
             int(center[1]) - PIXELS_FROM_CENTER : int(center[1]) + PIXELS_FROM_CENTER,
             int(center[0]) - PIXELS_FROM_CENTER : int(center[0]) + PIXELS_FROM_CENTER
         ]
-        cv2.imwrite(output_dir + '%04d.jpg' % cropped_num, img_cropped)
+        cv2.imwrite(os.path.join(output_dir, f'{cropped_num:04d}.jpg'), img_cropped)
         cropped_num += 1
 
 if __name__ == "__main__":

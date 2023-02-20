@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 
-"""Scrapes the Heavens Above website (heavens-above.com) to download TLEs for nightly passes.
+"""Download TLEs for nightly satellite passes from the Heavens Above website (heavens-above.com).
 
 Heavens Above predicts which satellites will be visible at a given location and on a particular
 morning or evening. This program scrapes that website in order to download a set of fresh TLE files
 for such satellites.
 """
 
+import logging
 import os
 import re
+import sys
 import datetime
 import monthdelta
 import requests
 from bs4 import BeautifulSoup
 from track.config import ArgParser
-from track import gps_client
+from track import gps_client, logs
+
+
+logger = logging.getLogger(__name__)
 
 
 def urlify(s: str) -> str:
@@ -47,16 +52,16 @@ def date_to_monthnum(date: datetime.date) -> int:
 def print_timezone_help():
     """Print help message for how to use the timezones 'tz' program argument"""
     tz_soup = BeautifulSoup(
-        requests.get('http://heavens-above.com/SelectLocation.aspx').text,
+        requests.get('http://heavens-above.com/SelectLocation.aspx', timeout=10).text,
         'lxml'
     )
 
     # find the dropdown box containing the tz code to description mappings
     options = tz_soup.find('select', {'name': 'ctl00$cph1$listTimeZones'}).find_all('option')
 
-    print('{:13s} {}'.format('CODE', 'DESCRIPTION'))
+    print(f'{"CODE":13s} DESCRIPTION')
     for option in options:
-        print('{:13s} {}'.format(option['value'], option.string))
+        print(f'{option["value"]:13s} {option.string}')
 
 
 def main():
@@ -103,26 +108,28 @@ def main():
     time_group.add_argument(
         '--ampm',
         required=False,
-        help='morning or evening (\'AM\' or \'PM\')',
-        default='PM'
+        help='morning or evening',
+        default='PM',
+        choices=['am', 'pm']
     )
     gps_client.add_program_arguments(parser)
+    logs.add_program_arguments(parser)
     args = parser.parse_args()
+
+    logs.setup_logging_from_args(args, 'heavens_above_scraper')
 
     if args.tz == 'help':
         print_timezone_help()
         return
-
-    if args.ampm.upper() != 'AM' and args.ampm.upper() != 'PM':
-        raise Exception('The AM/PM argument can only be \'AM\' or \'PM\'.')
 
     if args.year is not None and args.month is not None and args.day is not None:
         when = datetime.datetime(args.year, args.month, args.day).date()
     elif args.year is None and args.month is None and args.day is None:
         when = datetime.datetime.now().date()
     else:
-        raise Exception('If an explicit observation date is given, then year, month, and day must '
+        logger.critical('If an explicit observation date is given, then year, month, and day must '
             'all be specified.')
+        sys.exit(1)
 
     # Get location of observer from arguments or from GPS
     location = gps_client.make_location_from_args(args)
@@ -133,7 +140,7 @@ def main():
         f'&alt={location.height.value}&tz={args.tz}')
 
     # do an initial page request so we can get the __VIEWSTATE and __VIEWSTATEGENERATOR values
-    pre_soup = BeautifulSoup(requests.get(bright_sats_url).text, 'lxml')
+    pre_soup = BeautifulSoup(requests.get(bright_sats_url, timeout=10).text, 'lxml')
     view_state = pre_soup.find(
         'input',
         {'type': 'hidden', 'name': '__VIEWSTATE'         }
@@ -158,32 +165,34 @@ def main():
         ('ctl00$cph1$radioButtonsMag',                  '5.0'),
     ]
 
-    bright_sats_soup = BeautifulSoup(requests.post(bright_sats_url, data=post_data).text, 'lxml')
+    bright_sats_soup = BeautifulSoup(
+        requests.post(bright_sats_url, data=post_data, timeout=10).text,
+        'lxml'
+    )
 
     # find the rows in the table listing the satellite passes
     table = bright_sats_soup.find('table', {'class': 'standardTable'})
     rows = table.tbody.find_all('tr')
 
     # this number is deceptive because it's pre-magnitude-filtering
-    print('Found {} (pre-filtered) satellite passes.'.format(len(rows)))
+    logger.info(f'Found {len(rows)} (pre-filtered) satellite passes.')
 
     for row in rows:
 
         cols = row.find_all('td')
 
         # We're not using all of these now, but preserving them is useful as documentation
-        # pylint: disable=unused-variable
         sat        =       cols[ 0].string
         mag        = float(cols[ 1].string)
-        start_time =       cols[ 2].string # <-- in local time
-        start_alt  =       cols[ 3].string
-        start_az   =       cols[ 4].string
-        high_time  =       cols[ 5].string # <-- in local time
-        high_alt   =       cols[ 6].string
-        high_az    =       cols[ 7].string
-        end_time   =       cols[ 8].string # <-- in local time
-        end_alt    =       cols[ 9].string
-        end_az     =       cols[10].string
+        # start_time =       cols[ 2].string # <-- in local time
+        # start_alt  =       cols[ 3].string
+        # start_az   =       cols[ 4].string
+        # high_time  =       cols[ 5].string # <-- in local time
+        # high_alt   =       cols[ 6].string
+        # high_az    =       cols[ 7].string
+        # end_time   =       cols[ 8].string # <-- in local time
+        # end_alt    =       cols[ 9].string
+        # end_az     =       cols[10].string
 
         # manually enforce the magnitude threshold
         if mag > args.mag_limit:
@@ -194,11 +203,11 @@ def main():
         url_suffix = re.findall(r"'([^']*)'", onclick_str)[0]
         satid = re.findall(r"satid=([0-9]*)", url_suffix)[0]
 
-        print('Getting TLE for ' + sat + '...')
+        logger.info(f'Getting TLE for {sat}')
 
         # get the TLE from the orbit details page for this satellite
         orbit_url = base_url + 'orbit.aspx?satid=' + satid
-        orbit_page = requests.get(orbit_url).text
+        orbit_page = requests.get(orbit_url, timeout=10).text
         orbit_soup = BeautifulSoup(orbit_page, 'lxml')
         span_tags = orbit_soup.pre.find_all('span')
         assert len(span_tags) == 2

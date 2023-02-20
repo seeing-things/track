@@ -424,7 +424,7 @@ class MountModel:
     def spherical_to_encoders(
             self,
             coord: UnitSphericalRepresentation,
-            meridian_side=MeridianSide.EAST,
+            meridian_side: MeridianSide = MeridianSide.EAST,
         ) -> MountEncoderPositions:
         """Convert from mount-relative spherical coordinates to mount encoder positions
 
@@ -754,7 +754,7 @@ def load_stored_param_set(max_age: Optional[float] = 12*3600) -> ModelParamSet:
         param_set_age = time.time() - model_param_set.timestamp
         if param_set_age > max_age:
             raise StaleParametersException(
-                'model params are {:.1f} hours old'.format(param_set_age / 3600.0))
+                f'model params are {param_set_age / 3600:.1f} hours old')
 
     return model_param_set
 
