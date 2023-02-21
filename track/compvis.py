@@ -77,7 +77,6 @@ class PreviewWindow:
             frame_height: int,
             crosshairs_gap_to_height: float = 0.1,
             target_position_desired: Optional[Tuple[float, float]] = None,
-            set_target_position_desired_on_click: bool = False,
             window_title: str = 'track: Guidescope Camera',
         ):
         """Constructs an instance of PreviewWindow.
@@ -91,8 +90,6 @@ class PreviewWindow:
                 tuple where the first value is the X position in pixels from the left and the
                 second value is the Y position in pixels from the top. If None the center of the
                 frame is used by default.
-            set_target_position_desired_on_click: Allow the desired position of the target within
-                the camera frame to be updated by mouse click on the preview window.
             window_title: Text to put in the title bar of the window.
         """
         self.frame_width = int(frame_width)
@@ -107,20 +104,6 @@ class PreviewWindow:
             self.target_position_desired = self.frame_center_px
         else:
             self.target_position_desired = target_position_desired
-        if set_target_position_desired_on_click:
-            cv2.setMouseCallback(window_title, self.mouse_callback)
-
-    # pylint: disable=unused-argument
-    def mouse_callback(self, event, x, y, flags, userdata):
-        """OpenCV mouse event callback to set desired target position in the frame
-
-        See OpenCV High-level GUI documentation for description of arguments
-        E.g., for version 3.2.0: https://docs.opencv.org/3.2.0/d7/dfc/group__highgui.html
-        """
-
-        if flags & cv2.EVENT_FLAG_LBUTTON:  # left mouse button is down
-            if 0 <= x < self.frame_width and 0 <= y < self.frame_height:
-                self.target_position_desired = (x, y)
 
     def show_annotated_frame(
             self,
