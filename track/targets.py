@@ -15,6 +15,7 @@ from astropy.coordinates.representation import UnitSphericalRepresentation
 from astropy.time import Time
 from astropy import units as u
 import ephem
+import ephem.stars
 import cv2
 from influxdb_client import Point
 from track import cameras
