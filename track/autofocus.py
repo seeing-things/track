@@ -227,9 +227,6 @@ def autofocus(
     """
     hfrs = np.zeros(focuser_steps.size)
     for idx, position in enumerate(focuser_steps):
-        logger.info(
-            f'Estimating HFR at focuser position {position:4d} '
-            f'({idx + 1:3d} of {focuser_steps.size:3d}).')
         focuser.target_position = position
         focuser.move_to_target_position(blocking=True)
         image = camera.get_frame()
@@ -249,6 +246,10 @@ def autofocus(
         image[image < 0.1*np.max(image)] = 0
 
         hfrs[idx] = estimate_hfr(image)
+
+        logger.info(
+            f'HFR {hfrs[-1]:6.2f} pixels at position {position:4d} '
+            f'({idx + 1:3d} of {focuser_steps.size:3d}).')
 
     if output_dir is not None:
         np.savetxt(
