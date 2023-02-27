@@ -312,6 +312,7 @@ def main():
     subprocess.run(
         args=[
             'track',
+            '--no-console-logs',  # confusing to have logs from multiple processes
             '--fuse',
             f'--meridian-side={args.meridian_side}',
             '--stop-when-converged-angle=0.1',  # stop when within this many degrees of target
@@ -327,6 +328,7 @@ def main():
     track_process = subprocess.Popen(
         args=[
             'track',
+            '--no-console-logs',  # confusing to have logs from multiple processes
             f'--meridian-side={args.meridian_side}',
             '--fuse',
             'star',
