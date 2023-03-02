@@ -69,6 +69,7 @@ setup(
         'pyftdi>=0.49',  # for laser pointer control
         'requests',
         'scipy',
+        'skyfield',
         'toml',  # parser for InfluxDB CLI configuration files
         'v4l2 @ https://github.com/seeing-things/python-v4l2/tarball/master',  # webcam support
     ],

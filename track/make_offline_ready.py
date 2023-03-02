@@ -6,6 +6,7 @@ import logging
 import astropy.utils.iers
 from track import logs
 from track.config import ArgParser
+from track.skyfield_utils import download_skyfield_data_files
 
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,8 @@ def main() -> None:
 
     logger.info('Downloading Astropy data files.')
     download_astropy_iers()
+    logger.info('Downloading Skyfield data files.')
+    download_skyfield_data_files()
     logger.info('All files required for offline use have been downloaded.')
 
 
