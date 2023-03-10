@@ -248,7 +248,7 @@ def autofocus(
         hfrs[idx] = estimate_hfr(image)
 
         logger.info(
-            f'HFR {hfrs[-1]:6.2f} pixels at position {position:4d} '
+            f'HFR {hfrs[idx]:6.2f} pixels at position {position:4d} '
             f'({idx + 1:3d} of {focuser_steps.size:3d}).')
 
     if output_dir is not None:
