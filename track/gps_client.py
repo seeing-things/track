@@ -424,9 +424,9 @@ def make_location_from_args(args: Namespace) -> EarthLocation:
             logger.info('Got location from GPS.')
 
     logger.info('Generated the following location: '
-        f'lat: {location.lat:.5f} deg, '
-        f'lon: {location.lon:.5f} deg, '
-        f'altitude: {location.height:.2f} m.')
+        f'lat: {location.lat:.5f}, '
+        f'lon: {location.lon:.5f}, '
+        f'altitude: {location.height:.2f}.')
 
     return location
 
