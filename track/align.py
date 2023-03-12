@@ -24,7 +24,6 @@ from datetime import datetime
 from typing import List, Optional
 import numpy as np
 import pandas as pd
-import click
 from astropy_healpix import HEALPix
 from astropy import units as u
 from astropy.io import fits
@@ -283,13 +282,14 @@ def main():
     logs.setup_logging_from_args(args, 'align')
 
     # Check if system clock is synchronized to GPS
-    if args.check_time_sync:
-        try:
-            ntp.check_ntp_status()
-        except ntp.NTPCheckFailure:
-            logger.exception('NTP check failed.')
-            if not click.confirm('Continue anyway?', default=True):
-                sys.exit(2)
+    try:
+        ntp.check_ntp_status()
+    except ntp.NTPCheckFailure as e:
+        if args.ignore_ntp_check:
+            logger.warn(f'NTP check failed: {e}')
+        else:
+            logger.critical(f'NTP check failed: {e}')
+            sys.exit(1)
 
     # Get location of observer from arguments or from GPS
     location = gps_client.make_location_from_args(args)
@@ -318,6 +318,7 @@ def main():
             min_altitude=Angle(args.min_alt*u.deg),
             meridian_side=meridian_side
         )
+        logger.info(f'Generated {len(positions)} positions.')
 
         # add the park position to the start of the list to serve as the "depot" in the route
         park_encoder_positions = mount.get_position()
@@ -394,16 +395,11 @@ def main():
         f'Plate solver found solutions at {num_solutions} of {len(positions)} positions.')
 
     if num_solutions == 0:
-        logger.error('Plate solver failed at all positions.')
+        logger.critical('Plate solver failed at all positions.')
         sys.exit(1)
     elif num_solutions < args.min_positions:
-        if not click.confirm(f'WARNING: You asked for at least {args.min_positions} positions '
-                            f'but only {num_solutions} can be used. Pointing accuracy may be '
-                            f'affected. Continue to solve for model parameters anyway?',
-                            default=True):
-            logger.error(f'Only {num_solutions} positions usable but {args.min_positions} '
+        logger.warning(f'Only {num_solutions} positions usable but {args.min_positions} '
                 'were required.')
-            sys.exit(1)
 
     observations = pd.DataFrame(observations)
 
@@ -423,10 +419,6 @@ def main():
     if rms_error > args.max_rms_error:
         logger.warning(f'Model solution RMS error {rms_error:.4f} > '
                             f'{args.max_rms_error:.4f} degrees')
-        if not click.confirm(f'RMS error {rms_error:.4f} > {args.max_rms_error:.4f} '
-            'degrees, save this solution anyway?', default=True):
-            logger.info('User rejected the model solution.')
-            sys.exit(1)
     else:
         logger.info(f'Model solution RMS error: {rms_error:.4f} degrees')
 

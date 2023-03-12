@@ -129,13 +129,14 @@ def main():
     os.sched_setscheduler(0, os.SCHED_RR, os.sched_param(11))
 
     # Check if system clock is synchronized to GPS
-    if args.check_time_sync:
-        try:
-            ntp.check_ntp_status()
-        except ntp.NTPCheckFailure:
-            logger.exception('NTP check failed.')
-            if not click.confirm('Continue anyway?', default=True):
-                sys.exit(2)
+    try:
+        ntp.check_ntp_status()
+    except ntp.NTPCheckFailure as e:
+        if args.ignore_ntp_check:
+            logger.warn(f'NTP check failed: {e}')
+        else:
+            logger.critical(f'NTP check failed: {e}')
+            sys.exit(1)
 
     # Load a MountModel object
     try:

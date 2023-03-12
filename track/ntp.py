@@ -89,8 +89,8 @@ def add_program_arguments(parser: ArgParser) -> None:
         description='Options that apply to NTP time synchronization',
     )
     ntp_group.add_argument(
-        '--check-time-sync',
-        help='confirm that system clock is synchronized to within 100 ms of GPS receiver',
+        '--ignore-ntp-check',
+        help='ignore NTP check failures',
         action='store_true',
     )
 
