@@ -72,8 +72,8 @@ class TelescopeMount(ABC):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> bool:
-        """Stop mount motion."""
-        self.safe()
+        """Stop mount motion and disconnect."""
+        self.shutdown()
         if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
             logger.info(f'Handling {type(exc_value).__name__}')
             return True  # prevent exception propagation
@@ -146,15 +146,22 @@ class TelescopeMount(ABC):
 
 
     @abstractmethod
-    def safe(self) -> bool:
+    def safe(self) -> None:
         """Bring mount into a safe state.
 
         This method will do whatever is necessary to bring the mount into a safe state, such that
         there is no risk to hardware if the program terminates immediately afterward and
         communication with the mount stops. At minimum this method will stop all motion.
+        """
 
-        Returns:
-            True if the mount was safed successfully. False otherwise.
+
+    @abstractmethod
+    def shutdown(self) -> None:
+        """Bring mount into a safe state and shut down.
+
+        This method is expected to perform the same actions as `safe()` but also perform any
+        additional actions needed to close connections and free resources. After this method is
+        called any calls to other methods in this class may fail.
         """
 
 
@@ -434,19 +441,16 @@ class NexStarMount(TelescopeMount):
         return self._rate_last_commanded[axis]
 
 
-    def safe(self) -> bool:
-        """Bring mount into a safe state.
-
-        For this mount the only action necessary is to command the slew rate to zero on both axes.
-
-        Returns:
-            Always returns True for this mount since there is no way to query the slew rate from
-            the mount.
-        """
+    def safe(self) -> None:
+        """Sets slew rates to zero on both axes. Does not block until motion has stopped."""
         logger.info('Safing mount.')
         for axis in self.AxisName:
             self.slew(axis, 0.0)
-        return True
+
+
+    def shutdown(self) -> None:
+        """Sets slew rates to zero on both axes and disconnects. Does not block."""
+        self.mount.shutdown()
 
 
     def no_cross_encoder_positions(self) -> MountEncoderPositions:
@@ -623,17 +627,15 @@ class LosmandyGeminiMount(TelescopeMount):
         return self.mount.get_slew_rate(axis.short_name())
 
 
-    def safe(self) -> bool:
-        """Bring mount into a safe state by stopping motion.
-
-        This method blocks until motion has ceased.
-
-        Returns:
-            True when motion is stopped. Will not return otherwise.
-        """
+    def safe(self) -> None:
+        """Stop motion on both axes."""
         logger.info('Safing mount.')
         self.mount.stop_motion()
-        return True
+
+
+    def shutdown(self) -> None:
+        """Stop motion on both axes and disconnect."""
+        self.mount.shutdown()
 
 
     def no_cross_encoder_positions(self) -> MountEncoderPositions:
