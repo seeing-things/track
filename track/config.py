@@ -1,18 +1,30 @@
-"""Convenience class inherited from configargparse.ArgParser with project-special defaults."""
+"""Package configuration utilities
 
-from typing import List, Optional
+* Defines paths to configuration and data files.
+* Specifies the filename of the default shared configuration file used by all programs.
+* Provides a convenience child class of configargpars.ArgParser with project-specific defaults.
+"""
+
+
+import logging
 import os
 import appdirs
 import configargparse
 
 
+logger = logging.getLogger(__name__)
+
+
+# Where configuration and data files should be stored.
 CONFIG_PATH = appdirs.user_config_dir('track')
 DATA_PATH = appdirs.user_data_dir('track')
 
+
 # If the same program argument appears in multiple configuration files, the value in the last
-# config file in the list takes precedence. Note also that if another configuration file not listed
-# here is supplied at the command line with --config-file, it is as if that config file is *added*
-# to the end of this list, and does not replace this list.
+# config file in the list takes precedence. If another configuration file not listed here is
+# supplied at the command line with --config-file, it is as if that config file is *added* to the
+# end of this list, and does not replace this list. The file shared.cfg is optional. It is not
+# provided with this package.
 DEFAULT_CONFIG_FILES = [
     os.path.join(CONFIG_PATH, 'shared.cfg'),
 ]
@@ -33,10 +45,9 @@ class ArgumentDefaultsHelpFormatterImproved(configargparse.ArgumentDefaultsHelpF
 
 
 class ArgParser(configargparse.ArgParser):
-    """Uses the contructor arguments we care about in this project.
-    """
+    """Uses the contructor arguments we care about in this project."""
 
-    def __init__(self, additional_config_files: Optional[List[str]] = None, **kwargs):
+    def __init__(self, additional_config_files: list[str] | None = None, **kwargs):
 
         if additional_config_files is not None:
             config_files = DEFAULT_CONFIG_FILES + additional_config_files
