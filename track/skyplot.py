@@ -8,6 +8,7 @@ mount within axis limits, trajectory of satellite pass from TLE, and trajectory 
 completed (or even in-progress) pass.
 """
 
+import logging
 from typing import Tuple, Optional
 from datetime import datetime, timedelta
 from configargparse import ArgParser
@@ -20,9 +21,12 @@ import ephem
 from astropy import units as u
 from astropy.coordinates import Longitude, UnitSphericalRepresentation, EarthLocation
 import track
-from track import gps_client, telem
+from track import gps_client, logs, telem
 from track.mounts import MountEncoderPositions, MeridianSide
 from track.model import MountModel
+
+
+logger = logging.getLogger(__name__)
 
 
 def add_arrow(line: matplotlib.lines.Line2D, size: int = 15, color: str = None) -> None:
@@ -446,7 +450,11 @@ def main():
             'Set all of these to indicate observer location with a custom mount model'
         ),
     )
+    logs.add_program_arguments(parser)
     args = parser.parse_args()
+
+    logs.setup_logging_from_args(args, __package__)
+
     custom_model_args = (args.mount_pole_az, args.mount_pole_alt)
     observer_args = (args.lat, args.lon, args.elevation)
 
@@ -473,6 +481,8 @@ def main():
             mount_pole_alt=Longitude(args.mount_pole_alt*u.deg),
             location=location,
         )
+
+    logger.info(f'Using mount model with the following parameters: {mount_model.model_param_set}')
 
     ax = make_sky_plot()
     plot_reachable_zone(

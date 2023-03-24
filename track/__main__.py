@@ -93,6 +93,8 @@ def main():
         logger.error('No model could be loaded. To refresh stored model run align program.')
         sys.exit(1)
 
+    logger.info(f'Using mount model with the following parameters: {mount_model.model_param_set}')
+
     with mounts.make_mount_from_args(args) as mount, \
         laser.make_laser_from_args(args) as laser_pointer, \
         Gamepad() as game_pad:

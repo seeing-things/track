@@ -243,7 +243,6 @@ class MountModel:
         self.model_params = model_param_set.model_params
         self.guide_cam_orientation = model_param_set.guide_cam_orientation
         self.location = model_param_set.location
-        logger.info(f'MountModel created with {model_param_set}')
 
 
     def apply_camera_tilt(
