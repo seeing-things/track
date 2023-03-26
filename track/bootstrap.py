@@ -8,6 +8,7 @@ Does all of the following:
 3. Autofocus.
 """
 
+import atexit
 import logging
 import subprocess
 import sys
@@ -20,6 +21,7 @@ from track import logs, gps_client, model, mounts, stars
 from track.config import ArgParser
 from track.model import MountModel
 from track.mounts import MeridianSide, TelescopeMount
+from track.subprogram import terminate_subprocess
 from track.skyfield_utils import astropy_to_skyfield_observer
 
 
@@ -58,8 +60,31 @@ def pick_meridian_side(
     return None
 
 
-# TODO: Need to test that it's possible to stop this script at any point with CTRL-C or closing
-# the terminal or whatever and that these subprocesses are also terminated appropriately.
+def run_program(args: list[str]) -> None:
+    """Run a program as a subprocess, blocking until it ends.
+
+    This is similar to `subprocess.run()` but doesn't send SIGKILL to the process when exceptions
+    are raised in this process while waiting for the process to end. The most likely source of
+    such an exception would be a `KeyboardInterrupt` or `SystemExit` exception raised in response
+    to a signal like `SIGINT` in this parent process.
+
+    If the process exit code is nonzero the program quits with exit code 1.
+
+    Args:
+        args: List of command line arguments passed to `subprocess.Popen()`. The first item is
+            used as the program name in log messages.
+    """
+    program_name = args[0]
+    logger.info(f'Running program: {program_name}')
+    # subprocess.run() sends SIGKILL to process on exceptions so do not use that here
+    # pylint: disable=consider-using-with
+    process = subprocess.Popen(args)
+    atexit.register(terminate_subprocess, process)
+    if retcode := process.wait():
+        logger.critical(f'{program_name} program exited with code {retcode}.')
+        sys.exit(1)
+
+
 def main():
     """See module docstring."""
 
@@ -77,15 +102,14 @@ def main():
     star = stars.make_star_from_args(args, observer)
     logger.info(f'Selected star {star.names[0]} for guidescope alignment and autofocus.')
 
-    logger.info('Running program: align')
-    subprocess.run(args=['align'], check=True)
+    run_program(['align'])
 
     with mounts.make_mount_from_args(args) as mount:
         meridian_side = pick_meridian_side(
             observer=observer,
             star=star,
             mount=mount,
-            mount_model=model.load_stored_model(),
+            mount_model=model.load_stored_model(max_age=None),
         )
 
     if meridian_side is None:
@@ -93,32 +117,24 @@ def main():
         sys.exit(1)
     logger.info(f'Using meridian side {meridian_side.name}.')
 
-    logger.info('Running program: align_guidescope')
-    subprocess.run(
-        args=[
-            'align_guidescope',
-            '--non-interactive',
-            f'--meridian-side={meridian_side.name}',
-            'coord-eq',
-            # pylint: disable=protected-access
-            str(star.ra._degrees),
-            str(star.dec.degrees),
-        ],
-        check=True
-    )
+    run_program([
+        'align_guidescope',
+        '--non-interactive',
+        f'--meridian-side={meridian_side.name}',
+        'coord-eq',
+        # pylint: disable=protected-access
+        str(star.ra._degrees),
+        str(star.dec.degrees),
+    ])
 
-    logger.info('Running program: autofocus')
-    subprocess.run(
-        args=[
-            'autofocus',
-            f'--meridian-side={meridian_side.name}',
-            'coord-eq',
-            # pylint: disable=protected-access
-            str(star.ra._degrees),
-            str(star.dec.degrees),
-        ],
-        check=True
-    )
+    run_program([
+        'autofocus',
+        f'--meridian-side={meridian_side.name}',
+        'coord-eq',
+        # pylint: disable=protected-access
+        str(star.ra._degrees),
+        str(star.dec.degrees),
+    ])
 
     logger.info('All setup steps completed. Ready to track targets!')
 

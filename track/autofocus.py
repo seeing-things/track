@@ -7,8 +7,8 @@ Automatic focus script and associated algorithms.
 import atexit
 from datetime import datetime
 import logging
-import signal
 import subprocess
+import sys
 import os
 import time
 from typing import Optional, Tuple
@@ -20,26 +20,11 @@ from scipy.optimize import curve_fit
 from track import cameras, focusers, logs, targets
 from track.config import ArgParser, CONFIG_PATH, DATA_PATH
 from track.mounts import MeridianSide
+from track.subprogram import terminate_subprocess
 from track.targets import TargetType
 
 
 logger = logging.getLogger(__name__)
-
-SHUTDOWN_TIMEOUT_S = 2.0
-
-
-def terminate_subprocess(process: subprocess.Popen) -> None:
-    """Terminate a running subprocess"""
-    logger.info('Terminating subprocess.')
-    process.send_signal(signal.SIGINT)
-    time_sigint = time.perf_counter()
-    while process.poll() is None:
-        if time.perf_counter() - time_sigint > SHUTDOWN_TIMEOUT_S:
-            logger.warning('Subprocess shutdown timeout; resorting to SIGKILL.')
-            process.kill()
-            break
-        time.sleep(0.1)
-    logger.info('Subprocess terminated.')
 
 
 def create_circular_mask(
@@ -326,16 +311,21 @@ def main():
     # Run the `track` program to get the mount pointed at the approximate location of the star.
     # Need to wait until the star is within the main camera's field of view before proceeding.
     logger.info(f'Moving mount until centered on {star_name}.')
-    subprocess.run(
+    # subprocess.run() sends SIGKILL to process on exceptions so do not use that here.
+    # pylint: disable=consider-using-with
+    track_process = subprocess.Popen(
         args=[
             'track',
             '--no-console-logs',  # confusing to have logs from multiple processes
             '--fuse',
             f'--meridian-side={args.meridian_side}',
             '--stop-when-converged-angle=0.1',  # stop when within this many degrees of target
-        ] + target_args,
-        check=True,
+        ] + target_args
     )
+    atexit.register(terminate_subprocess, track_process)
+    if retcode := track_process.wait():
+        logger.critical(f'track exited with code {retcode}.')
+        sys.exit(1)
 
     # Run the `track` program as a subprocess in the background to continue tracking the star
     logger.info(f'Continuing to track {star_name}.')
@@ -385,7 +375,7 @@ def main():
     autofocus(camera, focuser, positions, output_dir=output_dir, show_plot=args.plot)
 
     if (returncode := track_process.poll()) is not None:
-        logger.error(f'track subprocess ended prematurely with exit code {returncode}')
+        logger.error(f'track subprocess ended prematurely with exit code {returncode}.')
 
     time_elapsed = time.perf_counter() - time_start
     logger.info(f'Elapsed time: {time_elapsed} s')

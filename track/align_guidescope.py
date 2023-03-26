@@ -30,26 +30,11 @@ from track.model import (
     apply_guide_cam_alignment_error
 )
 from track.plate_solve import plate_solve, NoSolutionException
+from track.subprogram import terminate_subprocess
 from track.targets import TargetType
 
 
 logger = logging.getLogger(__name__)
-
-SHUTDOWN_TIMEOUT_S = 2.0
-
-
-def terminate_subprocess(process: subprocess.Popen) -> None:
-    """Terminate a running subprocess"""
-    logger.info('Terminating subprocess.')
-    process.send_signal(signal.SIGINT)
-    time_sigint = time.perf_counter()
-    while process.poll() is None:
-        if time.perf_counter() - time_sigint > SHUTDOWN_TIMEOUT_S:
-            logger.warning('Subprocess shutdown timeout; resorting to SIGKILL.')
-            process.kill()
-            break
-        time.sleep(0.1)
-    logger.info('Subprocess terminated.')
 
 
 def main():
@@ -101,17 +86,21 @@ def main():
 
     # Run the `track` program to get the mount pointed at the approximate location of the star.
     # This is done first so that the spiral search phase doesn't start until the mount is already
-    # near the star.
+    # near the star. `subprocess.run()` sends SIGKILL on exceptions so do not use that.
     logger.info(f'Moving mount to the vicinity of {star_name}.')
-    subprocess.run(
+    # pylint: disable=consider-using-with
+    track_process = subprocess.Popen(
         args=[
             'track',
             '--no-console-logs',  # confusing to have logs from multiple processes
             f'--meridian-side={args.meridian_side}',
             '--stop-when-converged-angle=0.1',  # stop when within 1 degree of target
         ] + target_args,
-        check=True,
     )
+    atexit.register(terminate_subprocess, track_process)
+    if retcode := track_process.wait():
+        logger.critical(f'track exited with code {retcode}.')
+        sys.exit(1)
 
     # Run the `track` program as a subprocess. This performs a spiral search until the star is
     # found and then continues to track it to keep it centered in the main telescope camera while
