@@ -368,8 +368,8 @@ def main():
 
     # Refine by taking a greater number of closely spaced samples centered on the first estimate
     positions = np.linspace(
-        start=max(prelim_ideal_position - 200, focuser.min_position),
-        stop=min(prelim_ideal_position + 200, focuser.max_position),
+        start=max(prelim_ideal_position - 500, focuser.min_position),
+        stop=min(prelim_ideal_position + 500, focuser.max_position),
         num=20,
         dtype=int)
     autofocus(camera, focuser, positions, output_dir=output_dir, show_plot=args.plot)
