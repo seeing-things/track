@@ -42,7 +42,7 @@ def solve_route(destinations: List[Destination]) -> List[Destination]:
     """
 
     # pre-compute a matrix of distances between each destination
-    distance_matrix = np.zeros((len(destinations),)*2)
+    distance_matrix = np.zeros((len(destinations),) * 2)
     for idx, dest in enumerate(destinations):
         for jdx in range(idx + 1, len(destinations)):
             distance_matrix[idx, jdx] = dest.distance_to(destinations[jdx])
@@ -56,13 +56,15 @@ def solve_route(destinations: List[Destination]) -> List[Destination]:
         from_node = manager.IndexToNode(from_index)
         to_node = manager.IndexToNode(to_index)
         return distance_matrix[from_node][to_node]
+
     transit_callback_index = routing.RegisterTransitCallback(distance_callback)
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
     # Setting first solution heuristic.
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)  # pylint: disable=no-member
+        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+    )  # pylint: disable=no-member
 
     solution = routing.SolveWithParameters(search_parameters)
 

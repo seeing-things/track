@@ -23,6 +23,7 @@ VB_DATE_TICKS_PER_SEC = 10_000_000
 
 class SERColorID(IntEnum):
     """ColorID field of the SER file header"""
+
     MONO = 0
     BAYER_RGGB = 8
     BAYER_GRBG = 9
@@ -38,6 +39,7 @@ class SERColorID(IntEnum):
 
 class SEREndianness(IntEnum):
     """Endianness of multi-byte pixel values"""
+
     BIG_ENDIAN = 0
     LITTLE_ENDIAN = 1
 
@@ -89,7 +91,6 @@ class SERHeader:
         # First two fields in buffer are constant values.
         self._buffer[:14] = b'LUCAM-RECORDER'  # Historical artifact of the file format
         self._buffer[14:18] = struct.pack('<i', 0)  # unused field
-
 
     @property
     def buffer(self) -> bytearray:
@@ -231,9 +232,7 @@ class SERHeader:
         timestamp_local = struct.unpack('<q', self._buffer[162:170])[0]
         timestamp_utc = struct.unpack('<q', self._buffer[170:178])[0]
         # no bounds check here -- assume the UTC offset is reasonable
-        utc_offset = timedelta(
-            seconds=(timestamp_local - timestamp_utc) / VB_DATE_TICKS_PER_SEC
-        )
+        utc_offset = timedelta(seconds=(timestamp_local - timestamp_utc) / VB_DATE_TICKS_PER_SEC)
         return self.start_time.astimezone(timezone(utc_offset))
 
     @property
@@ -281,8 +280,7 @@ class SERReader:
         self.file.seek(0, SEEK_END)
         file_size_bytes = self.file.tell()
         file_size_no_trailer = (
-            SERHeader.SIZE_BYTES +
-            self._header.frame_count * self._header.frame_size_bytes
+            SERHeader.SIZE_BYTES + self._header.frame_count * self._header.frame_size_bytes
         )
         trailer_size_bytes = 8 * self._header.frame_count  # each timestamp is an int64
         file_size_with_trailer = file_size_no_trailer + trailer_size_bytes
@@ -323,7 +321,7 @@ class SERReader:
         # This won't work for BGR or RGB
         return np.reshape(
             np.fromfile(self.file, dtype=self.dtype, count=self._header.frame_size_pixels),
-            (self._header.frame_height, self._header.frame_width)
+            (self._header.frame_height, self._header.frame_width),
         )
 
     def get_frame_vb_timestamp(self, frame_index: int) -> int:
@@ -361,11 +359,11 @@ class SERWriter:
     """Writes a SER file."""
 
     def __init__(
-            self,
-            filename: str,
-            header: SERHeader,
-            add_trailer: bool = True,
-        ):
+        self,
+        filename: str,
+        header: SERHeader,
+        add_trailer: bool = True,
+    ):
         """Constructs a SERWriter object.
 
         Args:
@@ -410,10 +408,10 @@ class SERWriter:
         self.file.close()
 
     def add_frame(
-            self,
-            frame: np.ndarray,
-            timestamp: Optional[Union[datetime, int]] = None,
-        ) -> None:
+        self,
+        frame: np.ndarray,
+        timestamp: Optional[Union[datetime, int]] = None,
+    ) -> None:
         """Add new frame to the file.
 
         The new frame will be appended to the file behind any frames added previously.

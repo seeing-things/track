@@ -109,7 +109,6 @@ class Camera(AbstractContextManager):
             ValueError if the camera does not support the requested mode.
         """
 
-
     @abstractmethod
     def get_frame(self, timeout: float = inf) -> np.ndarray:
         """Get a frame from the camera.
@@ -152,9 +151,8 @@ class Camera(AbstractContextManager):
         """
         frame_height, frame_width = self.frame_shape
         # Each pixel spans from -0.5 to +0.5 about any integer position
-        return (
-            (-0.5 <= position_x <= frame_width - 0.5) and
-            (-0.5 <= position_y <= frame_height - 0.5)
+        return (-0.5 <= position_x <= frame_width - 0.5) and (
+            -0.5 <= position_y <= frame_height - 0.5
         )
 
     def pixel_to_angle(self, position_x: float, position_y: float) -> Angle:
@@ -182,7 +180,7 @@ class Camera(AbstractContextManager):
         target_x = Angle((position_x - center_px_x) * self.pixel_scale * self.binning * u.deg)
         target_y = Angle((center_px_y - position_y) * self.pixel_scale * self.binning * u.deg)
 
-        return target_x + 1j*target_y
+        return target_x + 1j * target_y
 
 
 class CameraTimeout(Exception):
@@ -194,6 +192,7 @@ class ASICamera(Camera):
 
     class BitDepth(enum.IntEnum):
         """Bit depth of pixels."""
+
         RAW8 = asi.ASI_IMG_RAW8
         RAW16 = asi.ASI_IMG_RAW16
 
@@ -212,24 +211,16 @@ class ASICamera(Camera):
             '--zwo-exposure-time',
             help='ZWO camera exposure time used during tracking in seconds',
             default=0.03,
-            type=float
+            type=float,
         )
         parser.add_argument(
-            '--zwo-gain',
-            help='ZWO camera gain used during tracking',
-            default=10,
-            type=int
+            '--zwo-gain', help='ZWO camera gain used during tracking', default=10, type=int
         )
-        parser.add_argument(
-            '--zwo-binning',
-            help='ZWO camera binning',
-            default=4,
-            type=int
-        )
+        parser.add_argument('--zwo-binning', help='ZWO camera binning', default=4, type=int)
         parser.add_argument(
             '--zwo-name',
             help='ZWO camera name (use to select between multiple connected cameras)',
-            type=str
+            type=str,
         )
 
     @staticmethod
@@ -252,12 +243,12 @@ class ASICamera(Camera):
         return camera
 
     def __init__(
-            self,
-            pixel_scale: float,
-            binning: int = 1,
-            video_mode: bool = False,
-            name: str = None,
-        ):
+        self,
+        pixel_scale: float,
+        binning: int = 1,
+        video_mode: bool = False,
+        name: str = None,
+    ):
         """Initialize and configure ZWO ASI camera.
 
         Args:
@@ -298,12 +289,7 @@ class ASICamera(Camera):
         ASICheck(asi.ASIInitCamera(self.info.CameraID))
         ASICheck(asi.ASISetControlValue(self.info.CameraID, asi.ASI_MONO_BIN, 1, asi.ASI_FALSE))
         ASICheck(
-            asi.ASISetControlValue(
-                self.info.CameraID,
-                asi.ASI_BANDWIDTHOVERLOAD,
-                94,
-                asi.ASI_FALSE
-            )
+            asi.ASISetControlValue(self.info.CameraID, asi.ASI_BANDWIDTHOVERLOAD, 94, asi.ASI_FALSE)
         )
         self.video_mode = video_mode
 
@@ -356,29 +342,19 @@ class ASICamera(Camera):
         height, width = self._frame_shape
         self._frame_size_bytes = width * height * self._bit_depth.bytes_per_pixel()
         ASICheck(
-            asi.ASISetROIFormat(self.info.CameraID,
-                                width,
-                                height,
-                                self._binning,
-                                self._bit_depth)
+            asi.ASISetROIFormat(self.info.CameraID, width, height, self._binning, self._bit_depth)
         )
         if enabled:
             ASICheck(
                 asi.ASISetControlValue(
-                    self.info.CameraID,
-                    asi.ASI_HIGH_SPEED_MODE,
-                    1,
-                    asi.ASI_FALSE
+                    self.info.CameraID, asi.ASI_HIGH_SPEED_MODE, 1, asi.ASI_FALSE
                 )
             )
             ASICheck(asi.ASIStartVideoCapture(self.info.CameraID))
         else:
             ASICheck(
                 asi.ASISetControlValue(
-                    self.info.CameraID,
-                    asi.ASI_HIGH_SPEED_MODE,
-                    0,
-                    asi.ASI_FALSE
+                    self.info.CameraID, asi.ASI_HIGH_SPEED_MODE, 0, asi.ASI_FALSE
                 )
             )
             ASICheck(asi.ASIStopVideoCapture(self.info.CameraID))
@@ -418,9 +394,9 @@ class ASICamera(Camera):
         """Get a frame from the camera. See base class docstring for details."""
         if self.video_mode:
             timeout_ms = int(timeout * 1000) if timeout < inf else -1
-            status_code, frame = asi.ASIGetVideoData(self.info.CameraID,
-                                                     self._frame_size_bytes,
-                                                     timeout_ms)
+            status_code, frame = asi.ASIGetVideoData(
+                self.info.CameraID, self._frame_size_bytes, timeout_ms
+            )
             if status_code == asi.ASI_ERROR_TIMEOUT:
                 return None
             elif status_code != asi.ASI_SUCCESS:
@@ -429,9 +405,9 @@ class ASICamera(Camera):
             # If we got one frame with no timeout see if there are any more frames waiting so that
             # the freshest frame is returned. Stale frames are dropped.
             while True:
-                status_code, frame_tmp = asi.ASIGetVideoData(self.info.CameraID,
-                                                             self._frame_size_bytes,
-                                                             0)
+                status_code, frame_tmp = asi.ASIGetVideoData(
+                    self.info.CameraID, self._frame_size_bytes, 0
+                )
                 if status_code == asi.ASI_SUCCESS:
                     frame = frame_tmp
                 elif status_code == asi.ASI_ERROR_TIMEOUT:
@@ -492,16 +468,12 @@ class WebCam(Camera):
         Args:
             parser: The instance of ArgParser to which this function will add arguments.
         """
-        parser.add_argument(
-            '--webcam-dev',
-            help='webcam device node path',
-            default='/dev/video0'
-        )
+        parser.add_argument('--webcam-dev', help='webcam device node path', default='/dev/video0')
         parser.add_argument(
             '--webcam-exposure',
             help='webcam exposure time (unspecified units)',
             default=3200,
-            type=int
+            type=int,
         )
         parser.add_argument(
             '--webcam-frame-dump-dir',
@@ -520,13 +492,12 @@ class WebCam(Camera):
         )
 
     def __init__(
-            self,
-            dev_path: str,
-            ctrl_exposure: int,
-            pixel_scale: float,
-            frame_dump_dir: str = None,
-        ):
-
+        self,
+        dev_path: str,
+        ctrl_exposure: int,
+        pixel_scale: float,
+        frame_dump_dir: str = None,
+    ):
         self.dev_path = dev_path
         self._pixel_scale = pixel_scale
         self.dump_frames_to_files = frame_dump_dir is not None
@@ -658,8 +629,7 @@ class WebCam(Camera):
         """tell the camera to start capturing"""
         if not self.started:
             self._v4l2_ioctl(
-                v4l2.VIDIOC_STREAMON,
-                ctypes.c_int(int(v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE))
+                v4l2.VIDIOC_STREAMON, ctypes.c_int(int(v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE))
             )
             self.started = True
 
@@ -667,8 +637,7 @@ class WebCam(Camera):
         """tell the camera to stop capturing"""
         if self.started:
             self._v4l2_ioctl(
-                v4l2.VIDIOC_STREAMOFF,
-                ctypes.c_int(int(v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE))
+                v4l2.VIDIOC_STREAMOFF, ctypes.c_int(int(v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE))
             )
             self.started = False
 
@@ -678,7 +647,7 @@ class WebCam(Camera):
             lambda idx: v4l2.v4l2_fmtdesc(
                 type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE,
                 index=idx,
-            )
+            ),
         )
 
     def _enum_frame_sizes(self, pixel_format):
@@ -688,7 +657,7 @@ class WebCam(Camera):
             lambda idx: v4l2.v4l2_frmsizeenum(
                 index=idx,
                 pixel_format=pixel_format,
-            )
+            ),
         )
 
     def _enum_frame_intervals(self, pixel_format, width, height):
@@ -700,7 +669,7 @@ class WebCam(Camera):
                 pixel_format=pixel_format,
                 width=width,
                 height=height,
-            )
+            ),
         )
 
     def _enum_common(self, req, l_getreq):
@@ -740,24 +709,16 @@ class WebCam(Camera):
 
     def _set_ctrl(self, ctrl_id, value, desc):
         ctrl = v4l2.v4l2_control(id=ctrl_id, value=value)
-        self._v4l2_ioctl_nonfatal(
-            v4l2.VIDIOC_S_CTRL,
-            ctrl,
-            f'failed to set control: {desc}'
-        )
+        self._v4l2_ioctl_nonfatal(v4l2.VIDIOC_S_CTRL, ctrl, f'failed to set control: {desc}')
 
     def _set_jpeg_quality(self, quality):
         jpegcomp = v4l2.v4l2_jpegcompression()
         self._v4l2_ioctl_nonfatal(
-            v4l2.VIDIOC_G_JPEGCOMP,
-            jpegcomp,
-            'failed to set JPEG compression quality'
+            v4l2.VIDIOC_G_JPEGCOMP, jpegcomp, 'failed to set JPEG compression quality'
         )
         jpegcomp.quality = quality
         self._v4l2_ioctl_nonfatal(
-            v4l2.VIDIOC_S_JPEGCOMP,
-            jpegcomp,
-            'failed to set JPEG compression quality'
+            v4l2.VIDIOC_S_JPEGCOMP, jpegcomp, 'failed to set JPEG compression quality'
         )
 
     def _set_format(self, shape_wanted: Tuple[int, int], fourcc) -> Tuple[int, int]:
@@ -784,25 +745,18 @@ class WebCam(Camera):
         assert len(self.bufmaps) == 0
 
         reqbuf = v4l2.v4l2_requestbuffers(
-            type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE,
-            count=buf_count,
-            memory=v4l2.V4L2_MEMORY_MMAP
+            type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE, count=buf_count, memory=v4l2.V4L2_MEMORY_MMAP
         )
         self._v4l2_ioctl(v4l2.VIDIOC_REQBUFS, reqbuf)
         assert reqbuf.count > 0
 
         for idx in range(reqbuf.count):
             buf = v4l2.v4l2_buffer(
-                type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE,
-                index=idx,
-                memory=v4l2.V4L2_MEMORY_MMAP
+                type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE, index=idx, memory=v4l2.V4L2_MEMORY_MMAP
             )
             self._v4l2_ioctl(v4l2.VIDIOC_QUERYBUF, buf)
             self.bufmaps += [
-                mmap.mmap(self.dev_fd,
-                          buf.length,
-                          access=mmap.ACCESS_WRITE,
-                          offset=buf.m.offset)
+                mmap.mmap(self.dev_fd, buf.length, access=mmap.ACCESS_WRITE, offset=buf.m.offset)
             ]
 
     def _queue_all_buffers(self) -> None:
@@ -812,9 +766,7 @@ class WebCam(Camera):
 
         for idx in range(len(self.bufmaps)):
             buf = v4l2.v4l2_buffer(
-                type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE,
-                index=idx,
-                memory=v4l2.V4L2_MEMORY_MMAP
+                type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE, index=idx, memory=v4l2.V4L2_MEMORY_MMAP
             )
             self._v4l2_ioctl(v4l2.VIDIOC_QBUF, buf)
 
@@ -885,14 +837,13 @@ def add_program_arguments(parser: ArgParser) -> None:
         '--camera-type',
         help='type of camera',
         default='zwo',
-        choices=['zwo',
-                 'webcam'],
+        choices=['zwo', 'webcam'],
     )
     camera_group.add_argument(
         '--camera-pixel-scale',
         help='camera pixel scale in arcseconds per pixel',
         required=True,
-        type=float
+        type=float,
     )
     webcam_group = parser.add_argument_group(
         title='Webcam Options',

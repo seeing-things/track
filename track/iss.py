@@ -11,30 +11,21 @@ import ephem
 import requests
 from track.config import ArgParser
 
+
 def main():
     """See module docstring"""
 
     parser = ArgParser()
+    parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
+    parser.add_argument('--lon', required=True, help='longitude of observer (+E)')
     parser.add_argument(
-        '--lat',
-        required=True,
-        help='latitude of observer (+N)')
-    parser.add_argument(
-        '--lon',
-        required=True,
-        help='longitude of observer (+E)')
-    parser.add_argument(
-        '--elevation',
-        required=False,
-        default=0.0,
-        help='elevation of observer (m)',
-        type=float)
+        '--elevation', required=False, default=0.0, help='elevation of observer (m)', type=float
+    )
     args = parser.parse_args()
 
     # Grab the latest space station TLE file from Celestrak
     stations = requests.get(
-        'http://celestrak.com/NORAD/elements/stations.txt',
-        timeout=10
+        'http://celestrak.com/NORAD/elements/stations.txt', timeout=10
     ).text.splitlines()
 
     # Top entry in the station.txt file should be for ISS
@@ -52,6 +43,7 @@ def main():
         iss.compute(home)
         print(f'Az: {iss.az} Alt: {iss.alt}')
         time.sleep(1)
+
 
 if __name__ == "__main__":
     main()

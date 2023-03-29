@@ -13,6 +13,7 @@ import cv2
 
 PIXELS_FROM_CENTER = 200
 
+
 def main():
     """See module docstring at the top of this file."""
 
@@ -47,10 +48,11 @@ def main():
         center = keypoints[0].pt
         img_cropped = img[
             int(center[1]) - PIXELS_FROM_CENTER : int(center[1]) + PIXELS_FROM_CENTER,
-            int(center[0]) - PIXELS_FROM_CENTER : int(center[0]) + PIXELS_FROM_CENTER
+            int(center[0]) - PIXELS_FROM_CENTER : int(center[0]) + PIXELS_FROM_CENTER,
         ]
         cv2.imwrite(os.path.join(output_dir, f'{cropped_num:04d}.jpg'), img_cropped)
         cropped_num += 1
+
 
 if __name__ == "__main__":
     main()

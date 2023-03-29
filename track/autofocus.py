@@ -28,11 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 def create_circular_mask(
-        width: int,
-        height: int,
-        radius: float,
-        center: Tuple[float, float]
-    ) -> np.ndarray:
+    width: int, height: int, radius: float, center: Tuple[float, float]
+) -> np.ndarray:
     """Create a circular mask.
 
     Args:
@@ -46,15 +43,13 @@ def create_circular_mask(
     """
     radius_squared = radius**2
     y_grid, x_grid = np.ogrid[:height, :width]
-    dist_from_center_squared = (y_grid - center[0])**2 + (x_grid - center[1])**2
+    dist_from_center_squared = (y_grid - center[0]) ** 2 + (x_grid - center[1]) ** 2
     return dist_from_center_squared <= radius_squared
 
 
 def estimate_hfr(
-        image: np.ndarray,
-        hfr_max: Optional[float] = None,
-        tolerance: float = 0.1
-    ) -> float:
+    image: np.ndarray, hfr_max: Optional[float] = None, tolerance: float = 0.1
+) -> float:
     """Estimates the half flux radius (HFR) of a star.
 
     Args:
@@ -119,14 +114,12 @@ def v_curve(x: np.ndarray, alpha: float, beta: float, x_0: float, y_0: float) ->
     Returns:
         The function evaluated at the points in x.
     """
-    return beta * np.sqrt((x - x_0)**2 + alpha**2) + y_0
+    return beta * np.sqrt((x - x_0) ** 2 + alpha**2) + y_0
 
 
 def estimate_ideal_focuser_position(
-        focuser_steps: np.ndarray,
-        hfrs: np.ndarray,
-        show_plot: bool = False
-    ) -> int:
+    focuser_steps: np.ndarray, hfrs: np.ndarray, show_plot: bool = False
+) -> int:
     """Estimate ideal focuser position.
 
     Estimates the ideal focuser position by fitting a hyperbolic function to a set of HFR estimates
@@ -147,7 +140,7 @@ def estimate_ideal_focuser_position(
     position_mid = (np.max(focuser_steps) + np.min(focuser_steps)) / 2
 
     try:
-    # pylint: disable=unbalanced-tuple-unpacking
+        # pylint: disable=unbalanced-tuple-unpacking
         popt, _ = curve_fit(
             v_curve,
             focuser_steps,
@@ -155,8 +148,8 @@ def estimate_ideal_focuser_position(
             p0=(1, 1, position_mid, 0),
             bounds=(
                 (0, 0, np.min(focuser_steps), -np.inf),  # lower bounds on param values
-                (np.inf, np.inf, np.max(focuser_steps), np.inf)  # upper bounds on param values
-            )
+                (np.inf, np.inf, np.max(focuser_steps), np.inf),  # upper bounds on param values
+            ),
         )
     except RuntimeError:
         logger.exception('curve_fit failed.')
@@ -183,13 +176,13 @@ def estimate_ideal_focuser_position(
 
 
 def autofocus(
-        camera: cameras.Camera,
-        focuser: focusers.Focuser,
-        focuser_steps: np.ndarray,
-        skip_final_move: bool = False,
-        output_dir: Optional[str] = None,
-        show_plot: bool = False,
-    ) -> int:
+    camera: cameras.Camera,
+    focuser: focusers.Focuser,
+    focuser_steps: np.ndarray,
+    skip_final_move: bool = False,
+    output_dir: Optional[str] = None,
+    show_plot: bool = False,
+) -> int:
     """Automatically focus the camera.
 
     This algorithm estimates the half-flux radius (HFR) of a bright star across a set of focuser
@@ -221,30 +214,37 @@ def autofocus(
             iio.imwrite(
                 os.path.join(
                     output_dir,
-                    f'{datetime.utcnow().isoformat(timespec="seconds").replace(":", "")}_'
-                    f'focuser_step_{position:04d}_'
-                    f'exposure_{camera.exposure}_'
-                    f'gain_{camera.gain}.png'
+                    (
+                        f'{datetime.utcnow().isoformat(timespec="seconds").replace(":", "")}_'
+                        f'focuser_step_{position:04d}_'
+                        f'exposure_{camera.exposure}_'
+                        f'gain_{camera.gain}.png'
+                    ),
                 ),
-                image)
+                image,
+            )
 
         # Reject background
-        image[image < 0.1*np.max(image)] = 0
+        image[image < 0.1 * np.max(image)] = 0
 
         hfrs[idx] = estimate_hfr(image)
 
         logger.info(
             f'HFR {hfrs[idx]:6.2f} pixels at position {position:4d} '
-            f'({idx + 1:3d} of {focuser_steps.size:3d}).')
+            f'({idx + 1:3d} of {focuser_steps.size:3d}).'
+        )
 
     if output_dir is not None:
         np.savetxt(
             os.path.join(
                 output_dir,
-                f'{datetime.utcnow().isoformat(timespec="seconds").replace(":", "")}_'
-                'hfr_vs_focuser_position_data.csv'
+                (
+                    f'{datetime.utcnow().isoformat(timespec="seconds").replace(":", "")}_'
+                    'hfr_vs_focuser_position_data.csv'
+                ),
             ),
-            np.stack((focuser_steps, hfrs)).T, delimiter=',',
+            np.stack((focuser_steps, hfrs)).T,
+            delimiter=',',
             fmt='%f',
             header='focuser position,half flux radius',
         )
@@ -320,7 +320,8 @@ def main():
             '--fuse',
             f'--meridian-side={args.meridian_side}',
             '--stop-when-converged-angle=0.1',  # stop when within this many degrees of target
-        ] + target_args
+        ]
+        + target_args
     )
     atexit.register(terminate_subprocess, track_process)
     if retcode := track_process.wait():
@@ -336,7 +337,8 @@ def main():
             '--no-console-logs',  # confusing to have logs from multiple processes
             f'--meridian-side={args.meridian_side}',
             '--fuse',
-        ] + target_args
+        ]
+        + target_args
     )
     atexit.register(terminate_subprocess, track_process)
     time.sleep(5)  # mount will jump a bit when track process restarts
@@ -345,7 +347,7 @@ def main():
         # directory in which to save images for debugging purposes
         output_dir = os.path.join(
             DATA_PATH,
-            'autofocus_' + datetime.utcnow().isoformat(timespec='seconds').replace(':', '')
+            'autofocus_' + datetime.utcnow().isoformat(timespec='seconds').replace(':', ''),
         )
         os.makedirs(DATA_PATH, exist_ok=True)
         os.mkdir(output_dir)
@@ -371,7 +373,8 @@ def main():
         start=max(prelim_ideal_position - 500, focuser.min_position),
         stop=min(prelim_ideal_position + 500, focuser.max_position),
         num=20,
-        dtype=int)
+        dtype=int,
+    )
     autofocus(camera, focuser, positions, output_dir=output_dir, show_plot=args.plot)
 
     if (returncode := track_process.poll()) is not None:

@@ -45,7 +45,7 @@ def spiral(elapsed_time: float, spiral_spacing_deg: float, velocity_deg_s: float
         A complex value giving a single position along the spiral search in the complex plane.
     """
     theta = np.sqrt(4 * np.pi * velocity_deg_s / spiral_spacing_deg * elapsed_time)
-    return spiral_spacing_deg / (2*np.pi) * theta * np.exp(1j*theta)
+    return spiral_spacing_deg / (2 * np.pi) * theta * np.exp(1j * theta)
 
 
 class TargetPosition(NamedTuple):
@@ -56,6 +56,7 @@ class TargetPosition(NamedTuple):
         position_topo: Topographical target position (azimuth and altitude).
         position_enc: Mount encoder positions corresponding to target's apparent position.
     """
+
     time: Time
     topo: SkyCoord
     enc: MountEncoderPositions
@@ -158,11 +159,11 @@ class AcceleratingMountAxisTarget(Target):
     """
 
     def __init__(
-            self,
-            mount_model: MountModel,
-            initial_encoder_positions: MountEncoderPositions,
-            axis_accelerations: Tuple[float, float],
-        ):
+        self,
+        mount_model: MountModel,
+        initial_encoder_positions: MountEncoderPositions,
+        axis_accelerations: Tuple[float, float],
+    ):
         """Construct an AcceleratingMountAxisTarget.
 
         Initial velocity of the target is zero in both axes. Acceleration begins the moment this
@@ -201,14 +202,13 @@ class AcceleratingMountAxisTarget(Target):
 
 
 class OverheadPassTarget(Target):
-    """A target that passes directly overhead at a steady 1 degree per second horizon-to-horizon.
-    """
+    """A target that passes directly overhead at a steady 1 degree per second horizon-to-horizon."""
 
     def __init__(
-            self,
-            mount_model: MountModel,
-            meridian_side: MeridianSide,
-        ):
+        self,
+        mount_model: MountModel,
+        meridian_side: MeridianSide,
+    ):
         """Construct an OverheadPassTarget.
 
         Args:
@@ -218,16 +218,16 @@ class OverheadPassTarget(Target):
         self.mount_model = mount_model
         self.meridian_side = meridian_side
         self.time_start = Time.now()
-        self.position_start = SkyCoord(90*u.deg, -20*u.deg, frame='altaz')
+        self.position_start = SkyCoord(90 * u.deg, -20 * u.deg, frame='altaz')
         self.position_angle = self.position_start.position_angle(
-            SkyCoord(0*u.deg, 90*u.deg, frame='altaz')
+            SkyCoord(0 * u.deg, 90 * u.deg, frame='altaz')
         )
 
     @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
     def get_position(self, t: Time) -> TargetPosition:
         """Gets the position of the simulated target for a specific time."""
         time_elapsed = (t - self.time_start).sec
-        separation = time_elapsed*u.deg  # 1 deg/s
+        separation = time_elapsed * u.deg  # 1 deg/s
 
         position_topo = self.position_start.directional_offset_by(self.position_angle, separation)
         position_enc = self.mount_model.topocentric_to_encoders(position_topo, self.meridian_side)
@@ -239,12 +239,12 @@ class FlightclubLaunchTrajectoryTarget(Target):
     """A target that follows a trajectory predicted by a flightclub.io simulation"""
 
     def __init__(
-            self,
-            filename: str,
-            time_t0: Time,
-            mount_model: MountModel,
-            meridian_side: MeridianSide,
-        ):
+        self,
+        filename: str,
+        time_t0: Time,
+        mount_model: MountModel,
+        meridian_side: MeridianSide,
+    ):
         self.time_t0 = time_t0
         self.mount_model = mount_model
         self.meridian_side = meridian_side
@@ -272,12 +272,8 @@ class PyEphemTarget(Target):
     """A target using the PyEphem package"""
 
     def __init__(
-            self,
-            target,
-            location: EarthLocation,
-            mount_model: MountModel,
-            meridian_side: MeridianSide
-        ):
+        self, target, location: EarthLocation, mount_model: MountModel, meridian_side: MeridianSide
+    ):
         """Init a PyEphem target
 
         This target type uses PyEphem, the legacy package for ephemeris calculations.
@@ -319,15 +315,15 @@ class CameraTarget(Target):
     """
 
     def __init__(
-            self,
-            camera: Camera,
-            mount: TelescopeMount,
-            mount_model: MountModel,
-            meridian_side: Optional[MeridianSide] = None,
-            camera_timeout: float = inf,
-            telem_logger: Optional[TelemLogger] = None,
-            separation_callback: Optional[Callable[[Angle], None]] = None,
-        ):
+        self,
+        camera: Camera,
+        mount: TelescopeMount,
+        mount_model: MountModel,
+        meridian_side: Optional[MeridianSide] = None,
+        camera_timeout: float = inf,
+        telem_logger: Optional[TelemLogger] = None,
+        separation_callback: Optional[Callable[[Angle], None]] = None,
+    ):
         """Construct an instance of CameraTarget
 
         Args:
@@ -352,9 +348,8 @@ class CameraTarget(Target):
         self.telem_logger = telem_logger
         self.separation_callback = separation_callback
         self.guide_cam_align_error = mount_model.model_param_set.guide_cam_align_error
-        self.guide_cam_align_error_px = (
-            self.guide_cam_align_error.deg
-            / (self.camera.pixel_scale * self.camera.binning)
+        self.guide_cam_align_error_px = self.guide_cam_align_error.deg / (
+            self.camera.pixel_scale * self.camera.binning
         )
 
         if meridian_side is not None:
@@ -369,11 +364,11 @@ class CameraTarget(Target):
         self.target_position = None
 
     def camera_to_directional_offset(
-            self,
-            target_x: Angle,
-            target_y: Angle,
-            mount_meridian_side: MeridianSide,
-        ) -> Tuple[Angle, Angle]:
+        self,
+        target_x: Angle,
+        target_y: Angle,
+        mount_meridian_side: MeridianSide,
+    ) -> Tuple[Angle, Angle]:
         """Transform from a position in camera frame to a magnitude and position angle
 
         Args:
@@ -388,7 +383,7 @@ class CameraTarget(Target):
         """
 
         # position of target relative to center of camera frame
-        target_position_cam = target_x + 1j*target_y
+        target_position_cam = target_x + 1j * target_y
 
         # angular separation and direction from approximate center of main OTA camera to target
         target_position_main_ota = target_position_cam - self.guide_cam_align_error
@@ -399,15 +394,15 @@ class CameraTarget(Target):
         target_position_angle = self.mount_model.guide_cam_orientation - target_direction_cam
         if mount_meridian_side == MeridianSide.EAST:
             # camera orientation flips when crossing the pole
-            target_position_angle += 180*u.deg
+            target_position_angle += 180 * u.deg
 
         return target_offset_magnitude, target_position_angle
 
     def _camera_to_mount_position(
-            self,
-            target_x: Angle,
-            target_y: Angle,
-        ) -> UnitSphericalRepresentation:
+        self,
+        target_x: Angle,
+        target_y: Angle,
+    ) -> UnitSphericalRepresentation:
         """Transform from target position in camera frame to position in mount frame
 
         Args:
@@ -431,10 +426,13 @@ class CameraTarget(Target):
             mount_meridian_side,
         )
 
-        target_coord = SkyCoord(mount_coord).directional_offset_by(
-            position_angle=target_position_angle,
-            separation=target_offset_magnitude
-        ).represent_as(UnitSphericalRepresentation)
+        target_coord = (
+            SkyCoord(mount_coord)
+            .directional_offset_by(
+                position_angle=target_position_angle, separation=target_offset_magnitude
+            )
+            .represent_as(UnitSphericalRepresentation)
+        )
 
         return target_coord
 
@@ -458,11 +456,7 @@ class CameraTarget(Target):
         keypoint_y_px = self.frame_center_px[1] - keypoint.pt[1]
         return keypoint_x_px, keypoint_y_px
 
-
-    def _select_one_keypoint(
-            self,
-            keypoints: List[cv2.KeyPoint]
-        ) -> cv2.KeyPoint:
+    def _select_one_keypoint(self, keypoints: List[cv2.KeyPoint]) -> cv2.KeyPoint:
         """Find the keypoint closest to the desired target position from a list of keypoints.
 
         The simplifying assumption here is that when multiple keypoints are identified, the target
@@ -485,7 +479,7 @@ class CameraTarget(Target):
         target_keypoint = None
         for keypoint in keypoints:
             keypoint_x_px, keypoint_y_px = self._get_keypoint_xy(keypoint)
-            keypoint_px = keypoint_x_px + 1j*keypoint_y_px
+            keypoint_px = keypoint_x_px + 1j * keypoint_y_px
             keypoint_dist_from_desired_px = np.abs(keypoint_px - self.guide_cam_align_error_px)
 
             if min_dist is None or keypoint_dist_from_desired_px < min_dist:
@@ -551,7 +545,7 @@ class CameraTarget(Target):
         if self.separation_callback is not None:
             # This measures separation from center of camera frame and does not take into account
             # guidscope alignment offset.
-            self.separation_callback(abs(target_x + 1j*target_y))
+            self.separation_callback(abs(target_x + 1j * target_y))
 
         if self.telem_logger is not None:
             p = Point('camera_target')
@@ -583,10 +577,7 @@ class CameraTarget(Target):
         # transform to world coordinates
         position_mount = self._camera_to_mount_position(target_x, target_y)
 
-        position_enc = self.mount_model.spherical_to_encoders(
-            position_mount,
-            self.meridian_side
-        )
+        position_enc = self.mount_model.spherical_to_encoders(position_mount, self.meridian_side)
         position_topo = self.mount_model.spherical_to_topocentric(position_mount)
         self.target_position = TargetPosition(target_time, position_topo, position_enc)
 
@@ -595,17 +586,17 @@ class SensorFusionTarget(Target):
     """Uses sensor fusion to combine data from a `CameraTarget` and another `Target`"""
 
     def __init__(
-            self,
-            blind_target: Target,
-            camera_target: CameraTarget,
-            mount: TelescopeMount,
-            model: MountModel,
-            meridian_side: MeridianSide,
-            filter_gain: float = 5e-2,
-            bias_mag_limit: Angle = Angle(1.0*u.deg),
-            telem_logger: Optional[TelemLogger] = None,
-            spiral_search: bool = False,
-        ):
+        self,
+        blind_target: Target,
+        camera_target: CameraTarget,
+        mount: TelescopeMount,
+        model: MountModel,
+        meridian_side: MeridianSide,
+        filter_gain: float = 5e-2,
+        bias_mag_limit: Angle = Angle(1.0 * u.deg),
+        telem_logger: Optional[TelemLogger] = None,
+        spiral_search: bool = False,
+    ):
         """Construct an instance of SensorFusionTarget
 
         Args:
@@ -641,7 +632,6 @@ class SensorFusionTarget(Target):
             self.velocity_deg_s = fov_height / 2.0  # 2 seconds to traverse frame height
             self.spiral_start_time = None  # will be initialized later
 
-
     # Cache results to avoid re-computing unnecessarily. Strictly the cache should be cleared each
     # time the `blind_target_bias` member variable is updated but this is intentionally ignored to
     # reduce computational load. The ill effects of this seem to be minimal.
@@ -668,19 +658,22 @@ class SensorFusionTarget(Target):
         position_target_blind_sph = self.model.topocentric_to_spherical(position_target_blind.topo)
 
         # apply directional offset using estimated bias terms
-        position_target_fused_sph = SkyCoord(position_target_blind_sph).directional_offset_by(
-            position_angle=np.angle(self.blind_target_bias)*u.rad,
-            separation=np.abs(self.blind_target_bias)*u.deg
-        ).represent_as(UnitSphericalRepresentation)
+        position_target_fused_sph = (
+            SkyCoord(position_target_blind_sph)
+            .directional_offset_by(
+                position_angle=np.angle(self.blind_target_bias) * u.rad,
+                separation=np.abs(self.blind_target_bias) * u.deg,
+            )
+            .represent_as(UnitSphericalRepresentation)
+        )
 
         # transform the offset mount coordinate to mount encoder and topo frames
         return TargetPosition(
             t,
             self.model.spherical_to_topocentric(position_target_fused_sph),
             self.model.spherical_to_encoders(
-                coord=position_target_fused_sph,
-                meridian_side=self.meridian_side
-            )
+                coord=position_target_fused_sph, meridian_side=self.meridian_side
+            ),
         )
 
     def _post_telemetry(self) -> None:
@@ -711,7 +704,8 @@ class SensorFusionTarget(Target):
                     self.spiral_start_time = time.perf_counter()
                 spiral_elapsed_time = time.perf_counter() - self.spiral_start_time
                 self.blind_target_bias = spiral(
-                    spiral_elapsed_time, self.spiral_spacing_deg, self.velocity_deg_s)
+                    spiral_elapsed_time, self.spiral_spacing_deg, self.velocity_deg_s
+                )
 
             self._post_telemetry()
             return
@@ -726,7 +720,7 @@ class SensorFusionTarget(Target):
             mount_meridian_side,
         )
 
-        target_offset = target_offset_mag.deg * np.exp(1j*target_position_angle.rad)
+        target_offset = target_offset_mag.deg * np.exp(1j * target_position_angle.rad)
 
         # update bias term integrator
         self.blind_target_bias += self.filter_gain * target_offset
@@ -734,7 +728,7 @@ class SensorFusionTarget(Target):
         # saturate bias magnitude so that it doesn't go off the rails
         if np.abs(self.blind_target_bias) > self.bias_mag_limit.deg:
             self.blind_target_bias = self.bias_mag_limit.deg * np.exp(
-                1j*np.angle(self.blind_target_bias)
+                1j * np.angle(self.blind_target_bias)
             )
 
         self._post_telemetry()
@@ -742,6 +736,7 @@ class SensorFusionTarget(Target):
 
 class TargetType(enum.Flag):
     """All supported target types"""
+
     NONE = 0
     FLIGHTCLUB = enum.auto()
     TLE = enum.auto()
@@ -762,10 +757,10 @@ class TargetType(enum.Flag):
 
 
 def add_program_arguments(
-        parser: ArgParser,
-        allowed_types: TargetType = TargetType.all(),
-        allow_sensor_fusion: bool = True
-    ) -> None:
+    parser: ArgParser,
+    allowed_types: TargetType = TargetType.all(),
+    allow_sensor_fusion: bool = True,
+) -> None:
     """Add program arguments relevant to targets.
 
     Args:
@@ -800,8 +795,7 @@ def add_program_arguments(
 
     if TargetType.FLIGHTCLUB in allowed_types:
         parser_flightclub = subparsers.add_parser(
-            'flightclub',
-            help='Flightclub.io trajectory CSV file'
+            'flightclub', help='Flightclub.io trajectory CSV file'
         )
         parser_flightclub.add_argument('file', help='filename of CSV file')
         parser_flightclub.add_argument(
@@ -844,7 +838,7 @@ def add_program_arguments(
             help='name of planet or moon',
             type=str.capitalize,
             # pylint: disable=protected-access
-            choices=[planet[2] for planet in ephem._libastro.builtin_planets()]
+            choices=[planet[2] for planet in ephem._libastro.builtin_planets()],
         )
 
     if TargetType.OVERHEAD_PASS in allowed_types:
@@ -852,13 +846,13 @@ def add_program_arguments(
 
 
 def make_target_from_args(
-        args: Namespace,
-        mount: TelescopeMount,
-        mount_model: MountModel,
-        meridian_side: MeridianSide,
-        telem_logger: Optional[TelemLogger] = None,
-        camera_separation_callback: Optional[Callable[[Angle], None]] = None,
-    ) -> Target:
+    args: Namespace,
+    mount: TelescopeMount,
+    mount_model: MountModel,
+    meridian_side: MeridianSide,
+    telem_logger: Optional[TelemLogger] = None,
+    camera_separation_callback: Optional[Callable[[Angle], None]] = None,
+) -> Target:
     """Construct the appropriate target based on the program arguments provided.
 
     Args:
@@ -880,7 +874,8 @@ def make_target_from_args(
         time_t0 = dateutil.parser.parse(args.time_t0)
         time_t0.replace(tzinfo=dateutil.tz.tzutc())
         logger.info(
-            f'In Flight Club trajectory mode using {args.file}, T0 interpreted as {time_t0}Z')
+            f'In Flight Club trajectory mode using {args.file}, T0 interpreted as {time_t0}Z'
+        )
         target = FlightclubLaunchTrajectoryTarget(
             filename=args.file,
             time_t0=Time(time_t0),
@@ -931,9 +926,7 @@ def make_target_from_args(
     elif args.target_type == 'coord-topo':
         logger.info(f'In fixed topocentric coordinate mode: (AZ {args.az}, ALT {args.alt}).')
         target = FixedTopocentricTarget(
-            SkyCoord(args.az * u.deg, args.alt * u.deg, frame='altaz'),
-            mount_model,
-            meridian_side
+            SkyCoord(args.az * u.deg, args.alt * u.deg, frame='altaz'), mount_model, meridian_side
         )
 
     # Get the PyEphem Body object corresonding to the given named star

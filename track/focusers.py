@@ -98,6 +98,7 @@ class MoonliteFocuser(Focuser):
                 this buffer to necessarily match the expected response length; it could be shorter
                 or longer.
         """
+
         def __init__(self, response, *args, **kwargs):
             self.response = response
             super().__init__(*args, **kwargs)
@@ -109,9 +110,7 @@ class MoonliteFocuser(Focuser):
     def add_program_arguments(parser: ArgParser) -> None:
         """Add Moonlite-specific program arguments"""
         parser.add_argument(
-            '--focuser-dev',
-            help='Moonlite focuser serial device node path',
-            default='/dev/ttyUSB0'
+            '--focuser-dev', help='Moonlite focuser serial device node path', default='/dev/ttyUSB0'
         )
 
     @staticmethod
@@ -124,11 +123,8 @@ class MoonliteFocuser(Focuser):
         )
 
     def __init__(
-            self,
-            device: str,
-            min_position: int,
-            max_position: int,
-            read_timeout: float = 1.0):
+        self, device: str, min_position: int, max_position: int, read_timeout: float = 1.0
+    ):
         """Constructs a MoonliteFocuser object.
 
         Args:
@@ -140,9 +136,9 @@ class MoonliteFocuser(Focuser):
         Raises:
             ValueError if `min_position` or `max_position` are outside allowed range.
         """
-        if not 0 <= min_position <= 0xffff:
+        if not 0 <= min_position <= 0xFFFF:
             raise ValueError('min_position is beyond allowed range')
-        if not 0 <= max_position <= 0xffff:
+        if not 0 <= max_position <= 0xFFFF:
             raise ValueError('max_position is beyond allowed range')
         if max_position < min_position:
             raise ValueError('max_position is less than min position')
@@ -187,12 +183,14 @@ class MoonliteFocuser(Focuser):
         response = response[:-1]
         if b'#' in response:
             raise MoonliteFocuser.ResponseException(
-                response, 'Unexpected terminator found in response')
+                response, 'Unexpected terminator found in response'
+            )
 
         if len(response) != response_len:
             raise MoonliteFocuser.ResponseException(
                 response,
-                f'Expected response length {response_len} but got {len(response)} instead.')
+                f'Expected response length {response_len} but got {len(response)} instead.',
+            )
 
         return response
 
@@ -317,16 +315,10 @@ def add_program_arguments(parser: ArgParser) -> None:
         choices=['moonlite'],
     )
     focuser_group.add_argument(
-        '--focuser-min',
-        help='focuser minimum allowed position',
-        required=True,
-        type=int
+        '--focuser-min', help='focuser minimum allowed position', required=True, type=int
     )
     focuser_group.add_argument(
-        '--focuser-max',
-        help='focuser maximum allowed position',
-        required=True,
-        type=int
+        '--focuser-max', help='focuser maximum allowed position', required=True, type=int
     )
     moonlite_group = parser.add_argument_group(
         title='Moonlite Focuser Options',

@@ -15,11 +15,7 @@ def main():
     """See module docstring at the top of this file."""
 
     parser = ArgParser()
-    parser.add_argument(
-        '--timestamp',
-        required=False,
-        help='UNIX timestamp',
-        type=float)
+    parser.add_argument('--timestamp', required=False, help='UNIX timestamp', type=float)
 
     subparsers = parser.add_subparsers(title='modes', dest='mode')
 
@@ -37,7 +33,7 @@ def main():
         help='name of planet or moon',
         type=str.capitalize,
         # pylint: disable=protected-access
-        choices=[planet[2] for planet in ephem._libastro.builtin_planets()]
+        choices=[planet[2] for planet in ephem._libastro.builtin_planets()],
     )
 
     gps_client.add_program_arguments(parser)
@@ -77,6 +73,7 @@ def main():
     }
 
     print('Expected position: ' + str(position))
+
 
 if __name__ == "__main__":
     main()

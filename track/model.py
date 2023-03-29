@@ -60,6 +60,7 @@ class ModelParameters(NamedTuple):
             minus the latitude of the observer.
         camera_tilt: Tilt of the camera away from the plane that is perpendicular to axis 1.
     """
+
     axis_0_offset: Angle
     axis_1_offset: Angle
     pole_rot_axis_az: Angle
@@ -75,11 +76,11 @@ class ModelParameters(NamedTuple):
                 interfacing with the scipy least_squares method.
         """
         return ModelParameters(
-            axis_0_offset=Angle(param_array[0]*u.deg),
-            axis_1_offset=Angle(param_array[1]*u.deg),
-            pole_rot_axis_az=Angle(param_array[2]*u.deg),
-            pole_rot_angle=Angle(param_array[3]*u.deg),
-            camera_tilt=Angle(param_array[4]*u.deg),
+            axis_0_offset=Angle(param_array[0] * u.deg),
+            axis_1_offset=Angle(param_array[1] * u.deg),
+            pole_rot_axis_az=Angle(param_array[2] * u.deg),
+            pole_rot_angle=Angle(param_array[3] * u.deg),
+            camera_tilt=Angle(param_array[4] * u.deg),
         )
 
     def to_ndarray(self) -> np.ndarray:
@@ -90,13 +91,15 @@ class ModelParameters(NamedTuple):
         Returns:
             An ndarray object containing the parameter values.
         """
-        return np.array([
-            self.axis_0_offset.deg,
-            self.axis_1_offset.deg,
-            self.pole_rot_axis_az.deg,
-            self.pole_rot_angle.deg,
-            self.camera_tilt.deg,
-        ])
+        return np.array(
+            [
+                self.axis_0_offset.deg,
+                self.axis_1_offset.deg,
+                self.pole_rot_axis_az.deg,
+                self.pole_rot_angle.deg,
+                self.camera_tilt.deg,
+            ]
+        )
 
 
 class ModelParamSet(NamedTuple):
@@ -129,18 +132,17 @@ class ModelParamSet(NamedTuple):
             guidescope camera frame. This needs to be last and have a default value of 0 for
             backward compatibility.
     """
+
     model_params: ModelParameters
     guide_cam_orientation: Longitude
     location: EarthLocation
     timestamp: Optional[float]
-    guide_cam_align_error: Angle = Angle(0*u.deg)
+    guide_cam_align_error: Angle = Angle(0 * u.deg)
 
 
 def tip_axis(
-        coord: UnitSphericalRepresentation,
-        axis_lon: Angle,
-        rot_angle: Angle
-    ) -> UnitSphericalRepresentation:
+    coord: UnitSphericalRepresentation, axis_lon: Angle, rot_angle: Angle
+) -> UnitSphericalRepresentation:
     """Perform a rotation about an axis perpendicular to the Z-axis.
 
     The purpose of this rotation is to move the pole of the coordinate system from one place to
@@ -162,8 +164,7 @@ def tip_axis(
         Coordinate after transformation.
     """
     rot = rotation_matrix(
-        rot_angle,
-        axis=SkyCoord(axis_lon, 0*u.deg).represent_as('cartesian').xyz
+        rot_angle, axis=SkyCoord(axis_lon, 0 * u.deg).represent_as('cartesian').xyz
     )
     coord_cart = coord.represent_as(CartesianRepresentation)
     coord_rot_cart = coord_cart.transform(rot)
@@ -171,9 +172,8 @@ def tip_axis(
 
 
 def apply_guide_cam_alignment_error(
-        old_params: ModelParamSet,
-        guide_cam_align_error: Angle
-    ) -> ModelParamSet:
+    old_params: ModelParamSet, guide_cam_align_error: Angle
+) -> ModelParamSet:
     """Create a new `ModelParamSet` that is transformed to account for guidescope alignment error.
 
     Guidescope alignment error means that the center of the guidescope camera field of view is not
@@ -204,19 +204,17 @@ def apply_guide_cam_alignment_error(
     error_diff = guide_cam_align_error - old_params.guide_cam_align_error
 
     # remove any camera rotation such that the real axis is parallel to axis 1 of the mount
-    align_error_rotated = error_diff * np.exp(-1j*old_params.guide_cam_orientation.rad)
+    align_error_rotated = error_diff * np.exp(-1j * old_params.guide_cam_orientation.rad)
 
     # all parameters other than the ones specified here will remain unchanged
     return old_params._replace(
         model_params=old_params.model_params._replace(
-
             # real axis error corresponds to an axis 1 encoder offset
             axis_1_offset=old_params.model_params.axis_1_offset + align_error_rotated.real,
-
             # imaginary axis error corresponds to a camera tilt out of plane
-            camera_tilt=old_params.model_params.camera_tilt - align_error_rotated.imag
+            camera_tilt=old_params.model_params.camera_tilt - align_error_rotated.imag,
         ),
-        guide_cam_align_error=guide_cam_align_error
+        guide_cam_align_error=guide_cam_align_error,
     )
 
 
@@ -232,7 +230,6 @@ class MountModel:
         location (EarthLocation): The observer location for which the mount model is correct.
     """
 
-
     def __init__(self, model_param_set: ModelParamSet):
         """Construct an instance of MountModel
 
@@ -244,12 +241,11 @@ class MountModel:
         self.guide_cam_orientation = model_param_set.guide_cam_orientation
         self.location = model_param_set.location
 
-
     def apply_camera_tilt(
-            self,
-            coord: UnitSphericalRepresentation,
-            meridian_side: MeridianSide,
-        ) -> UnitSphericalRepresentation:
+        self,
+        coord: UnitSphericalRepresentation,
+        meridian_side: MeridianSide,
+    ) -> UnitSphericalRepresentation:
         """Applies the effect of camera tilt.
 
         This method takes a coordinate in the mount-relative spherical coordinate system
@@ -275,21 +271,20 @@ class MountModel:
         """
         sc = SkyCoord(coord)
         if abs(coord.lat.deg) < 90.0:
-            lon_offset = 90*u.deg if meridian_side == MeridianSide.WEST else -90*u.deg
+            lon_offset = 90 * u.deg if meridian_side == MeridianSide.WEST else -90 * u.deg
         else:
-            lon_offset = 0*u.deg
-        reference_coord = SkyCoord(coord.lon + lon_offset, 0*u.deg)
+            lon_offset = 0 * u.deg
+        reference_coord = SkyCoord(coord.lon + lon_offset, 0 * u.deg)
         return sc.directional_offset_by(
             position_angle=sc.position_angle(reference_coord),
-            separation=self.model_params.camera_tilt
+            separation=self.model_params.camera_tilt,
         ).represent_as(UnitSphericalRepresentation)
 
-
     def remove_camera_tilt(
-            self,
-            coord: UnitSphericalRepresentation,
-            meridian_side: MeridianSide,
-        ) -> UnitSphericalRepresentation:
+        self,
+        coord: UnitSphericalRepresentation,
+        meridian_side: MeridianSide,
+    ) -> UnitSphericalRepresentation:
         """Removes the effect of camera tilt.
 
         This method takes a coordinate in the mount-relative spherical coordinate system and
@@ -320,30 +315,28 @@ class MountModel:
         tilt = self.model_params.camera_tilt
 
         # Positions meeting these criteria are not reachable; return nearest reachable position
-        if coord.lat >= 90*u.deg - np.abs(tilt):
-            return UnitSphericalRepresentation(coord.lon, 90*u.deg)
-        if coord.lat <= -(90*u.deg - np.abs(tilt)):
-            return UnitSphericalRepresentation(coord.lon, -90*u.deg)
+        if coord.lat >= 90 * u.deg - np.abs(tilt):
+            return UnitSphericalRepresentation(coord.lon, 90 * u.deg)
+        if coord.lat <= -(90 * u.deg - np.abs(tilt)):
+            return UnitSphericalRepresentation(coord.lon, -90 * u.deg)
 
         # difference in longitude of coord and reference position longitude
-        lon_diff = np.arccos(np.cos(90*u.deg - tilt) / np.cos(coord.lat))
+        lon_diff = np.arccos(np.cos(90 * u.deg - tilt) / np.cos(coord.lat))
 
         # the tilt is in the direction of this reference position
         reference_coord = SkyCoord(
             coord.lon + lon_diff if meridian_side == MeridianSide.WEST else coord.lon - lon_diff,
-            0*u.deg,
+            0 * u.deg,
         )
         sc = SkyCoord(coord)
         return sc.directional_offset_by(
             position_angle=sc.position_angle(reference_coord),
-            separation=-self.model_params.camera_tilt
+            separation=-self.model_params.camera_tilt,
         ).represent_as(UnitSphericalRepresentation)
 
-
     def encoders_to_spherical(
-            self,
-            encoder_positions: MountEncoderPositions
-        ) -> Tuple[UnitSphericalRepresentation, MeridianSide]:
+        self, encoder_positions: MountEncoderPositions
+    ) -> Tuple[UnitSphericalRepresentation, MeridianSide]:
         """Convert from mount encoder positions to mount-relative spherical coordinates.
 
         The mount-relative spherical coordinate system is a defined such that the positive Z-axis,
@@ -383,26 +376,20 @@ class MountModel:
         # This transformation is only correct if the mount axes are exactly orthogonal. If better
         # fidelity is required this could be replaced with a more general transformation that can
         # handle non-orthogonal axes.
-        if encoder_positions[1] < 180*u.deg:
+        if encoder_positions[1] < 180 * u.deg:
             meridian_side = MeridianSide.EAST
             spherical_coord = UnitSphericalRepresentation(
-                lon=(270*u.deg - encoder_positions[0]),
-                lat=(encoder_positions[1] - 90*u.deg)
+                lon=(270 * u.deg - encoder_positions[0]), lat=(encoder_positions[1] - 90 * u.deg)
             )
         else:
             meridian_side = MeridianSide.WEST
             spherical_coord = UnitSphericalRepresentation(
-                lon=(90*u.deg - encoder_positions[0]),
-                lat=(270*u.deg - encoder_positions[1])
+                lon=(90 * u.deg - encoder_positions[0]), lat=(270 * u.deg - encoder_positions[1])
             )
 
         return self.apply_camera_tilt(spherical_coord, meridian_side), meridian_side
 
-
-    def encoders_to_meridian_side(
-            self,
-            encoder_positions: MountEncoderPositions
-        ) -> MeridianSide:
+    def encoders_to_meridian_side(self, encoder_positions: MountEncoderPositions) -> MeridianSide:
         """Get meridian side from mount encoder positions.
 
         This is a subset of `encoders_to_spherical` where only the meridian side is returned.
@@ -417,14 +404,13 @@ class MountModel:
         # apply encoder offset
         encoder_1_position = Longitude(encoder_positions[1] - self.model_params.axis_1_offset)
 
-        return MeridianSide.EAST if encoder_1_position < 180*u.deg else MeridianSide.WEST
-
+        return MeridianSide.EAST if encoder_1_position < 180 * u.deg else MeridianSide.WEST
 
     def spherical_to_encoders(
-            self,
-            coord: UnitSphericalRepresentation,
-            meridian_side: MeridianSide = MeridianSide.EAST,
-        ) -> MountEncoderPositions:
+        self,
+        coord: UnitSphericalRepresentation,
+        meridian_side: MeridianSide = MeridianSide.EAST,
+    ) -> MountEncoderPositions:
         """Convert from mount-relative spherical coordinates to mount encoder positions
 
         See docstring of `encoders_to_spherical`, which is the inverse of this method.
@@ -452,18 +438,17 @@ class MountModel:
         # fidelity is required this could be replaced with a more general transformation that can
         # handle non-orthogonal axes.
         if meridian_side == MeridianSide.EAST:
-            encoder_0 = Longitude(270*u.deg - coord.lon)
-            encoder_1 = Longitude(90*u.deg + coord.lat)
+            encoder_0 = Longitude(270 * u.deg - coord.lon)
+            encoder_1 = Longitude(90 * u.deg + coord.lat)
         else:
-            encoder_0 = Longitude(90*u.deg - coord.lon)
-            encoder_1 = Longitude(270*u.deg - coord.lat)
+            encoder_0 = Longitude(90 * u.deg - coord.lon)
+            encoder_1 = Longitude(270 * u.deg - coord.lat)
 
         # apply encoder offsets
         return MountEncoderPositions(
             Longitude(encoder_0 + self.model_params.axis_0_offset),
             Longitude(encoder_1 + self.model_params.axis_1_offset),
         )
-
 
     def spherical_to_topocentric(self, coord: UnitSphericalRepresentation) -> SkyCoord:
         """Convert from mount-relative spherical coordinates to a topocentric coordinate.
@@ -477,12 +462,10 @@ class MountModel:
             inertial equatorial frame such as ICRS.
         """
         # transform pole of coordinate system from mount pole to local zenith
-        return SkyCoord(tip_axis(
-            coord,
-            self.model_params.pole_rot_axis_az,
-            -self.model_params.pole_rot_angle
-        ), frame=AltAz)
-
+        return SkyCoord(
+            tip_axis(coord, self.model_params.pole_rot_axis_az, -self.model_params.pole_rot_angle),
+            frame=AltAz,
+        )
 
     def topocentric_to_spherical(self, sky_coord: SkyCoord) -> UnitSphericalRepresentation:
         """Convert from a topocentric coordinate to a mount-relative spherical coordinate.
@@ -496,11 +479,8 @@ class MountModel:
         """
         # transform pole of coordinate system from local zenith to mount pole
         return tip_axis(
-            sky_coord,
-            self.model_params.pole_rot_axis_az,
-            self.model_params.pole_rot_angle
+            sky_coord, self.model_params.pole_rot_axis_az, self.model_params.pole_rot_angle
         )
-
 
     def encoders_to_topocentric(self, encoder_positions: MountEncoderPositions) -> SkyCoord:
         """Convert mount encoder positions to a topocentric coordinate.
@@ -519,12 +499,11 @@ class MountModel:
         # transform pole of coordinate system from mount pole to local zenith
         return self.spherical_to_topocentric(mount_coord)
 
-
     def topocentric_to_encoders(
-            self,
-            sky_coord: SkyCoord,
-            meridian_side: MeridianSide,
-        ) -> MountEncoderPositions:
+        self,
+        sky_coord: SkyCoord,
+        meridian_side: MeridianSide,
+    ) -> MountEncoderPositions:
         """Convert coordinate for a position on the sky to mount encoder positions.
 
         Args:
@@ -579,9 +558,9 @@ def ra_to_ha(ra_angle: Longitude, longitude: Longitude, t: Time) -> Longitude:
 
 
 def residual(
-        observation: pd.Series,
-        model_params: ModelParameters,
-    ) -> pd.Series:
+    observation: pd.Series,
+    model_params: ModelParameters,
+) -> pd.Series:
     """Compute the residual (error) between observed and modeled positions
 
     Args:
@@ -592,21 +571,23 @@ def residual(
         A Pandas Series containing a separation angle and position angle.
     """
     encoder_positions = MountEncoderPositions(
-        Longitude(observation.encoder_0*u.deg),
-        Longitude(observation.encoder_1*u.deg),
+        Longitude(observation.encoder_0 * u.deg),
+        Longitude(observation.encoder_1 * u.deg),
     )
     mount_model = MountModel(ModelParamSet(model_params, None, None, None))
     sc_mount = mount_model.encoders_to_topocentric(encoder_positions)
-    sc_cam = SkyCoord(observation.sky_az*u.deg, observation.sky_alt*u.deg, frame='altaz')
+    sc_cam = SkyCoord(observation.sky_az * u.deg, observation.sky_alt * u.deg, frame='altaz')
 
-    return pd.Series([sc_mount.separation(sc_cam), sc_mount.position_angle(sc_cam)],
-                     index=['separation', 'position_angle'])
+    return pd.Series(
+        [sc_mount.separation(sc_cam), sc_mount.position_angle(sc_cam)],
+        index=['separation', 'position_angle'],
+    )
 
 
 def residuals(
-        param_array: np.ndarray,
-        observations: pd.DataFrame,
-    ) -> pd.Series:
+    param_array: np.ndarray,
+    observations: pd.DataFrame,
+) -> pd.Series:
     """Generate series of residuals for a set of observations and model parameters.
 
     This is intended for use as the callback function passed to scipy.optimize.least_squares.
@@ -619,33 +600,26 @@ def residuals(
         A Pandas Series containing the magnitudes of the residuals in degrees.
     """
     res = observations.apply(
-        residual,
-        axis='columns',
-        args=(ModelParameters.from_ndarray(param_array),)
+        residual, axis='columns', args=(ModelParameters.from_ndarray(param_array),)
     ).separation
     return res.apply(lambda res_angle: res_angle.deg)
 
 
 def plot_residuals(
-        model_params: ModelParameters,
-        observations: pd.DataFrame,
-    ) -> None:
+    model_params: ModelParameters,
+    observations: pd.DataFrame,
+) -> None:
     """Plot the residuals on a polar plot.
 
     Args:
         model_params: Set of model parameters.
         observations: Data from observations.
     """
-    res = observations.apply(
-        residual,
-        axis='columns',
-        reduce=False,
-        args=(model_params,)
-    )
+    res = observations.apply(residual, axis='columns', reduce=False, args=(model_params,))
     position_angles = res.position_angle.apply(lambda x: x.rad)
     separations = res.separation.apply(lambda x: x.arcmin)
     plt.polar(position_angles, separations, 'k.', label='residuals')
-    plt.polar(np.linspace(0, 2*np.pi, 100), 90*np.ones(100), 'r', label='camera FOV')
+    plt.polar(np.linspace(0, 2 * np.pi, 100), 90 * np.ones(100), 'r', label='camera FOV')
     plt.title('Model Residuals (magnitude in arcminutes)')
     plt.legend()
 
@@ -674,29 +648,29 @@ def solve_model(observations: pd.DataFrame) -> Tuple[ModelParameters, OptimizeRe
 
     # best starting guess for parameters
     init_values = ModelParameters(
-        axis_0_offset=Angle(0*u.deg),
-        axis_1_offset=Angle(0*u.deg),
-        pole_rot_axis_az=Angle(0*u.deg),
-        pole_rot_angle=Angle(0*u.deg),
-        camera_tilt=Angle(0*u.deg),
+        axis_0_offset=Angle(0 * u.deg),
+        axis_1_offset=Angle(0 * u.deg),
+        pole_rot_axis_az=Angle(0 * u.deg),
+        pole_rot_angle=Angle(0 * u.deg),
+        camera_tilt=Angle(0 * u.deg),
     )
 
     # lower bound on allowable values for each model parameter
     min_values = ModelParameters(
-        axis_0_offset=Angle(-180*u.deg),
-        axis_1_offset=Angle(-180*u.deg),
-        pole_rot_axis_az=Angle(-180*u.deg),
-        pole_rot_angle=Angle(-180*u.deg),
-        camera_tilt=Angle(-10*u.deg),
+        axis_0_offset=Angle(-180 * u.deg),
+        axis_1_offset=Angle(-180 * u.deg),
+        pole_rot_axis_az=Angle(-180 * u.deg),
+        pole_rot_angle=Angle(-180 * u.deg),
+        camera_tilt=Angle(-10 * u.deg),
     )
 
     # upper bound on allowable values for each model parameter
     max_values = ModelParameters(
-        axis_0_offset=Angle(180*u.deg),
-        axis_1_offset=Angle(180*u.deg),
-        pole_rot_axis_az=Angle(180*u.deg),
-        pole_rot_angle=Angle(180*u.deg),
-        camera_tilt=Angle(10*u.deg),
+        axis_0_offset=Angle(180 * u.deg),
+        axis_1_offset=Angle(180 * u.deg),
+        pole_rot_axis_az=Angle(180 * u.deg),
+        pole_rot_angle=Angle(180 * u.deg),
+        camera_tilt=Angle(10 * u.deg),
     )
 
     result = scipy.optimize.least_squares(
@@ -732,7 +706,7 @@ def save_default_param_set(model_param_set: ModelParamSet) -> None:
         pickle.dump(model_param_set, f, pickle.HIGHEST_PROTOCOL)
 
 
-def load_stored_param_set(max_age: Optional[float] = 12*3600) -> ModelParamSet:
+def load_stored_param_set(max_age: Optional[float] = 12 * 3600) -> ModelParamSet:
     """Loads the model parameter set from disk at the default location.
 
     Args:
@@ -752,15 +726,12 @@ def load_stored_param_set(max_age: Optional[float] = 12*3600) -> ModelParamSet:
     if max_age is not None:
         param_set_age = time.time() - model_param_set.timestamp
         if param_set_age > max_age:
-            raise StaleParametersException(
-                f'model params are {param_set_age / 3600:.1f} hours old')
+            raise StaleParametersException(f'model params are {param_set_age / 3600:.1f} hours old')
 
     return model_param_set
 
 
-def load_stored_model(
-        max_age: Optional[float] = 12*3600
-    ) -> MountModel:
+def load_stored_model(max_age: Optional[float] = 12 * 3600) -> MountModel:
     """Loads the model parameter set from disk and returns a MountModel instance.
 
     Args:
@@ -778,11 +749,11 @@ def load_stored_model(
 
 
 def load_default_model(
-        mount_pole_az: Longitude = Longitude(0*u.deg),
-        mount_pole_alt: Latitude = Latitude(90*u.deg),
-        guide_cam_orientation: Longitude = Longitude(0*u.deg),
-        location: Optional[EarthLocation] = None,
-    ) -> MountModel:
+    mount_pole_az: Longitude = Longitude(0 * u.deg),
+    mount_pole_alt: Latitude = Latitude(90 * u.deg),
+    guide_cam_orientation: Longitude = Longitude(0 * u.deg),
+    location: Optional[EarthLocation] = None,
+) -> MountModel:
     """Returns a MountModel instance initialized with a set of default parameters.
 
     This may be appropriate to use in scenarios when alignment has not been performed yet and
@@ -801,14 +772,16 @@ def load_default_model(
         A MountModel instantiated with minimal parameters.
     """
     return MountModel(
-        ModelParamSet(ModelParameters(
-            axis_0_offset=Angle(mount_pole_az),
-            axis_1_offset=Angle(0*u.deg),
-            pole_rot_axis_az=mount_pole_az + Angle(90*u.deg),
-            pole_rot_angle=Angle((90.0 - mount_pole_alt.deg)*u.deg),
-            camera_tilt=Angle(0*u.deg),
-        ),
-        guide_cam_orientation=guide_cam_orientation,
-        location=location,
-        timestamp=time.time())
+        ModelParamSet(
+            ModelParameters(
+                axis_0_offset=Angle(mount_pole_az),
+                axis_1_offset=Angle(0 * u.deg),
+                pole_rot_axis_az=mount_pole_az + Angle(90 * u.deg),
+                pole_rot_angle=Angle((90.0 - mount_pole_alt.deg) * u.deg),
+                camera_tilt=Angle(0 * u.deg),
+            ),
+            guide_cam_orientation=guide_cam_orientation,
+            location=location,
+            timestamp=time.time(),
+        )
     )

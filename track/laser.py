@@ -20,14 +20,14 @@ logger = logging.getLogger(__name__)
 # for purposes of set_bitmode bitmask:
 # bit   set => output
 # bit unset =>  input
-PIN_TXD = (1<<0)
-PIN_RXD = (1<<1)
-PIN_RTS = (1<<2)
-PIN_CTS = (1<<3)
-PIN_DTR = (1<<4)
-PIN_DSR = (1<<5)
-PIN_DCD = (1<<6)
-PIN_RI  = (1<<7)
+PIN_TXD = 1 << 0
+PIN_RXD = 1 << 1
+PIN_RTS = 1 << 2
+PIN_CTS = 1 << 3
+PIN_DTR = 1 << 4
+PIN_DSR = 1 << 5
+PIN_DCD = 1 << 6
+PIN_RI = 1 << 7
 
 
 class LaserPointer:
@@ -44,11 +44,11 @@ class LaserPointer:
     """
 
     def __init__(
-            self,
-            ftdi_pid: str = '232r',
-            serial_num: Optional[str] = None,
-            laser_pin: int = PIN_CTS,
-        ):
+        self,
+        ftdi_pid: str = '232r',
+        serial_num: Optional[str] = None,
+        laser_pin: int = PIN_CTS,
+    ):
         """Inits LaserPointer object.
 
         Initializes a LaserPointer object by constructing an Ftdi object and opening the desired
@@ -68,8 +68,8 @@ class LaserPointer:
             self.ftdi.open_bitbang(
                 vendor=Ftdi.VENDOR_IDS['ftdi'],
                 product=Ftdi.PRODUCT_IDS[Ftdi.FTDI_VENDOR][ftdi_pid],
-                serial=serial_num,        # serial number of FT232RQ in the laser FTDI cable
-                latency=Ftdi.LATENCY_MAX, # 255ms; reduce if necessary (at cost of higher CPU usage)
+                serial=serial_num,  # serial number of FT232RQ in the laser FTDI cable
+                latency=Ftdi.LATENCY_MAX,  # 255ms; reduce if necessary at cost of higher CPU usage
             )
         except OSError:
             logger.warning('Could not connect to laser pointer FTDI device.')

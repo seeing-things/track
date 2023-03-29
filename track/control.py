@@ -43,18 +43,22 @@ def separation(sc1: SkyCoord, sc2: SkyCoord) -> Angle:
     lat_diff = us1.lat.rad - us2.lat.rad
     lon_diff = us1.lon.rad - us2.lon.rad
     return Angle(
-        2 * np.arcsin(np.sqrt(
-            np.sin(lat_diff / 2)**2
-            + np.cos(us1.lat.rad)*np.cos(us2.lat.rad)*np.sin(lon_diff / 2)**2
-        )) * u.rad
+        2
+        * np.arcsin(
+            np.sqrt(
+                np.sin(lat_diff / 2) ** 2
+                + np.cos(us1.lat.rad) * np.cos(us2.lat.rad) * np.sin(lon_diff / 2) ** 2
+            )
+        )
+        * u.rad
     )
 
 
 def smallest_allowed_error(
-        mount_enc_position: Union[float, np.ndarray],
-        target_enc_position: Union[float, np.ndarray],
-        no_cross_position: Optional[float] = None,
-    ) -> np.ndarray:
+    mount_enc_position: Union[float, np.ndarray],
+    target_enc_position: Union[float, np.ndarray],
+    no_cross_position: Optional[float] = None,
+) -> np.ndarray:
     """Compute error term for a single axis taking into account no-cross positions
 
     The shortest path on an axis is just the difference between the target and mount encoder
@@ -96,7 +100,7 @@ def smallest_allowed_error(
         np.logical_or(target_closer_indices, target_opposite_indices),
         prelim_error,
         # switch direction since prelim_error would have crossed the no-cross point
-        prelim_error - 360*np.sign(prelim_error)
+        prelim_error - 360 * np.sign(prelim_error),
     )
 
     return final_error
@@ -112,6 +116,7 @@ class SlewRateCommand(NamedTuple):
         rates: Dictionary of slew rates in degrees per second where keys are the axis indices (0 or
             1).
     """
+
     time_to_send: Time
     rates: dict
 
@@ -126,6 +131,7 @@ class MountState(NamedTuple):
         position: The positions of the mount axes.
         rates: The slew rates of the mount axes in degrees per second.
     """
+
     time_queried: Time
     position: MountEncoderPositions
     rates: Tuple
@@ -143,12 +149,12 @@ class ModelPredictiveController:
     """
 
     def __init__(
-            self,
-            target: Target,
-            mount: TelescopeMount,
-            prediction_horizon: float,
-            control_cycle_period: float,
-        ):
+        self,
+        target: Target,
+        mount: TelescopeMount,
+        prediction_horizon: float,
+        control_cycle_period: float,
+    ):
         """Construct an instance of ModelPredictiveController
 
         Args:
@@ -164,8 +170,7 @@ class ModelPredictiveController:
         self.prediction_horizon = TimeDelta(prediction_horizon, format='sec')
         self.control_cycle_period = TimeDelta(control_cycle_period, format='sec')
         self.slew_rate_command_prev = SlewRateCommand(
-            time_to_send=Time.now(),
-            rates=dict.fromkeys(self.axes, 0.0)
+            time_to_send=Time.now(), rates=dict.fromkeys(self.axes, 0.0)
         )
 
         # These attributes will be initialized when target property is set
@@ -183,7 +188,7 @@ class ModelPredictiveController:
     @target.setter
     def target(self, new_target: Target) -> None:
         self._target = new_target
-        self._init_prediction_arrays(Time.now() + 2*self.control_cycle_period)
+        self._init_prediction_arrays(Time.now() + 2 * self.control_cycle_period)
 
     def _init_prediction_arrays(self, time_start: Time) -> None:
         """Initialize arrays of predicted target positions and slew rates out to prediction horizon
@@ -195,7 +200,7 @@ class ModelPredictiveController:
         """
 
         num_items = int(self.prediction_horizon / self.control_cycle_period)
-        times_from_start = TimeDelta(self.control_cycle_period*np.arange(num_items), format='sec')
+        times_from_start = TimeDelta(self.control_cycle_period * np.arange(num_items), format='sec')
 
         self.target_times = time_start + times_from_start
 
@@ -285,16 +290,14 @@ class ModelPredictiveController:
                 break
         times_from_next_cmd = self.target_times - time_next_cmd
 
-
         for axis in self.axes:
-
             # predict mount position and slew rate at the instant when the next slew rate command
             # will be sent, which is the start of the prediction window used by the optimizer
             position_mount_at_next_cmd, slew_rate_at_next_cmd = self.mount.predict(
                 times_from_start=np.array([time_next_cmd_from_now.sec]),
                 rate_commands=np.array([self.slew_rate_command_prev.rates[axis]]),
                 position_axis_start=mount_state.position[axis].deg,
-                slew_rate_start=mount_state.rates[axis]
+                slew_rate_start=mount_state.rates[axis],
             )
             # Numpy arrays returned by previous call to mount.predict() are length-1
             position_mount_at_next_cmd = float(position_mount_at_next_cmd)
@@ -311,32 +314,30 @@ class ModelPredictiveController:
                     slew_rate_at_next_cmd,
                     self.mount.no_cross_encoder_positions()[axis].deg,
                 ),
-                bounds=[(
-                    -self.mount.max_slew_rate,
-                    self.mount.max_slew_rate
-                )]*len(times_from_next_cmd),
+                bounds=[(-self.mount.max_slew_rate, self.mount.max_slew_rate)]
+                * len(times_from_next_cmd),
                 method='SLSQP',  # Chosen by experimentation for speed and consistency
-                options={'disp': False, 'ftol': 1e-10, 'maxiter': 10}
+                options={'disp': False, 'ftol': 1e-10, 'maxiter': 10},
             )
             self.slew_rates_predicted[axis] = opt_result.x
 
         slew_rate_command = SlewRateCommand(
             time_to_send=time_next_cmd,
-            rates={axis: self.slew_rates_predicted[axis][0] for axis in self.axes}
+            rates={axis: self.slew_rates_predicted[axis][0] for axis in self.axes},
         )
         self.slew_rate_command_prev = slew_rate_command
 
         return slew_rate_command
 
     def _objective(
-            self,
-            slew_rate_commands: np.ndarray,
-            times_from_start: np.ndarray,
-            positions_target: np.ndarray,
-            position_axis_start: float,
-            slew_rate_start: float,
-            no_cross_position: Optional[float] = None,
-        ) -> float:
+        self,
+        slew_rate_commands: np.ndarray,
+        times_from_start: np.ndarray,
+        positions_target: np.ndarray,
+        position_axis_start: float,
+        slew_rate_start: float,
+        no_cross_position: Optional[float] = None,
+    ) -> float:
         """The objective (cost) function that the optimizer attempts to minimize.
 
         This predicts the mean magnitude of the pointing error over a future time window in
@@ -362,16 +363,11 @@ class ModelPredictiveController:
 
         # predict mount axis position in the future assuming this set of slew rate commands
         positions_mount, _ = self.mount.predict(
-            times_from_start,
-            slew_rate_commands,
-            position_axis_start,
-            slew_rate_start
+            times_from_start, slew_rate_commands, position_axis_start, slew_rate_start
         )
 
         pointing_errors = smallest_allowed_error(
-            positions_mount,
-            positions_target,
-            no_cross_position
+            positions_mount, positions_target, no_cross_position
         )
 
         # return mean error magnitude
@@ -401,23 +397,25 @@ class Tracker:
                 when not None. The CONVERGED flag in the return value will be set when this
                 criterion is met.
         """
+
         timeout: Optional[float]
         error_threshold: Optional[Angle]
 
     class StopReason(Flag):
         """Tracker `run()` method return value indicating stop reason or reasons."""
+
         NONE = 0
         TIMEOUT = auto()
         CONVERGED = auto()
 
     def __init__(
-            self,
-            mount: TelescopeMount,
-            mount_model: MountModel,
-            target: Target,
-            control_loop_period: float = 0.1,
-            telem_logger: Optional[TelemLogger] = None,
-        ):
+        self,
+        mount: TelescopeMount,
+        mount_model: MountModel,
+        target: Target,
+        control_loop_period: float = 0.1,
+        telem_logger: Optional[TelemLogger] = None,
+    ):
         """Constructs a Tracker object.
 
         Args:
@@ -472,7 +470,6 @@ class Tracker:
         """
         self.callback = callback
 
-
     def run(self, stopping_conditions: Optional[StoppingConditions] = None) -> "Tracker.StopReason":
         """Run the control loop.
 
@@ -492,7 +489,6 @@ class Tracker:
         time_last_start = None
 
         while True:
-
             # measure control cycle period
             time_now = time.perf_counter()
             cycle_period = time_now - time_last_start if time_last_start is not None else None
@@ -512,9 +508,7 @@ class Tracker:
             if self.callback is not None:
                 if self.callback(self):
                     stop_reason = self._finish_control_cycle(
-                        cycle_period,
-                        mount_state,
-                        callback_override=True
+                        cycle_period, mount_state, callback_override=True
                     )
                     if stop_reason != self.StopReason.NONE:
                         return stop_reason
@@ -535,23 +529,19 @@ class Tracker:
                 self.mount.slew(axis, rate_command.rates[axis])
 
             stop_reason = self._finish_control_cycle(
-                cycle_period,
-                mount_state,
-                rate_command,
-                rate_command_time_error
+                cycle_period, mount_state, rate_command, rate_command_time_error
             )
             if stop_reason != self.StopReason.NONE:
                 return stop_reason
 
-
     def _finish_control_cycle(
-            self,
-            cycle_period: Optional[float],
-            mount_state: MountState,
-            rate_command: Optional[SlewRateCommand] = None,
-            rate_command_time_error: Optional[float] = None,
-            callback_override: bool = False,
-        ) -> "Tracker.StopReason":
+        self,
+        cycle_period: Optional[float],
+        mount_state: MountState,
+        rate_command: Optional[SlewRateCommand] = None,
+        rate_command_time_error: Optional[float] = None,
+        callback_override: bool = False,
+    ) -> "Tracker.StopReason":
         """Final tasks to perform at the end of each control cycle."""
 
         # list of telemetry points to be populated
@@ -578,11 +568,16 @@ class Tracker:
             stop_reason = self._check_stopping_conditions(error_magnitude)
 
             if self.telem_logger is not None:
-                error_enc = {axis: float(smallest_allowed_error(
-                    mount_state.position[axis].deg,
-                    position_target.enc[axis].deg,
-                    self.mount.no_cross_encoder_positions()[axis].deg,
-                )) for axis in self.axes}
+                error_enc = {
+                    axis: float(
+                        smallest_allowed_error(
+                            mount_state.position[axis].deg,
+                            position_target.enc[axis].deg,
+                            self.mount.no_cross_encoder_positions()[axis].deg,
+                        )
+                    )
+                    for axis in self.axes
+                }
 
                 # target position
                 pt = Point('target_position')
@@ -606,7 +601,6 @@ class Tracker:
                 points.append(pt)
 
         if self.telem_logger is not None:
-
             pt = Point('control_cycle_stats')
             pt.field('period', cycle_period)
             pt.field('cycle_count', self.num_iterations)
@@ -653,11 +647,9 @@ class Tracker:
         self.num_iterations += 1
         return stop_reason
 
-
     def _check_stopping_conditions(
-            self,
-            error_magnitude: Optional[Angle] = None
-        ) -> "Tracker.StopReason":
+        self, error_magnitude: Optional[Angle] = None
+    ) -> "Tracker.StopReason":
         """Checks if any set stopping conditions are satisfied.
 
         Args:

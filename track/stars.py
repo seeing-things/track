@@ -65,10 +65,10 @@ def make_star_with_names(star_df: pd.Series) -> Star:
 
 
 def find_high_bright_stars(
-        observer: Barycentric,
-        min_altitude: float,
-        max_magnitude: float,
-    ) -> pd.DataFrame:
+    observer: Barycentric,
+    min_altitude: float,
+    max_magnitude: float,
+) -> pd.DataFrame:
     """Find a set of high, bright stars.
 
     Args:
@@ -91,15 +91,16 @@ def find_high_bright_stars(
     high_bright_stars_df = bright_stars_df[alt.degrees > min_altitude]
     if high_bright_stars_df.empty:
         raise NoStarFoundException(
-            f'No stars with magnitude <= {max_magnitude} have altitude >= {min_altitude} degrees.')
+            f'No stars with magnitude <= {max_magnitude} have altitude >= {min_altitude} degrees.'
+        )
     return high_bright_stars_df
 
 
 def find_highest_bright_star(
-        observer: Barycentric,
-        min_altitude: float = 60.0,
-        max_magnitude: float = 2.5,
-    ) -> Star:
+    observer: Barycentric,
+    min_altitude: float = 60.0,
+    max_magnitude: float = 2.5,
+) -> Star:
     """Find the highest bright and high star.
 
     Args:
@@ -119,10 +120,10 @@ def find_highest_bright_star(
 
 
 def find_brightest_high_star(
-        observer: Barycentric,
-        min_altitude: float = 60.0,
-        max_magnitude: float = 4.0,
-    ) -> Star:
+    observer: Barycentric,
+    min_altitude: float = 60.0,
+    max_magnitude: float = 4.0,
+) -> Star:
     """Find the brightest bright and high star.
 
     Args:
@@ -199,9 +200,8 @@ def main():
 
     # Approach 1: Find star nearest zenith with magnitude below a threshold
     highest_bright_star = find_highest_bright_star(
-        observer,
-        args.star_min_altitude,
-        args.star_max_magnitude)
+        observer, args.star_min_altitude, args.star_max_magnitude
+    )
     highest_bright_star_alt, _, _ = observer.observe(highest_bright_star).apparent().altaz()
     print(
         f'Highest star below magnitude {args.star_max_magnitude:.2f} is '
@@ -211,15 +211,15 @@ def main():
 
     # Approach 2: Find the brightest star with altitude greater than a threshold
     brightest_high_star = find_brightest_high_star(
-        observer,
-        args.star_min_altitude,
-        args.star_max_magnitude)
+        observer, args.star_min_altitude, args.star_max_magnitude
+    )
     brightest_high_star_alt, _, _ = observer.observe(brightest_high_star).apparent().altaz()
     print(
         f'Brightest star above {args.star_min_altitude:.0f} deg altitude is '
         f'{brightest_high_star.names[0]} '
         f'with altitude {brightest_high_star_alt.degrees:.2f} deg.'
     )
+
 
 if __name__ == "__main__":
     main()

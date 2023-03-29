@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 class LogLevel(IntEnum):
     """Define an enum for common levels since the logging module doesn't"""
+
     CRITICAL = logging.CRITICAL
     ERROR = logging.ERROR
     WARNING = logging.WARNING
@@ -64,11 +65,11 @@ def get_git_commit_hash() -> Optional[str]:
 
 
 def setup(
-        program_name: str,
-        console_level: int,
-        file_level: int,
-        enable_console_logging: bool,
-    ) -> None:
+    program_name: str,
+    console_level: int,
+    file_level: int,
+    enable_console_logging: bool,
+) -> None:
     """Setup logging for the package.
 
     This sets up logging to both the console and a log file. This should ideally be called before
@@ -90,7 +91,7 @@ def setup(
 
     formatter = logging.Formatter(
         fmt='[%(asctime)s.%(msecs)d] [%(name)s] [%(levelname)s] %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        datefmt='%Y-%m-%d %H:%M:%S',
     )
     formatter.converter = time.gmtime  # use UTC rather than local time
 

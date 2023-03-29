@@ -30,11 +30,12 @@ def main():
 
     logs.setup_logging_from_args(args, 'gamepad_control')
 
-    with mounts.make_mount_from_args(args, use_multiprocessing=False) as mount, \
-        laser.make_laser_from_args(args) as laser_pointer, \
-        telem.make_telem_logger_from_args(args) as telem_logger, \
-        Gamepad() as game_pad:
-
+    with (
+        mounts.make_mount_from_args(args, use_multiprocessing=False) as mount,
+        laser.make_laser_from_args(args) as laser_pointer,
+        telem.make_telem_logger_from_args(args) as telem_logger,
+        Gamepad() as game_pad,
+    ):
         if game_pad is None:
             print('This program requires a gamepad but none were found.')
             sys.exit(1)

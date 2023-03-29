@@ -58,13 +58,7 @@ class Gamepad(TelemSource):
     MAX_ANALOG_VAL = 2**15
     DEAD_ZONE_MAG = 256
 
-    def __init__(
-            self,
-            left_gain=1.0,
-            right_gain=0.1,
-            int_limit=1.0,
-            int_loop_period=0.1
-        ):
+    def __init__(self, left_gain=1.0, right_gain=0.1, int_limit=1.0, int_loop_period=0.1):
         """Inits Gamepad object.
 
         Args:
@@ -102,8 +96,7 @@ class Gamepad(TelemSource):
         self.gamepad = inputs.devices.gamepads[selected_index]
         self.input_thread = threading.Thread(target=self.__get_input, name='Gamepad: input thread')
         self.integrator_thread = threading.Thread(
-            target=self.__integrator,
-            name='Gamepad: integrator thread'
+            target=self.__integrator, name='Gamepad: integrator thread'
         )
         self.integrator_mode = False
         self.running = True
@@ -148,8 +141,8 @@ class Gamepad(TelemSource):
 
     def get_proportional(self):
         """Returns a tuple containing the instantaneous x/y values."""
-        x = np.clip(self.left_gain*self.left_x + self.right_gain*self.right_x, -1.0, 1.0)
-        y = np.clip(self.left_gain*self.left_y + self.right_gain*self.right_y, -1.0, 1.0)
+        x = np.clip(self.left_gain * self.left_x + self.right_gain * self.right_x, -1.0, 1.0)
+        y = np.clip(self.left_gain * self.left_y + self.right_gain * self.right_y, -1.0, 1.0)
         return (x, y)
 
     def get_integrator(self):
@@ -164,10 +157,8 @@ class Gamepad(TelemSource):
             return self.get_proportional()
 
     def register_callback(
-            self,
-            event_code: Optional[str] = None,
-            callback: Optional[Callable[[int], None]] = None
-        ):
+        self, event_code: Optional[str] = None, callback: Optional[Callable[[int], None]] = None
+    ):
         """Register a callback function to be called when a particular gamepad event occurs.
 
         The callback will not be called from the main thread.
@@ -184,9 +175,9 @@ class Gamepad(TelemSource):
     def _update_analog(self, stick: str) -> None:
         """Convert integer analog stick values to floating point"""
         if stick == 'left':
-            raw_vector = self.state['ABS_X'] - 1j*self.state['ABS_Y']
+            raw_vector = self.state['ABS_X'] - 1j * self.state['ABS_Y']
         elif stick == 'right':
-            raw_vector = self.state['ABS_RX'] - 1j*self.state['ABS_RY']
+            raw_vector = self.state['ABS_RX'] - 1j * self.state['ABS_RY']
         else:
             raise ValueError("stick must be 'left' or 'right'")
 
@@ -199,7 +190,7 @@ class Gamepad(TelemSource):
         else:
             scaled_mag = 0.0
 
-        scaled_vector = scaled_mag * np.exp(1j*np.angle(raw_vector))
+        scaled_vector = scaled_mag * np.exp(1j * np.angle(raw_vector))
 
         if stick == 'left':
             self.left_x = scaled_vector.real
@@ -207,7 +198,6 @@ class Gamepad(TelemSource):
         elif stick == 'right':
             self.right_x = scaled_vector.real
             self.right_y = scaled_vector.imag
-
 
     def __get_input(self):
         """Thread for reading input from gamepad"""
@@ -221,7 +211,6 @@ class Gamepad(TelemSource):
 
             # use select() to check if events are waiting to avoid blocking on read()
             if self.sel.select(timeout=0.1):
-
                 # call to read() is blocking
                 events = self.gamepad.read()
                 for event in events:
@@ -294,13 +283,16 @@ class Gamepad(TelemSource):
             point.field(name, self.__dict__[name])
         point.time(datetime.utcnow())
 
-        point_raw = Point.from_dict({
-            'measurement': 'gamepad_events',
-            'fields': self.state,
-            'time': datetime.utcnow(),
-        })
+        point_raw = Point.from_dict(
+            {
+                'measurement': 'gamepad_events',
+                'fields': self.state,
+                'time': datetime.utcnow(),
+            }
+        )
 
         return [point, point_raw]
+
 
 def main():
     """Prints all gamepad events received"""
@@ -311,6 +303,7 @@ def main():
     )
     with Gamepad():
         signal.pause()
+
 
 if __name__ == "__main__":
     main()

@@ -27,7 +27,7 @@ from track.mounts import MeridianSide
 from track.model import (
     save_default_param_set,
     load_stored_param_set,
-    apply_guide_cam_alignment_error
+    apply_guide_cam_alignment_error,
 )
 from track.plate_solve import plate_solve, NoSolutionException
 from track.subprogram import terminate_subprocess
@@ -43,7 +43,7 @@ def main():
     parser.add_argument(
         '--main-camera-cfg',
         help='Configuration file with settings for the main camera',
-        default=os.path.join(CONFIG_PATH, 'track_main_cam.cfg')
+        default=os.path.join(CONFIG_PATH, 'track_main_cam.cfg'),
     )
     parser.add_argument(
         '--meridian-side',
@@ -56,7 +56,7 @@ def main():
         '--non-interactive',
         help='bypass all interactive steps',
         action='store_false',
-        dest='interactive'
+        dest='interactive',
     )
     cameras.add_program_arguments(parser)
     logs.add_program_arguments(parser)
@@ -95,7 +95,8 @@ def main():
             '--no-console-logs',  # confusing to have logs from multiple processes
             f'--meridian-side={args.meridian_side}',
             '--stop-when-converged-angle=0.1',  # stop when within 1 degree of target
-        ] + target_args,
+        ]
+        + target_args,
     )
     atexit.register(terminate_subprocess, track_process)
     if retcode := track_process.wait():
@@ -118,15 +119,16 @@ def main():
             '--fuse',
             f'--pid-to-signal={os.getpid()}',
             '--spiral-search',
-        ] + target_args
+        ]
+        + target_args
     )
     atexit.register(terminate_subprocess, track_process)
 
     if args.interactive:
         if not click.confirm(
-                f'Is the spiral search completed, with {star_name} centered in the preview window?',
-                default=True
-            ):
+            f'Is the spiral search completed, with {star_name} centered in the preview window?',
+            default=True,
+        ):
             logger.critical(f'User denies that {star_name} is centered in the preview window.')
             sys.exit(1)
     else:
@@ -146,10 +148,7 @@ def main():
         logger.critical(f'track subprocess ended prematurely with exit code {returncode}')
         sys.exit(1)
     try:
-        wcs, _ = plate_solve(
-            frame,
-            camera_width=camera.field_of_view[1]
-        )
+        wcs, _ = plate_solve(frame, camera_width=camera.field_of_view[1])
     except NoSolutionException:
         logger.critical('Plate solving failed.')
         sys.exit(1)

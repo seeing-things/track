@@ -19,8 +19,10 @@ from astropy import units as u
 # This suppresses that warning.
 warnings.simplefilter('ignore', FITSFixedWarning)
 
+
 class NoSolutionException(Exception):
     """Raised when plate solving fails to find a solution."""
+
 
 def plate_solve(frame: np.ndarray, camera_width: Optional[float] = None) -> Tuple[WCS, SkyCoord]:
     """Perform plate solving on a camera frame using Astrometry.net software.
@@ -47,7 +49,6 @@ def plate_solve(frame: np.ndarray, camera_width: Optional[float] = None) -> Tupl
     # Must pass frame to astrometry.net as a file and read results from files, so do this in a
     # unique temporary directory that is deleted as soon as we are done using it
     with tempfile.TemporaryDirectory() as tempdir:
-
         filename_prefix = 'guidescope_frame'
         frame_filename = os.path.join(tempdir, filename_prefix + '.fits')
 

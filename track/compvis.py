@@ -30,19 +30,10 @@ def find_features(frame: np.ndarray) -> List[cv2.KeyPoint]:
     hist_diff = np.diff(hist)
     threshold = np.argmax(hist_diff[hist_max_index:] >= 0) + hist_max_index
 
-    _, thresh = cv2.threshold(
-        frame,
-        threshold,
-        255,
-        cv2.THRESH_BINARY
-    )
+    _, thresh = cv2.threshold(frame, threshold, 255, cv2.THRESH_BINARY)
 
     # outer contours only
-    contours, _ = cv2.findContours(
-        thresh,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_NONE
-    )
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
     keypoints = []
     for contour in contours:
@@ -63,7 +54,7 @@ def find_features(frame: np.ndarray) -> List[cv2.KeyPoint]:
         # find the maximum distance between the center and the contour
         radius = np.max(np.linalg.norm(center - contour, axis=2))
 
-        keypoints.append(cv2.KeyPoint(center[0], center[1], 2.0*radius))
+        keypoints.append(cv2.KeyPoint(center[0], center[1], 2.0 * radius))
 
     return keypoints
 
@@ -72,13 +63,13 @@ class PreviewWindow:
     """Generates an annotated camera frame for display in an OpenCV window"""
 
     def __init__(
-            self,
-            frame_width: int,
-            frame_height: int,
-            crosshairs_gap_to_height: float = 0.1,
-            target_position_desired: Optional[Tuple[float, float]] = None,
-            window_title: str = 'track: Guidescope Camera',
-        ):
+        self,
+        frame_width: int,
+        frame_height: int,
+        crosshairs_gap_to_height: float = 0.1,
+        target_position_desired: Optional[Tuple[float, float]] = None,
+        window_title: str = 'track: Guidescope Camera',
+    ):
         """Constructs an instance of PreviewWindow.
 
         Args:
@@ -106,11 +97,11 @@ class PreviewWindow:
             self.target_position_desired = target_position_desired
 
     def show_annotated_frame(
-            self,
-            frame: np.ndarray,
-            keypoints: Optional[List[cv2.KeyPoint]] = None,
-            target_keypoint: Optional[cv2.KeyPoint] = None
-        ) -> None:
+        self,
+        frame: np.ndarray,
+        keypoints: Optional[List[cv2.KeyPoint]] = None,
+        target_keypoint: Optional[cv2.KeyPoint] = None,
+    ) -> None:
         """Displays camera frame in a window with features circled and crosshairs.
 
         Args:
@@ -128,28 +119,28 @@ class PreviewWindow:
             (self.frame_center_px[0], 0),  # top
             (self.frame_center_px[0], self.frame_center_px[1] - self.gap_px),  # near middle
             (100, 100, 100),
-            1
+            1,
         )
         cv2.line(
             frame_annotated,
             (self.frame_center_px[0], self.frame_center_px[1] + self.gap_px),  # near middle
             (self.frame_center_px[0], self.frame_height - 1),  # bottom
             (100, 100, 100),
-            1
+            1,
         )
         cv2.line(
             frame_annotated,
             (0, self.frame_center_px[1]),  # left
             (self.frame_center_px[0] - self.gap_px, self.frame_center_px[1]),  # near middle
             (100, 100, 100),
-            1
+            1,
         )
         cv2.line(
             frame_annotated,
             (self.frame_center_px[0] + self.gap_px, self.frame_center_px[1]),  # near middle
             (self.frame_width - 1, self.frame_center_px[1]),  # right
             (100, 100, 100),
-            1
+            1,
         )
 
         # add cross at desired position of the target
@@ -173,7 +164,7 @@ class PreviewWindow:
                 keypoints,
                 np.array([]),
                 (255, 0, 0),
-                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS,
             )
 
         # circle target keypoint in red
@@ -184,7 +175,7 @@ class PreviewWindow:
                 [target_keypoint],
                 np.array([]),
                 (0, 0, 255),
-                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS,
             )
 
         # display the frame in a window

@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 class GPSFixType(IntEnum):
     """Improved enum-ized version of the 'MODE_' constants from the gps module"""
+
     ZERO = 0
     NO_FIX = 1
     FIX_2D = 2
@@ -60,6 +61,7 @@ class GPSValues(NamedTuple):
         climb: Rate of ascent or decent in meters per second. Range: (-Inf, +Inf); upward positive.
         time: Absolute UTC time as string in RFC 3339 format; up to millisecond precision.
     """
+
     lat: float
     lon: float
     alt: float
@@ -79,6 +81,7 @@ class GPSMargins(NamedTuple):
         climb: max allowed deviation from zero for vertical speed in meters per second.
         time: max allowed deviation between gps time and system time in seconds.
     """
+
     speed: float
     climb: float
     time: float
@@ -93,6 +96,7 @@ class GPS:
 
     class FailureReason(Flag):
         """Various reasons a GPS request might fail."""
+
         NONE = 0
         BAD_FIX = auto()  # insufficient fix type
         NO_LAT = auto()  # no latitude
@@ -108,7 +112,6 @@ class GPS:
         ERR_SPEED = auto()  # excessive error in parameter: speed
         ERR_CLIMB = auto()  # excessive error in parameter: climb
         ERR_TIME = auto()  # excessive error in parameter: time
-
 
     class GetLocationFailure(Exception):
         """Raised by get_location() when timeout expires before success criteria are met.
@@ -152,11 +155,7 @@ class GPS:
         self.client.close()
 
     def get_location(
-        self,
-        timeout: float,
-        need_3d: bool,
-        err_max: GPSValues,
-        margins: GPSMargins
+        self, timeout: float, need_3d: bool, err_max: GPSValues, margins: GPSMargins
     ) -> EarthLocation:
         """Get location estimate from GPS receiver.
 
@@ -205,7 +204,6 @@ class GPS:
         # read reports until all criteria are satisfied (return) or timeout (exception)
         fail_reasons = self.FailureReason.NONE
         while True:
-
             if perf_counter() - t_start >= timeout:
                 raise self.GetLocationFailure(fail_reasons)
 
@@ -263,12 +261,8 @@ class GPS:
 
         raise RuntimeError('GPS: unexpected code path')
 
-
     def _check_criteria(
-        self,
-        need_3d: bool,
-        err_max: GPSValues,
-        margins: GPSMargins
+        self, need_3d: bool, err_max: GPSValues, margins: GPSMargins
     ) -> "GPS.FailureReason":
         """Check that the values provided by the GPS receiver meet certain criteria.
 
@@ -310,7 +304,8 @@ class GPS:
                 # iterates over FailureReason flags and adds the first one with a matching name
                 # pylint: disable=no-member
                 fail_reasons |= next(
-                    val for (name, val) in self.FailureReason.__members__.items()
+                    val
+                    for (name, val) in self.FailureReason.__members__.items()
                     if name == 'ERR_' + field.upper()
                 )
 
@@ -351,9 +346,9 @@ def _test_margin_time_fail(v_str: str, margin: float):
 
 
 def add_program_arguments(
-        parser: ArgParser,
-        group_description: str = 'Setting all three of these options will override GPS',
-    ) -> None:
+    parser: ArgParser,
+    group_description: str = 'Setting all three of these options will override GPS',
+) -> None:
     """Add program arguments pertaining to observer location.
 
     Arguments are added such that the location is obtained from a GPS receiver by default, but the
@@ -377,11 +372,7 @@ def add_program_arguments(
         help='longitude of observer (+E)',
         type=float,
     )
-    observer_group.add_argument(
-        '--elevation',
-        help='elevation of observer (m)',
-        type=float
-    )
+    observer_group.add_argument('--elevation', help='elevation of observer (m)', type=float)
 
 
 def make_location_from_args(args: Namespace) -> EarthLocation:
@@ -401,7 +392,9 @@ def make_location_from_args(args: Namespace) -> EarthLocation:
         print('Location (lat, lon, elevation) specified by program args. This will override GPS.')
         if not click.confirm('Proceed without GPS location?', default=True):
             raise RuntimeError('Could not generate a location')
-        location = EarthLocation(lat=args.lat*u.deg, lon=args.lon*u.deg, height=args.elevation*u.m)
+        location = EarthLocation(
+            lat=args.lat * u.deg, lon=args.lon * u.deg, height=args.elevation * u.m
+        )
         logger.info('Got location from program args.')
     elif any(arg is not None for arg in [args.lat, args.lon, args.elevation]):
         raise ValueError("Must give all of lat, lon, and elevation or none of them.")
@@ -411,22 +404,18 @@ def make_location_from_args(args: Namespace) -> EarthLocation:
                 timeout=10.0,
                 need_3d=True,
                 err_max=GPSValues(
-                    lat=100.0,
-                    lon=100.0,
-                    alt=100.0,
-                    track=inf,
-                    speed=inf,
-                    climb=inf,
-                    time=0.01
+                    lat=100.0, lon=100.0, alt=100.0, track=inf, speed=inf, climb=inf, time=0.01
                 ),
-                margins=GPSMargins(speed=inf, climb=inf, time=1.0)
+                margins=GPSMargins(speed=inf, climb=inf, time=1.0),
             )
             logger.info('Got location from GPS.')
 
-    logger.info('Generated the following location: '
+    logger.info(
+        'Generated the following location: '
         f'lat: {location.lat:.5f}, '
         f'lon: {location.lon:.5f}, '
-        f'altitude: {location.height:.2f}.')
+        f'altitude: {location.height:.2f}.'
+    )
 
     return location
 
@@ -441,15 +430,7 @@ def main():
     # parameters
     timeout = 10.0
     need_3d = True
-    err_max = GPSValues(
-        lat=100.0,
-        lon=100.0,
-        alt=inf,
-        track=inf,
-        speed=inf,
-        climb=inf,
-        time=100.0
-    )
+    err_max = GPSValues(lat=100.0, lon=100.0, alt=inf, track=inf, speed=inf, climb=inf, time=100.0)
     margins = GPSMargins(speed=inf, climb=inf, time=inf)
 
     with GPS() as g:

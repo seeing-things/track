@@ -48,7 +48,6 @@ class ArgParser(configargparse.ArgParser):
     """Uses the contructor arguments we care about in this project."""
 
     def __init__(self, additional_config_files: list[str] | None = None, **kwargs):
-
         if additional_config_files is not None:
             config_files = DEFAULT_CONFIG_FILES + additional_config_files
         else:
@@ -59,8 +58,8 @@ class ArgParser(configargparse.ArgParser):
             allow_abbrev=True,
             default_config_files=config_files,
             formatter_class=ArgumentDefaultsHelpFormatterImproved,
-            config_file_parser_class=configargparse.DefaultConfigFileParser, # INI format
+            config_file_parser_class=configargparse.DefaultConfigFileParser,  # INI format
             args_for_setting_config_path=['-c', '--config-file'],
             args_for_writing_out_config_file=['-w', '--write-out-config-file'],
-            **kwargs
+            **kwargs,
         )

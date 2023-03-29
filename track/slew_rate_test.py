@@ -11,6 +11,7 @@ SLEW_CHANGE_TIME = 3.0
 TIME_LIMIT = 60.0
 SLEW_LIMIT = 20.0
 
+
 def main():
     """See module docstring"""
 
@@ -33,7 +34,6 @@ def main():
             rate_est[axis] = []
 
             for rate in rates:
-
                 print(f'Commanding slew at {rate} arcseconds per second.')
 
                 time_start = time.time()
@@ -47,7 +47,7 @@ def main():
                     position = mount.get_position()
                     time_elapsed = time.time() - time_start
                     position_change = abs(
-                        Longitude(position[axis] - position_start[axis], wrap_angle=180*u.deg)
+                        Longitude(position[axis] - position_start[axis], wrap_angle=180 * u.deg)
                     ).deg
                     if position_change > SLEW_LIMIT or time_elapsed > TIME_LIMIT:
                         break

@@ -52,8 +52,7 @@ def date_to_monthnum(date: datetime.date) -> int:
 def print_timezone_help():
     """Print help message for how to use the timezones 'tz' program argument"""
     tz_soup = BeautifulSoup(
-        requests.get('http://heavens-above.com/SelectLocation.aspx', timeout=10).text,
-        'lxml'
+        requests.get('http://heavens-above.com/SelectLocation.aspx', timeout=10).text, 'lxml'
     )
 
     # find the dropdown box containing the tz code to description mappings
@@ -68,49 +67,28 @@ def main():
     """See module docstring at the top of this file."""
 
     parser = ArgParser()
+    parser.add_argument('outdir', help='output directory')
     parser.add_argument(
-        'outdir',
-        help='output directory'
-    )
-    parser.add_argument(
-        '--mag-limit',
-        required=True,
-        help='magnitude cutoff for object passes',
-        type=float
+        '--mag-limit', required=True, help='magnitude cutoff for object passes', type=float
     )
     time_group = parser.add_argument_group(
         title='Time Options',
         description='Options pertaining to time of observation',
     )
     time_group.add_argument(
-        '--tz',
-        required=True,
-        help='time zone short code (use \'help\' for a list of codes)'
+        '--tz', required=True, help='time zone short code (use \'help\' for a list of codes)'
     )
     time_group.add_argument(
-        '--year',
-        required=False,
-        help='observation year (default: now)',
-        type=int
+        '--year', required=False, help='observation year (default: now)', type=int
     )
     time_group.add_argument(
-        '--month',
-        required=False,
-        help='observation month (default: now)',
-        type=int
+        '--month', required=False, help='observation month (default: now)', type=int
     )
     time_group.add_argument(
-        '--day',
-        required=False,
-        help='observation day-of-month (default: now)',
-        type=int
+        '--day', required=False, help='observation day-of-month (default: now)', type=int
     )
     time_group.add_argument(
-        '--ampm',
-        required=False,
-        help='morning or evening',
-        default='PM',
-        choices=['am', 'pm']
+        '--ampm', required=False, help='morning or evening', default='PM', choices=['am', 'pm']
     )
     gps_client.add_program_arguments(parser)
     logs.add_program_arguments(parser)
@@ -127,8 +105,10 @@ def main():
     elif args.year is None and args.month is None and args.day is None:
         when = datetime.datetime.now().date()
     else:
-        logger.critical('If an explicit observation date is given, then year, month, and day must '
-            'all be specified.')
+        logger.critical(
+            'If an explicit observation date is given, then year, month, and day must '
+            'all be specified.'
+        )
         sys.exit(1)
 
     # Get location of observer from arguments or from GPS
@@ -136,38 +116,36 @@ def main():
 
     base_url = 'http://www.heavens-above.com/'
 
-    bright_sats_url = (base_url + f'AllSats.aspx?lat={location.lat.deg}&lng={location.lon.deg}'
-        f'&alt={location.height.value}&tz={args.tz}')
+    bright_sats_url = (
+        base_url
+        + f'AllSats.aspx?lat={location.lat.deg}&lng={location.lon.deg}'
+        f'&alt={location.height.value}&tz={args.tz}'
+    )
 
     # do an initial page request so we can get the __VIEWSTATE and __VIEWSTATEGENERATOR values
     pre_soup = BeautifulSoup(requests.get(bright_sats_url, timeout=10).text, 'lxml')
-    view_state = pre_soup.find(
-        'input',
-        {'type': 'hidden', 'name': '__VIEWSTATE'         }
-    )['value']
+    view_state = pre_soup.find('input', {'type': 'hidden', 'name': '__VIEWSTATE'})['value']
     view_state_generator = pre_soup.find(
-        'input',
-        {'type': 'hidden', 'name': '__VIEWSTATEGENERATOR'}
+        'input', {'type': 'hidden', 'name': '__VIEWSTATEGENERATOR'}
     )['value']
 
     post_data = [
-        ('__EVENTTARGET',                               ''),
-        ('__EVENTARGUMENT',                             ''),
-        ('__LASTFOCUS',                                 ''),
-        ('__VIEWSTATE',                                 view_state),
-        ('__VIEWSTATEGENERATOR',                        view_state_generator),
-#        ('utcOffset',                                   '0'), # uhhhhhh...
-        ('ctl00$ddlCulture',                            'en'),
+        ('__EVENTTARGET', ''),
+        ('__EVENTARGUMENT', ''),
+        ('__LASTFOCUS', ''),
+        ('__VIEWSTATE', view_state),
+        ('__VIEWSTATEGENERATOR', view_state_generator),
+        # ('utcOffset', '0'),  # uhhhhhh...
+        ('ctl00$ddlCulture', 'en'),
         ('ctl00$cph1$TimeSelectionControl1$comboMonth', str(date_to_monthnum(when))),
-        ('ctl00$cph1$TimeSelectionControl1$comboDay',   str(when.day)),
-        ('ctl00$cph1$TimeSelectionControl1$radioAMPM',  args.ampm.upper()),
-        ('ctl00$cph1$TimeSelectionControl1$btnSubmit',  'Update'),
-        ('ctl00$cph1$radioButtonsMag',                  '5.0'),
+        ('ctl00$cph1$TimeSelectionControl1$comboDay', str(when.day)),
+        ('ctl00$cph1$TimeSelectionControl1$radioAMPM', args.ampm.upper()),
+        ('ctl00$cph1$TimeSelectionControl1$btnSubmit', 'Update'),
+        ('ctl00$cph1$radioButtonsMag', '5.0'),
     ]
 
     bright_sats_soup = BeautifulSoup(
-        requests.post(bright_sats_url, data=post_data, timeout=10).text,
-        'lxml'
+        requests.post(bright_sats_url, data=post_data, timeout=10).text, 'lxml'
     )
 
     # find the rows in the table listing the satellite passes
@@ -178,12 +156,11 @@ def main():
     logger.info(f'Found {len(rows)} (pre-filtered) satellite passes.')
 
     for row in rows:
-
         cols = row.find_all('td')
 
         # We're not using all of these now, but preserving them is useful as documentation
-        sat        =       cols[ 0].string
-        mag        = float(cols[ 1].string)
+        sat = cols[0].string
+        mag = float(cols[1].string)
         # start_time =       cols[ 2].string # <-- in local time
         # start_alt  =       cols[ 3].string
         # start_az   =       cols[ 4].string

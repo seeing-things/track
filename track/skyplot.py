@@ -52,40 +52,37 @@ def add_arrow(line: matplotlib.lines.Line2D, size: int = 15, color: str = None) 
     elif ind == 0:
         ind += 1
 
-    line.axes.annotate('',
-        xytext=(theta[ind-1], radius[ind-1]),
+    line.axes.annotate(
+        '',
+        xytext=(theta[ind - 1], radius[ind - 1]),
         xy=(theta[ind], radius[ind]),
         arrowprops={'arrowstyle': '-|>', 'color': color},
-        size=size
+        size=size,
     )
 
 
 def plot_trajectory(
-        ax: matplotlib.axes.Axes,
-        az: np.ndarray,
-        alt: np.ndarray,
-        color: Optional[str] = None,
-        label: Optional[str] = None,
-    ) -> None:
+    ax: matplotlib.axes.Axes,
+    az: np.ndarray,
+    alt: np.ndarray,
+    color: Optional[str] = None,
+    label: Optional[str] = None,
+) -> None:
     """Plot a curve with an arrow indicating direction of motion."""
     line = ax.plot(np.radians(az), 90.0 - alt, color=color, label=label)[0]
     add_arrow(line)
 
 
 def fill_to_horizon(
-        ax: matplotlib.axes.Axes,
-        az: np.ndarray,
-        alt: np.ndarray,
-        alpha: float = 1.0,
-        color=None
-    ) -> None:
+    ax: matplotlib.axes.Axes, az: np.ndarray, alt: np.ndarray, alpha: float = 1.0, color=None
+) -> None:
     """Fill the region between a curve and the horizon."""
     az = az[alt >= 0]
     alt = alt[alt >= 0]
     ax.fill_between(
         np.radians(az),
         90.0 - alt,
-        100*np.ones_like(az),
+        100 * np.ones_like(az),
         alpha=alpha,
         color=color,
         linewidth=0,
@@ -93,12 +90,12 @@ def fill_to_horizon(
 
 
 def fill_to_zenith(
-        ax: matplotlib.axes.Axes,
-        az: np.ndarray,
-        alt: np.ndarray,
-        alpha: float = 1.0,
-        color: Optional[str] = None
-    ) -> None:
+    ax: matplotlib.axes.Axes,
+    az: np.ndarray,
+    alt: np.ndarray,
+    alpha: float = 1.0,
+    color: Optional[str] = None,
+) -> None:
     """Fill the region between a curve and zenith."""
     ax.fill_between(
         np.radians(az),
@@ -147,7 +144,7 @@ def make_sky_plot() -> matplotlib.axes.Axes:
     plt.style.use('dark_background')
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
     fig.canvas.manager.set_window_title('Skyplot')
-    ax.set_theta_offset(np.pi/2)
+    ax.set_theta_offset(np.pi / 2)
     ax.set_theta_direction(-1)
     ax.set_rlim(1, 91)
     ax.grid(True, which='major')
@@ -168,7 +165,7 @@ def make_sky_plot() -> matplotlib.axes.Axes:
 
     theta_labels = []
     for chunk in range(0, 8):
-        label_angle = chunk*45.0
+        label_angle = chunk * 45.0
         while label_angle >= 360.0:
             label_angle -= 360.0
         if chunk == 0:
@@ -190,12 +187,12 @@ def make_sky_plot() -> matplotlib.axes.Axes:
 
 
 def plot_tle(
-        ax: matplotlib.axes.Axes,
-        tle_filename: str,
-        location: EarthLocation,
-        time_start: datetime,
-        time_stop: datetime,
-    ) -> Tuple[datetime, datetime]:
+    ax: matplotlib.axes.Axes,
+    tle_filename: str,
+    location: EarthLocation,
+    time_start: datetime,
+    time_stop: datetime,
+) -> Tuple[datetime, datetime]:
     """Plot the trajectory of the first above-horizon pass within a specified time window."""
 
     tle = []
@@ -238,11 +235,11 @@ def plot_tle(
 
 
 def reachable_zone_scatter(
-        ax: matplotlib.axes.Axes,
-        mount_model: MountModel,
-        axis_0_west_limit: float = 110,
-        axis_0_east_limit: float = 110,
-    ) -> None:
+    ax: matplotlib.axes.Axes,
+    mount_model: MountModel,
+    axis_0_west_limit: float = 110,
+    axis_0_east_limit: float = 110,
+) -> None:
     """Generate a scatter plot showing the reachable zone.
 
     This function assumes an equatorial mount with limits on the right ascension axis.
@@ -258,7 +255,6 @@ def reachable_zone_scatter(
     axis_0_east_limit = 180 + axis_0_east_limit
 
     for meridian_side in MeridianSide:
-
         axis_0 = np.linspace(axis_0_west_limit, axis_0_east_limit, 20)
         if meridian_side == MeridianSide.EAST:
             axis_1 = np.linspace(0, 180, 20)
@@ -272,8 +268,8 @@ def reachable_zone_scatter(
         for idx in range(points.shape[1]):
             topo = mount_model.encoders_to_topocentric(
                 MountEncoderPositions(
-                    Longitude(points[0][idx]*u.deg),
-                    Longitude(points[1][idx]*u.deg),
+                    Longitude(points[0][idx] * u.deg),
+                    Longitude(points[1][idx] * u.deg),
                 )
             )
             az.append(topo.az.deg)
@@ -285,11 +281,11 @@ def reachable_zone_scatter(
 
 
 def plot_reachable_zone(
-        ax: matplotlib.axes.Axes,
-        mount_model: MountModel,
-        axis_0_west_limit: float = 110,
-        axis_0_east_limit: float = 110,
-    ) -> None:
+    ax: matplotlib.axes.Axes,
+    mount_model: MountModel,
+    axis_0_west_limit: float = 110,
+    axis_0_east_limit: float = 110,
+) -> None:
     """Plot area(s) of sky reachable by the mount.
 
     This only accounts for what area of the sky is reachable. It does not take into account whether
@@ -316,15 +312,15 @@ def plot_reachable_zone(
     # place a dot at the position of the mount pole
     mount_pole_topo = mount_model.spherical_to_topocentric(
         UnitSphericalRepresentation(
-            lon=0*u.deg,
-            lat=90*u.deg,
+            lon=0 * u.deg,
+            lat=90 * u.deg,
         )
     )
     ax.plot(np.radians(mount_pole_topo.az.deg), 90.0 - mount_pole_topo.alt.deg, 'k.')
 
     # start with a white background in the polar plot area since the filled area colors look better
     # alpha-blended with a white background versus a black background
-    fill_to_horizon(ax, np.linspace(0, 360, 100), 90*np.ones(100), color='#bbbbbb', alpha=1)
+    fill_to_horizon(ax, np.linspace(0, 360, 100), 90 * np.ones(100), color='#bbbbbb', alpha=1)
 
     alpha = 0.6
 
@@ -344,7 +340,7 @@ def plot_reachable_zone(
         # generating an entry in the legend for this region
         ax.add_patch(Circle((0, 100), radius=0, color=color, alpha=alpha, label=legend_label))
 
-        alt = 90*np.ones_like(az)
+        alt = 90 * np.ones_like(az)
         fill_to_horizon(ax, az, alt, color=color, alpha=alpha)
 
         for axis_0 in (axis_0_west_limit, axis_0_east_limit):
@@ -353,8 +349,8 @@ def plot_reachable_zone(
             for axis_1 in axis_1_range:
                 topo = mount_model.encoders_to_topocentric(
                     MountEncoderPositions(
-                        Longitude(axis_0*u.deg),
-                        Longitude(axis_1*u.deg),
+                        Longitude(axis_0 * u.deg),
+                        Longitude(axis_1 * u.deg),
                     )
                 )
                 az.append(topo.az.deg)
@@ -374,10 +370,10 @@ def plot_reachable_zone(
 
 
 def plot_mount_motion(
-        ax: matplotlib.axes.Axes,
-        time_start: datetime,
-        time_stop: datetime,
-    ) -> None:
+    ax: matplotlib.axes.Axes,
+    time_start: datetime,
+    time_stop: datetime,
+) -> None:
     """Plot curve showing position of the mount versus time from telemetry.
 
     Args:
@@ -392,7 +388,7 @@ def plot_mount_motion(
         'from(bucket: "telem")'
         f'|> range(start: {int(time_start.timestamp())}, stop: {int(time_stop.timestamp())})'
         '|> filter(fn: (r) => r._measurement == "mount_position" '
-            'and (r._field == "azimuth" or r._field == "altitude"))'
+        'and (r._field == "azimuth" or r._field == "altitude"))'
         '|> aggregateWindow(every: 1s, fn: first, createEmpty: false)'
     )
 
@@ -402,7 +398,7 @@ def plot_mount_motion(
             ax,
             az=df[df._field == 'azimuth']._value.values,
             alt=df[df._field == 'altitude']._value.values,
-            label='Mount Telemetry'
+            label='Mount Telemetry',
         )
 
 
@@ -410,40 +406,39 @@ def main():
     """See module docstring at the top of this file"""
 
     parser = ArgParser(description='Make a plot of the sky to plan and evaluate tracking')
-    parser.add_argument(
-        '--tle',
-        help='filename of two-line element (TLE) target ephemeris'
-    )
+    parser.add_argument('--tle', help='filename of two-line element (TLE) target ephemeris')
     parser.add_argument(
         '--time-start',
-        help=('UTC start time of 24-hour window in which the first above-horizon pass will be '
+        help=(
+            'UTC start time of 24-hour window in which the first above-horizon pass will be '
             ' plotted. Many natural language date formats are supported. If not specified, the '
             'current time will be used.'
         ),
-        type=str)
+        type=str,
+    )
     parser.add_argument(
         '--axis-west-limit',
         help='western limit for the right ascension axis in degrees from the meridian',
         default=110,
-        type=float)
+        type=float,
+    )
     parser.add_argument(
         '--axis-east-limit',
         help='eastern limit for the right ascension axis in degrees from the meridian',
         default=110,
-        type=float)
+        type=float,
+    )
     custom_model_group = parser.add_argument_group(
         title='Custom Mount Model Options',
-        description=('Set all of these to use a custom mount model instead of a stored model. '
-            'If no GPS is connected, also set the Observer Location Options.'),
+        description=(
+            'Set all of these to use a custom mount model instead of a stored model. '
+            'If no GPS is connected, also set the Observer Location Options.'
+        ),
     )
+    custom_model_group.add_argument('--mount-pole-az', help='azimuth of the mount pole', type=float)
     custom_model_group.add_argument(
-        '--mount-pole-az',
-        help='azimuth of the mount pole',
-        type=float)
-    custom_model_group.add_argument(
-        '--mount-pole-alt',
-        help='altitude of the mount pole',
-        type=float)
+        '--mount-pole-alt', help='altitude of the mount pole', type=float
+    )
     gps_client.add_program_arguments(
         parser=parser,
         group_description=(
@@ -477,8 +472,8 @@ def main():
         # Generate a custom mount model from program arguments
         location = gps_client.make_location_from_args(args)
         mount_model = track.model.load_default_model(
-            mount_pole_az=Longitude(args.mount_pole_az*u.deg),
-            mount_pole_alt=Longitude(args.mount_pole_alt*u.deg),
+            mount_pole_az=Longitude(args.mount_pole_az * u.deg),
+            mount_pole_alt=Longitude(args.mount_pole_alt * u.deg),
             location=location,
         )
 
@@ -489,7 +484,7 @@ def main():
         ax,
         mount_model,
         axis_0_west_limit=args.axis_west_limit,
-        axis_0_east_limit=args.axis_east_limit
+        axis_0_east_limit=args.axis_east_limit,
     )
 
     if args.tle:
@@ -497,13 +492,7 @@ def main():
         print(time_start.isoformat() + 'Z')
         print(time_stop.isoformat() + 'Z')
 
-        time_rise, time_set = plot_tle(
-            ax,
-            args.tle,
-            mount_model.location,
-            time_start,
-            time_stop
-        )
+        time_rise, time_set = plot_tle(ax, args.tle, mount_model.location, time_start, time_stop)
         if all((time_rise, time_set)):
             plot_mount_motion(ax, time_rise, time_set)
             print('Found a pass with these start and end times:')
@@ -525,6 +514,7 @@ def main():
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.8, box.height * 0.8])
     plt.show()
+
 
 if __name__ == "__main__":
     main()

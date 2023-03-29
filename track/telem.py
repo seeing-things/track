@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 def open_client(
-        influx_config_filename: str = str(pathlib.Path.home().joinpath('.influxdbv2/configs'))
-    ) -> InfluxDBClient:
+    influx_config_filename: str = str(pathlib.Path.home().joinpath('.influxdbv2/configs')),
+) -> InfluxDBClient:
     """Create a new InfluxDB client instance from config file.
 
     Args:
@@ -128,14 +128,13 @@ class TelemLogger:
                 retry_interval=1000,  # milliseconds before retry after failed write
                 max_retries=5,
                 max_retry_delay=10_000,  # give up after this many milliseconds
-                exponential_base=2
+                exponential_base=2,
             )
         )
 
         if self.period is not None:
             self.thread = threading.Thread(
-                target=self._worker_thread,
-                name='TelemLogger: worker thread'
+                target=self._worker_thread, name='TelemLogger: worker thread'
             )
             self.running = False
 
@@ -233,27 +232,24 @@ def add_program_arguments(parser: ArgParser) -> None:
         description='Options that apply to telemetry logging',
     )
     telem_group.add_argument(
-        '--telem-enable',
-        help='enable logging of telemetry to database',
-        action='store_true'
+        '--telem-enable', help='enable logging of telemetry to database', action='store_true'
     )
     telem_group.add_argument(
         '--telem-influxdb-configfile',
         help='filename of InfluxDB CLI config file',
-        default=str(pathlib.Path.home().joinpath('.influxdbv2/configs'))
+        default=str(pathlib.Path.home().joinpath('.influxdbv2/configs')),
     )
     telem_group.add_argument(
         '--telem-period',
         help='telemetry sampling period in seconds for asynchronously polled channels',
         default=0.1,
-        type=float
+        type=float,
     )
 
 
 def make_telem_logger_from_args(
-        args: Namespace,
-        sources: Optional[dict] = None
-    ) -> Optional[TelemLogger]:
+    args: Namespace, sources: Optional[dict] = None
+) -> Optional[TelemLogger]:
     """Construct a TelemLogger based on the program arguments provided.
 
     Args:

@@ -36,4 +36,5 @@ def register_handlers() -> None:
     for sig in SHUTDOWN_SIGNALS:
         signal.signal(sig, shutdown_handler)
 
+
 register_handlers()

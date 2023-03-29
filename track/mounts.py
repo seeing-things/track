@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 class MeridianSide(IntEnum):
     """Indicates side of mount meridian. This is significant for equatorial mounts."""
+
     EAST = enum.auto()
     WEST = enum.auto()
 
@@ -57,6 +58,7 @@ class MountEncoderPositions(NamedTuple):
             an equatorial mount this is usually the declination axis. For az-alt mounts this is
             usually the altitude axis.
     """
+
     encoder_0: Longitude
     encoder_1: Longitude
 
@@ -102,7 +104,6 @@ class TelescopeMount(ABC):
             should match the mapping used in the slew() method.
         """
 
-
     @abstractmethod
     def slew(self, axis: int, rate: float) -> None:
         """Command the mount to slew on one axis.
@@ -126,7 +127,6 @@ class TelescopeMount(ABC):
             ValueError if the magntiude of `rate` exceeds the max supported slew rate.
         """
 
-
     @abstractmethod
     def get_slew_rate(self, axis: int) -> float:
         """Get current slew rate on one axis.
@@ -144,7 +144,6 @@ class TelescopeMount(ABC):
             The current slew rate of the axis in degrees per second.
         """
 
-
     @abstractmethod
     def safe(self) -> None:
         """Bring mount into a safe state.
@@ -154,7 +153,6 @@ class TelescopeMount(ABC):
         communication with the mount stops. At minimum this method will stop all motion.
         """
 
-
     @abstractmethod
     def shutdown(self) -> None:
         """Bring mount into a safe state and shut down.
@@ -163,7 +161,6 @@ class TelescopeMount(ABC):
         additional actions needed to close connections and free resources. After this method is
         called any calls to other methods in this class may fail.
         """
-
 
     @abstractmethod
     def no_cross_encoder_positions(self) -> MountEncoderPositions:
@@ -189,19 +186,17 @@ class TelescopeMount(ABC):
             set to None.
         """
 
-
     @abstractmethod
     def reachable(self, position: MountEncoderPositions) -> bool:
         """Test whether a set of encoder positions is reachable by the mount or not."""
 
-
     def predict(
-            self,
-            times_from_start: np.ndarray,
-            rate_commands: np.ndarray,
-            position_axis_start: float,
-            slew_rate_start: float,
-        ) -> Tuple[np.ndarray, np.ndarray]:
+        self,
+        times_from_start: np.ndarray,
+        rate_commands: np.ndarray,
+        position_axis_start: float,
+        slew_rate_start: float,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Predict future axis positions based on a set of future commands.
 
         Note that the slew rate commands are assumed to be issued at the *start* of each time
@@ -237,32 +232,34 @@ class TelescopeMount(ABC):
         slew_accel = self.slew_accel
 
         for time_step, rate_command in zip(time_steps, rate_commands):
-
             # solve for time_accel_end
             time_accel_end = np.abs(rate_command - rate_at_start_of_step) / slew_accel
             accel = slew_accel * np.sign(rate_command - rate_at_start_of_step)
 
             # acceleration continues to the end of this timestep
             if time_accel_end >= time_step:
-                position_current += accel*time_step**2 + rate_at_start_of_step*time_step
+                position_current += accel * time_step**2 + rate_at_start_of_step * time_step
                 positions_predicted.append(position_current)
-                rate_at_start_of_step += accel*time_step
+                rate_at_start_of_step += accel * time_step
                 rates_predicted.append(rate_at_start_of_step)
                 continue
 
             # no rate change this timestep
             if time_accel_end == 0:
-                position_current += rate_at_start_of_step*time_step
+                position_current += rate_at_start_of_step * time_step
                 positions_predicted.append(position_current)
                 rates_predicted.append(rate_at_start_of_step)
                 continue
 
             # compute position at time_accel_end, the moment accel ends / commanded rate achieved
-            position_at_accel_end = (accel*time_accel_end**2 + rate_at_start_of_step*time_accel_end
-                                     + position_current)
+            position_at_accel_end = (
+                accel * time_accel_end**2
+                + rate_at_start_of_step * time_accel_end
+                + position_current
+            )
 
             # compute position at end of timestep
-            position_current = rate_command*(time_step - time_accel_end) + position_at_accel_end
+            position_current = rate_command * (time_step - time_accel_end) + position_at_accel_end
             positions_predicted.append(position_current)
 
             rate_at_start_of_step = rate_command
@@ -293,9 +290,9 @@ class NexStarMount(TelescopeMount):
             been populated.
     """
 
-
     class AxisName(IntEnum):
         """Mapping from axis index to/from names"""
+
         AZIMUTH = 0
         ALTITUDE = 1
 
@@ -303,17 +300,16 @@ class NexStarMount(TelescopeMount):
             """Abbreviated axis name"""
             return 'az' if self == self.AZIMUTH else 'alt'
 
-
     # pylint: disable=too-many-arguments
     def __init__(
-            self,
-            device_name: str,
-            alt_min_limit: float = 0.0,
-            alt_max_limit: float = 65.0,
-            bypass_position_limits: bool = False,
-            max_slew_rate: float = 16319.0/3600.0,
-            slew_accel: float = 10.0,
-        ):
+        self,
+        device_name: str,
+        alt_min_limit: float = 0.0,
+        alt_max_limit: float = 65.0,
+        bypass_position_limits: bool = False,
+        max_slew_rate: float = 16319.0 / 3600.0,
+        slew_accel: float = 10.0,
+    ):
         """Inits NexStarMount object.
 
         Initializes a NexStarMount object by constructing a point.NexStar object to communicate
@@ -344,11 +340,9 @@ class NexStarMount(TelescopeMount):
         self.cached_position_time = None
         self._rate_last_commanded = {self.AxisName.AZIMUTH: 0.0, self.AxisName.ALTITUDE: 0.0}
 
-
     @property
     def slew_accel(self) -> float:
         return self._slew_accel
-
 
     def get_position(self, max_cache_age: float = 0.0) -> MountEncoderPositions:
         """Gets the current position of the mount.
@@ -375,12 +369,11 @@ class NexStarMount(TelescopeMount):
 
         (az, alt) = self.mount.get_azalt()
         self.cached_position = MountEncoderPositions(
-            Longitude(az*u.deg),
-            Longitude(alt*u.deg),
+            Longitude(az * u.deg),
+            Longitude(alt * u.deg),
         )
         self.cached_position_time = time.time()
         return self.cached_position
-
 
     def slew(self, axis: int, rate: float) -> None:
         """Command the mount to slew on one axis.
@@ -417,14 +410,14 @@ class NexStarMount(TelescopeMount):
         # enforce altitude limits
         if axis == self.AxisName.ALTITUDE and not self.bypass_position_limits:
             position = self.get_position(0.25)
-            if ((position[self.AxisName.ALTITUDE].deg >= self.alt_max_limit and rate > 0.0) or
-                (position[self.AxisName.ALTITUDE].deg <= self.alt_min_limit and rate < 0.0)):
+            if (position[self.AxisName.ALTITUDE].deg >= self.alt_max_limit and rate > 0.0) or (
+                position[self.AxisName.ALTITUDE].deg <= self.alt_min_limit and rate < 0.0
+            ):
                 rate = 0.0
 
         # slew_var argument units are arcseconds per second
         self.mount.slew_var(axis, rate * 3600.0)
         self._rate_last_commanded[axis] = rate
-
 
     def get_slew_rate(self, axis: int) -> float:
         """Get current slew rate of one mount axis in degrees per second.
@@ -445,18 +438,15 @@ class NexStarMount(TelescopeMount):
         """
         return self._rate_last_commanded[axis]
 
-
     def safe(self) -> None:
         """Sets slew rates to zero on both axes. Does not block until motion has stopped."""
         logger.info('Safing mount.')
         for axis in self.AxisName:
             self.slew(axis, 0.0)
 
-
     def shutdown(self) -> None:
         """Sets slew rates to zero on both axes and disconnects. Does not block."""
         self.mount.shutdown()
-
 
     def no_cross_encoder_positions(self) -> MountEncoderPositions:
         """Indicate encoder positions that should not be crossed.
@@ -467,12 +457,12 @@ class NexStarMount(TelescopeMount):
         Returns:
             MountEncoderPositions: Contains the encoder positions that should not be crossed.
         """
-        return MountEncoderPositions(None, Longitude(-90*u.deg, wrap_angle=180*u.deg))
-
+        return MountEncoderPositions(None, Longitude(-90 * u.deg, wrap_angle=180 * u.deg))
 
     def reachable(self, position: MountEncoderPositions) -> bool:
-        if ((position[self.AxisName.ALTITUDE].deg > self.alt_max_limit) or
-            (position[self.AxisName.ALTITUDE].deg < self.alt_min_limit)):
+        if (position[self.AxisName.ALTITUDE].deg > self.alt_max_limit) or (
+            position[self.AxisName.ALTITUDE].deg < self.alt_min_limit
+        ):
             return False
         return True
 
@@ -496,9 +486,9 @@ class LosmandyGeminiMount(TelescopeMount):
             was updated or None if it has never been set.
     """
 
-
     class AxisName(IntEnum):
         """Mapping from axis index to/from names"""
+
         RIGHT_ASCENSION = 0
         DECLINATION = 1
 
@@ -506,19 +496,18 @@ class LosmandyGeminiMount(TelescopeMount):
             """Axis names as used by the point package API for this mount"""
             return 'ra' if self == self.RIGHT_ASCENSION else 'dec'
 
-
     # pylint: disable=too-many-arguments
     def __init__(
-            self,
-            device_name: str,
-            ra_west_limit: float = 110.0,
-            ra_east_limit: float = 110.0,
-            bypass_position_limits: bool = False,
-            max_slew_rate: float = 4.0,
-            slew_accel: float = 20.0,
-            max_slew_step: float = 0.5,
-            use_multiprocessing: bool = True,
-        ):
+        self,
+        device_name: str,
+        ra_west_limit: float = 110.0,
+        ra_east_limit: float = 110.0,
+        bypass_position_limits: bool = False,
+        max_slew_rate: float = 4.0,
+        slew_accel: float = 20.0,
+        max_slew_step: float = 0.5,
+        use_multiprocessing: bool = True,
+    ):
         """Inits LosmandyGeminiMount object.
 
         Initializes a LosmandyGeminiMount object by constructing a point.Gemini2 object to
@@ -568,11 +557,9 @@ class LosmandyGeminiMount(TelescopeMount):
         self.cached_position = None
         self.cached_position_time = None
 
-
     @property
     def slew_accel(self) -> float:
         return self._slew_accel
-
 
     def get_position(self, max_cache_age: float = 0.0) -> MountEncoderPositions:
         """Gets the current position of the mount.
@@ -603,7 +590,6 @@ class LosmandyGeminiMount(TelescopeMount):
         self.cached_position_time = time.time()
         return self.cached_position
 
-
     def slew(self, axis: int, rate: float) -> None:
         """Command the mount to slew on one axis.
 
@@ -626,29 +612,26 @@ class LosmandyGeminiMount(TelescopeMount):
 
         if axis == self.AxisName.RIGHT_ASCENSION and not self.bypass_position_limits:
             pra = self.get_position(0.25)[self.AxisName.RIGHT_ASCENSION.value]
-            if ((pra.deg < 180 - self.ra_west_limit and rate < 0.0) or
-                (pra.deg > 180 + self.ra_east_limit and rate > 0.0)):
+            if (pra.deg < 180 - self.ra_west_limit and rate < 0.0) or (
+                pra.deg > 180 + self.ra_east_limit and rate > 0.0
+            ):
                 rate = 0.0
 
         self.mount.slew(axis.short_name(), rate)
-
 
     def get_slew_rate(self, axis: int) -> float:
         """Get current slew rate of one mount axis in degrees per second."""
         axis = self.AxisName(axis)
         return self.mount.get_slew_rate(axis.short_name())
 
-
     def safe(self) -> None:
         """Stop motion on both axes."""
         logger.info('Safing mount.')
         self.mount.stop_motion()
 
-
     def shutdown(self) -> None:
         """Stop motion on both axes and disconnect."""
         self.mount.shutdown()
-
 
     def no_cross_encoder_positions(self) -> MountEncoderPositions:
         """Indicate encoder positions that should not be crossed.
@@ -660,12 +643,12 @@ class LosmandyGeminiMount(TelescopeMount):
         Returns:
             MountEncoderPositions: Contains the encoder positions that should not be crossed.
         """
-        return MountEncoderPositions(Longitude(0*u.deg), Longitude(0*u.deg))
-
+        return MountEncoderPositions(Longitude(0 * u.deg), Longitude(0 * u.deg))
 
     def reachable(self, position: MountEncoderPositions) -> bool:
-        if ((position[self.AxisName.RIGHT_ASCENSION].deg < 180 - self.ra_west_limit) or
-            (position[self.AxisName.RIGHT_ASCENSION].deg > 180 + self.ra_east_limit)):
+        if (position[self.AxisName.RIGHT_ASCENSION].deg < 180 - self.ra_west_limit) or (
+            position[self.AxisName.RIGHT_ASCENSION].deg > 180 + self.ra_east_limit
+        ):
             return False
         return True
 
@@ -683,19 +666,15 @@ def add_program_arguments(parser: ArgParser, meridian_side_required: bool = Fals
         description='Options that apply to telescope mounts',
     )
     mount_group.add_argument(
-        '--mount-type',
-        help='select mount type (nexstar or gemini)',
-        default='gemini'
+        '--mount-type', help='select mount type (nexstar or gemini)', default='gemini'
     )
     mount_group.add_argument(
         '--mount-path',
         help='serial device node or hostname for mount command interface',
-        default='/dev/ttyACM0'
+        default='/dev/ttyACM0',
     )
     parser.add_argument(
-        '--bypass-position-limits',
-        help='bypass mount axis position limits',
-        action='store_true'
+        '--bypass-position-limits', help='bypass mount axis position limits', action='store_true'
     )
     mount_group.add_argument(
         '--meridian-side',
@@ -716,8 +695,7 @@ def make_mount_from_args(args: Namespace, use_multiprocessing: bool = True) -> T
     """
     if args.mount_type == 'nexstar':
         return NexStarMount(
-            device_name=args.mount_path,
-            bypass_position_limits=args.bypass_position_limits
+            device_name=args.mount_path, bypass_position_limits=args.bypass_position_limits
         )
     elif args.mount_type == 'gemini':
         return LosmandyGeminiMount(

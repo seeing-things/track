@@ -29,11 +29,11 @@ logger = logging.getLogger(__name__)
 
 
 def pick_meridian_side(
-        observer: Barycentric,
-        star: skyfield.api.Star,
-        mount_model: MountModel,
-        mount: TelescopeMount,
-    ) -> MeridianSide | None:
+    observer: Barycentric,
+    star: skyfield.api.Star,
+    mount_model: MountModel,
+    mount: TelescopeMount,
+) -> MeridianSide | None:
     """Automatically pick which meridian side to use.
 
     If the star is reachable from either meridian side this function makes an arbitrary choice.
@@ -117,24 +117,28 @@ def main():
         sys.exit(1)
     logger.info(f'Using meridian side {meridian_side.name}.')
 
-    run_program([
-        'align_guidescope',
-        '--non-interactive',
-        f'--meridian-side={meridian_side.name}',
-        'coord-eq',
-        # pylint: disable=protected-access
-        str(star.ra._degrees),
-        str(star.dec.degrees),
-    ])
+    run_program(
+        [
+            'align_guidescope',
+            '--non-interactive',
+            f'--meridian-side={meridian_side.name}',
+            'coord-eq',
+            # pylint: disable=protected-access
+            str(star.ra._degrees),
+            str(star.dec.degrees),
+        ]
+    )
 
-    run_program([
-        'autofocus',
-        f'--meridian-side={meridian_side.name}',
-        'coord-eq',
-        # pylint: disable=protected-access
-        str(star.ra._degrees),
-        str(star.dec.degrees),
-    ])
+    run_program(
+        [
+            'autofocus',
+            f'--meridian-side={meridian_side.name}',
+            'coord-eq',
+            # pylint: disable=protected-access
+            str(star.ra._degrees),
+            str(star.dec.degrees),
+        ]
+    )
 
     logger.info('All setup steps completed. Ready to track targets!')
 

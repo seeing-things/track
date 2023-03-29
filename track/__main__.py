@@ -26,9 +26,9 @@ logger = logging.getLogger(__name__)
 
 
 def make_camera_separation_callback(
-        pid_to_signal: int | None = None,
-        separation_threshold: float | None = None,
-    ) -> Callable[[Angle], None] | None:
+    pid_to_signal: int | None = None,
+    separation_threshold: float | None = None,
+) -> Callable[[Angle], None] | None:
     """Make callable that sends SIGUSR1 to another process when target is near center of camera.
 
     The purpose of this is to provide a synchronization mechanism between this program and the
@@ -45,6 +45,7 @@ def make_camera_separation_callback(
         A function that may be passed to `targets.make_target_from_args()`, or None if both
         arguments are None.
     """
+
     def camera_separation_callback(
         separation: Angle,
         separation_threshold: Angle,
@@ -58,7 +59,7 @@ def make_camera_separation_callback(
         return partial(
             camera_separation_callback,
             pid=pid_to_signal,
-            separation_threshold=Angle(u.deg * separation_threshold)
+            separation_threshold=Angle(u.deg * separation_threshold),
         )
     return None
 
@@ -81,16 +82,12 @@ def main():
         """
         if game_pad.state.get('BTN_EAST', 0) == 1:
             gamepad_x, gamepad_y = game_pad.get_proportional()
-            slew_rates = (
-                mount.max_slew_rate * gamepad_x,
-                mount.max_slew_rate * gamepad_y
-            )
+            slew_rates = (mount.max_slew_rate * gamepad_x, mount.max_slew_rate * gamepad_y)
             for idx, axis_name in enumerate(mount.AxisName):
                 mount.slew(axis_name, slew_rates[idx])
             return True
         else:
             return False
-
 
     parser = ArgParser(additional_config_files=[os.path.join(CONFIG_PATH, 'track.cfg')])
     targets.add_program_arguments(parser)
@@ -106,8 +103,10 @@ def main():
     )
     signal_group.add_argument(
         '--pid-to-signal',
-        help='send SIGUSR1 to the process with this PID when target is within signal-angle of '
-            'camera frame center',
+        help=(
+            'send SIGUSR1 to the process with this PID when target is within signal-angle of '
+            'camera frame center'
+        ),
         type=int,
     )
     signal_group.add_argument(
@@ -147,9 +146,11 @@ def main():
         elif args.target_type == 'camera':
             if click.confirm('Use a default set of alignment parameters instead?', default=True):
                 guide_cam_orientation = click.prompt(
-                    'Enter guide camera orientation in degrees, clockwise positive', type=float)
+                    'Enter guide camera orientation in degrees, clockwise positive', type=float
+                )
                 mount_model = model.load_default_model(
-                    guide_cam_orientation=Longitude(guide_cam_orientation*u.deg))
+                    guide_cam_orientation=Longitude(guide_cam_orientation * u.deg)
+                )
 
     if 'mount_model' not in locals():
         logger.error('No model could be loaded. To refresh stored model run align program.')
@@ -157,10 +158,11 @@ def main():
 
     logger.info(f'Using mount model with the following parameters: {mount_model.model_param_set}')
 
-    with mounts.make_mount_from_args(args) as mount, \
-        laser.make_laser_from_args(args) as laser_pointer, \
-        Gamepad() as game_pad:
-
+    with (
+        mounts.make_mount_from_args(args) as mount,
+        laser.make_laser_from_args(args) as laser_pointer,
+        Gamepad() as game_pad,
+    ):
         telem_logger = telem.make_telem_logger_from_args(args)
 
         target = targets.make_target_from_args(
@@ -191,6 +193,7 @@ def main():
 
         stopping_conditions = control.make_stop_conditions_from_args(args)
         tracker.run(stopping_conditions)
+
 
 if __name__ == "__main__":
     main()
