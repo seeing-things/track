@@ -1,6 +1,7 @@
-"""
+"""SER file support.
+
 The SER file format is popular in astrophotography for storage of RAW images or video. It is
-described on this website: http://www.grischa-hahn.homepage.t-online.de/astro/ser/. This class
+described on this website: http://www.grischa-hahn.homepage.t-online.de/astro/ser/. This module
 implements version 3 which is documented here:
 http://www.grischa-hahn.homepage.t-online.de/astro/ser/SER%20Doc%20V3b.pdf
 """

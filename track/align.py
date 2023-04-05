@@ -50,7 +50,8 @@ class Position(Destination):
         encoder_positions: MountEncoderPositions,
         mount: TelescopeMount,
     ):
-        """
+        """Construct a Position object.
+
         Args:
             encoder_positions: Mount encoder positions corresponding to this sky position
             mount: Instance of TelescopeMount

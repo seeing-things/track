@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-"""
+"""Perform guidescope alignment.
+
 Run a procedure to estimate the angular offset between the guidescope camera and the main telescope
 camera. If this is completed successfully the estimated offset is saved with the active mount
 alignment model. The goal is to eliminate the need for ultra-precise physical alignment of the

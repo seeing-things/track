@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-"""
+"""Get ready to track objects.
+
 Does all of the following:
 
 1. Alignment.

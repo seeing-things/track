@@ -607,6 +607,7 @@ class SensorFusionTarget(Target):
                 camera. The output of the integrator is the estimate of the blind target bias.
             bias_mag_limit: The magnitude of the blind target bias estimate is limited to this
                 value to prevent it from growing excessively large.
+            telem_logger: Telemetry points will be logged if a logger instance is provided.
             spiral_search: Do a spiral search until a target is found in the camera.
         """
         self.blind_target = blind_target
