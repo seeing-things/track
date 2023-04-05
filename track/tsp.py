@@ -7,11 +7,11 @@ import numpy as np
 
 
 class Destination(ABC):
-    """Abstract class representing a destination along a route"""
+    """Abstract class representing a destination along a route."""
 
     @abstractmethod
     def distance_to(self, other_destination: "Destination") -> int:
-        """Returns the distance (cost) of travelling from this to the other destination
+        """Returns the distance (cost) of travelling from this to the other destination.
 
         Args:
             other_destination: Another instance of this class
@@ -23,7 +23,7 @@ class Destination(ABC):
 
 
 def solve_route(destinations: list[Destination]) -> list[Destination]:
-    """Travelling salesman problem solver
+    """Travelling salesman problem solver.
 
     Takes a list of destinations and sorts them such that the total time taken to visit each one is
     minimized. This is known as the travelling salesman problem.
@@ -39,7 +39,6 @@ def solve_route(destinations: list[Destination]) -> list[Destination]:
         The list of places ordered such that visiting them in that order minimizes the total trip
         time.
     """
-
     # pre-compute a matrix of distances between each destination
     distance_matrix = np.zeros((len(destinations),) * 2)
     for idx, dest in enumerate(destinations):

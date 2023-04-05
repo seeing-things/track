@@ -23,8 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 def urlify(s: str) -> str:
-    """Transform a string into a string that is a valid part of a URL"""
-
+    """Transform a string into a string that is a valid part of a URL."""
     # Remove all non-word characters (everything except numbers and letters)
     s = re.sub(r"[^\w\s]", '', s)
 
@@ -50,7 +49,7 @@ def date_to_monthnum(date: datetime.date) -> int:
 
 
 def print_timezone_help():
-    """Print help message for how to use the timezones 'tz' program argument"""
+    """Print help message for how to use the timezones 'tz' program argument."""
     tz_soup = BeautifulSoup(
         requests.get('http://heavens-above.com/SelectLocation.aspx', timeout=10).text, 'lxml'
     )
@@ -65,7 +64,6 @@ def print_timezone_help():
 
 def main():
     """See module docstring at the top of this file."""
-
     parser = ArgParser()
     parser.add_argument('outdir', help='output directory')
     parser.add_argument(

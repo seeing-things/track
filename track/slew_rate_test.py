@@ -13,8 +13,7 @@ SLEW_LIMIT = 20.0
 
 
 def main():
-    """See module docstring"""
-
+    """See module docstring."""
     parser = config.ArgParser()
     mounts.add_program_arguments(parser)
     args = parser.parse_args()

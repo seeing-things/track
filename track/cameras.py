@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 class Camera(AbstractContextManager):
-    """Abstract base class for cameras"""
+    """Abstract base class for cameras."""
 
     @property
     @abstractmethod
@@ -183,11 +183,11 @@ class Camera(AbstractContextManager):
 
 
 class CameraTimeout(Exception):
-    """Raised when a timeout expires"""
+    """Raised when a timeout expires."""
 
 
 class ASICamera(Camera):
-    """ZWO ASI Cameras"""
+    """ZWO ASI Cameras."""
 
     class BitDepth(enum.IntEnum):
         """Bit depth of pixels."""
@@ -196,7 +196,7 @@ class ASICamera(Camera):
         RAW16 = asi.ASI_IMG_RAW16
 
         def bytes_per_pixel(self) -> int:
-            """Number of bytes per pixel in raw array of frame data retrieved from ASI driver"""
+            """Number of bytes per pixel in raw array of frame data retrieved from ASI driver."""
             return 1 if self == self.RAW8 else 2
 
     @staticmethod
@@ -224,7 +224,7 @@ class ASICamera(Camera):
 
     @staticmethod
     def from_program_args(args: Namespace) -> ASICamera:
-        """Factory to make a WebCam instance from program arguments
+        """Factory to make a WebCam instance from program arguments.
 
         Args:
             args: Set of program arguments.
@@ -311,17 +311,17 @@ class ASICamera(Camera):
 
     @property
     def pixel_scale(self) -> float:
-        """Scale of a pixel in degrees per pixel"""
+        """Scale of a pixel in degrees per pixel."""
         return self._pixel_scale
 
     @property
     def binning(self) -> int:
-        """Binning configuration"""
+        """Binning configuration."""
         return self._binning
 
     @property
     def frame_shape(self) -> tuple[int, int]:
-        """Shape of array returned by get_frame()"""
+        """Shape of array returned by get_frame()."""
         return self._frame_shape
 
     @property
@@ -331,12 +331,12 @@ class ASICamera(Camera):
 
     @property
     def video_mode(self) -> bool:
-        """True if video mode is enabled"""
+        """True if video mode is enabled."""
         return self._video_mode
 
     @video_mode.setter
     def video_mode(self, enabled: bool) -> None:
-        """Enable or disable video mode"""
+        """Enable or disable video mode."""
         self._bit_depth = self.BitDepth.RAW8 if enabled else self.BitDepth.RAW16
         height, width = self._frame_shape
         self._frame_size_bytes = width * height * self._bit_depth.bytes_per_pixel()
@@ -361,32 +361,32 @@ class ASICamera(Camera):
 
     @property
     def gain(self) -> int:
-        """Camera gain"""
+        """Camera gain."""
         return self._get_ctrl(asi.ASI_GAIN)[0]
 
     @gain.setter
     def gain(self, gain: int) -> None:
-        """Set camera gain"""
+        """Set camera gain."""
         self._set_ctrl(asi.ASI_GAIN, gain)
 
     @property
     def exposure(self) -> float:
-        """Exposure time in seconds"""
+        """Exposure time in seconds."""
         return self._get_ctrl(asi.ASI_EXPOSURE)[0] / 1e6
 
     @exposure.setter
     def exposure(self, exposure: float) -> None:
-        """Set exposure time in seconds"""
+        """Set exposure time in seconds."""
         self._set_ctrl(asi.ASI_EXPOSURE, int(exposure * 1e6))
 
     def _reshape_frame_data(self, frame: np.ndarray) -> np.ndarray:
-        """Reshape raw byte array from ASI driver to a 2D array image"""
+        """Reshape raw byte array from ASI driver to a 2D array image."""
         if self._bit_depth == self.BitDepth.RAW16:
             frame = frame.view(dtype=np.uint16)
         return np.reshape(frame, self._frame_shape)
 
     def get_dropped_frames(self) -> int:
-        """Get number of dropped frames so far"""
+        """Get number of dropped frames so far."""
         return ASICheck(asi.ASIGetDroppedFrames(self.info.CameraID))
 
     def get_frame(self, timeout: float = inf) -> np.ndarray:
@@ -481,7 +481,7 @@ class WebCam(Camera):
 
     @staticmethod
     def from_program_args(args: Namespace) -> WebCam:
-        """Factory to make a WebCam instance from program arguments"""
+        """Factory to make a WebCam instance from program arguments."""
         return WebCam(
             dev_path=args.webcam_dev,
             ctrl_exposure=args.webcam_exposure,
@@ -555,12 +555,12 @@ class WebCam(Camera):
 
     @property
     def video_mode(self) -> bool:
-        """Always returns True because this camera can only be in video mode"""
+        """Always returns True because this camera can only be in video mode."""
         return True
 
     @video_mode.setter
     def video_mode(self, enabled: bool) -> None:
-        """Video mode is always enabled for this camera"""
+        """Video mode is always enabled for this camera."""
         if not enabled:
             raise ValueError("Can't disable video mode for Webcam")
 
@@ -576,7 +576,6 @@ class WebCam(Camera):
         Returns:
             The frame as a numpy array.
         """
-
         self.block_until_frame_ready(timeout)
 
         frames = []
@@ -620,12 +619,12 @@ class WebCam(Camera):
         return len(dev_fd_ready) > 0
 
     def has_frames_available(self) -> bool:
-        """query whether the webcam has at least one frame ready for us to read (non-blocking)"""
+        """Query whether the webcam has at least one frame ready for us to read (non-blocking)."""
         readable, _, _ = select.select((self.dev_fd,), (), (), 0.0)
         return len(readable) != 0
 
     def start(self) -> None:
-        """tell the camera to start capturing"""
+        """Tell the camera to start capturing."""
         if not self.started:
             self._v4l2_ioctl(
                 v4l2.VIDIOC_STREAMON, ctypes.c_int(int(v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE))
@@ -633,7 +632,7 @@ class WebCam(Camera):
             self.started = True
 
     def stop(self) -> None:
-        """tell the camera to stop capturing"""
+        """Tell the camera to stop capturing."""
         if self.started:
             self._v4l2_ioctl(
                 v4l2.VIDIOC_STREAMOFF, ctypes.c_int(int(v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE))
@@ -721,7 +720,7 @@ class WebCam(Camera):
         )
 
     def _set_format(self, shape_wanted: tuple[int, int], fourcc) -> tuple[int, int]:
-        """roughly equivalent to v4l2capture's set_format"""
+        """Roughly equivalent to v4l2capture's set_format."""
         assert not self.started
 
         fmt = v4l2.v4l2_format(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE)
@@ -739,7 +738,7 @@ class WebCam(Camera):
         return (fmt.fmt.pix.height, fmt.fmt.pix.width)
 
     def _setup_buffers(self, buf_count: int) -> None:
-        """roughly equivalent to v4l2capture's create_buffers"""
+        """Roughly equivalent to v4l2capture's create_buffers."""
         assert not self.started
         assert len(self.bufmaps) == 0
 
@@ -759,7 +758,7 @@ class WebCam(Camera):
             ]
 
     def _queue_all_buffers(self) -> None:
-        """roughly equivalent to v4l2capture's queue_all_buffers"""
+        """Roughly equivalent to v4l2capture's queue_all_buffers."""
         assert not self.started
         assert len(self.bufmaps) != 0
 
@@ -770,7 +769,7 @@ class WebCam(Camera):
             self._v4l2_ioctl(v4l2.VIDIOC_QBUF, buf)
 
     def _read_and_queue(self):
-        """roughly equivalent to v4l2capture's read_and_queue"""
+        """Roughly equivalent to v4l2capture's read_and_queue."""
         assert self.started
 
         buf = v4l2.v4l2_buffer(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE, memory=v4l2.V4L2_MEMORY_MMAP)

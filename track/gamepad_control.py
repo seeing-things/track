@@ -19,8 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    """See module docstring"""
-
+    """See module docstring."""
     parser = ArgParser()
     mounts.add_program_arguments(parser)
     telem.add_program_arguments(parser)

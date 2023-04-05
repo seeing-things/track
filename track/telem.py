@@ -185,7 +185,7 @@ class TelemLogger:
         self.sources.update(sources)
 
     def poll_sources(self) -> None:
-        """Poll all registered `TelemSource` objects and post to the database"""
+        """Poll all registered `TelemSource` objects and post to the database."""
         for source in self.sources.values():
             for point in source.get_telem_points():
                 # tag point with the class name of the object that generated it
@@ -202,7 +202,6 @@ class TelemLogger:
 
     def _worker_thread(self) -> None:
         """Gathers telemetry and posts to database once per sample period."""
-
         # Make sure this thread does not have realtime priority
         os.sched_setscheduler(0, os.SCHED_OTHER, os.sched_param(0))
 

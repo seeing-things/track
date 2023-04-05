@@ -1,4 +1,4 @@
-"""Computer vision algorithms for identifying targets in a camera frame"""
+"""Computer vision algorithms for identifying targets in a camera frame."""
 
 import numpy as np
 import cv2
@@ -13,7 +13,6 @@ def find_features(frame: np.ndarray) -> list[cv2.KeyPoint]:
     Returns:
         A list of keypoints.
     """
-
     if frame.dtype != np.uint8:
         # No fundamental reason; just hasn't been implemented
         raise ValueError('Only uint8 frames are supported')
@@ -59,7 +58,7 @@ def find_features(frame: np.ndarray) -> list[cv2.KeyPoint]:
 
 
 class PreviewWindow:
-    """Generates an annotated camera frame for display in an OpenCV window"""
+    """Generates an annotated camera frame for display in an OpenCV window."""
 
     def __init__(
         self,
@@ -108,7 +107,6 @@ class PreviewWindow:
             keypoints: List of all keypoints.
             target_keypoint: The keypoint identified as the target.
         """
-
         frame_annotated = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
 
         # add grey crosshairs, leaving a gap in the middle so the crosshairs don't obscure objects

@@ -13,8 +13,7 @@ from track.config import ArgParser
 
 
 def main():
-    """See module docstring"""
-
+    """See module docstring."""
     parser = ArgParser()
     parser.add_argument('--lat', required=True, help='latitude of observer (+N)')
     parser.add_argument('--lon', required=True, help='longitude of observer (+E)')

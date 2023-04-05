@@ -16,7 +16,6 @@ PIXELS_FROM_CENTER = 200
 
 def main():
     """See module docstring at the top of this file."""
-
     # initialize blob detector
     params = cv2.SimpleBlobDetector_Params()
     params.filterByColor = False

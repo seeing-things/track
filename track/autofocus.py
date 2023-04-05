@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
-"""
-Automatic focus script and associated algorithms.
-"""
+"""Automatic focus script and associated algorithms."""
 
 import atexit
 from datetime import datetime
@@ -259,7 +257,6 @@ def autofocus(
 
 def main():
     """Run the full autofocus algorithm."""
-
     parser = ArgParser(additional_config_files=[os.path.join(CONFIG_PATH, 'autofocus.cfg')])
     parser.add_argument(
         '--meridian-side',

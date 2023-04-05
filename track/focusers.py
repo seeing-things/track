@@ -14,7 +14,7 @@ from track.config import ArgParser
 
 
 class Focuser(ABC):
-    """Abstract base class for focusers"""
+    """Abstract base class for focusers."""
 
     @property
     @abstractmethod
@@ -107,14 +107,14 @@ class MoonliteFocuser(Focuser):
 
     @staticmethod
     def add_program_arguments(parser: ArgParser) -> None:
-        """Add Moonlite-specific program arguments"""
+        """Add Moonlite-specific program arguments."""
         parser.add_argument(
             '--focuser-dev', help='Moonlite focuser serial device node path', default='/dev/ttyUSB0'
         )
 
     @staticmethod
     def from_program_args(args: Namespace) -> MoonliteFocuser:
-        """Factory to make a MoonliteFocuser instance from program arguments"""
+        """Factory to make a MoonliteFocuser instance from program arguments."""
         return MoonliteFocuser(
             device=args.focuser_dev,
             min_position=args.focuser_min,
@@ -164,7 +164,6 @@ class MoonliteFocuser(Focuser):
             ResponseException: When the response length does not match the value of the
                 response_len argument.
         """
-
         # Eliminate any stale data sitting in the read buffer which could be left over from prior
         # command responses.
         self._serial.read(self._serial.in_waiting)

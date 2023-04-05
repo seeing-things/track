@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
-"""
-Identify bright stars near zenith.
-"""
+"""Identify bright stars near zenith."""
 
 from __future__ import annotations
 from importlib.resources import files
@@ -22,7 +20,7 @@ class NoStarFoundException(Exception):
 
 
 def lookup_star_names(hip: int) -> tuple[str]:
-    """Look up a star's common name given its Hipparcos ID (HIP)
+    """Look up a star's common name given its Hipparcos ID (HIP).
 
     Args:
         hip: Hipparcos ID of star to look up.
@@ -43,7 +41,7 @@ def lookup_star_names(hip: int) -> tuple[str]:
 
 
 def lookup_star_magnitude(hip: int) -> float:
-    """Lookup a star's apparent magnitude given its Hipparcos ID (HIP)"""
+    """Lookup a star's apparent magnitude given its Hipparcos ID (HIP)."""
     return hipparcos_df[hipparcos_df.index == hip].magnitude.item()
 
 
@@ -185,7 +183,6 @@ def make_star_from_args(args: Namespace, observer: Barycentric) -> Star:
 
 def main():
     """See module docstring."""
-
     parser = ArgParser()
     gps_client.add_program_arguments(parser)
     logs.add_program_arguments(parser)

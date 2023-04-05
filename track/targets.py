@@ -122,7 +122,7 @@ class FixedMountEncodersTarget(Target):
         self.position_topo = mount_model.encoders_to_topocentric(enc)
 
     def get_position(self, t: Time | None = None) -> TargetPosition:
-        """Since the position is fixed the t argument is ignored"""
+        """Since the position is fixed the t argument is ignored."""
         return TargetPosition(t, self.position_topo, self.position_enc)
 
 
@@ -148,7 +148,7 @@ class FixedTopocentricTarget(Target):
         self.position_enc = mount_model.topocentric_to_encoders(coord, meridian_side)
 
     def get_position(self, t: Time | None = None) -> TargetPosition:
-        """Since the topocentric position is fixed the t argument is ignored"""
+        """Since the topocentric position is fixed the t argument is ignored."""
         return TargetPosition(t, self.position_topo, self.position_enc)
 
 
@@ -187,7 +187,6 @@ class AcceleratingMountAxisTarget(Target):
 
     def get_position(self, t: Time) -> TargetPosition:
         """Gets the position of the simulated target for a specific time."""
-
         if self.time_start is None:
             # Don't do this in constructor because it may be a couple seconds between when the
             # constructor is called until the first call to this method.
@@ -237,7 +236,7 @@ class OverheadPassTarget(Target):
 
 
 class FlightclubLaunchTrajectoryTarget(Target):
-    """A target that follows a trajectory predicted by a flightclub.io simulation"""
+    """A target that follows a trajectory predicted by a flightclub.io simulation."""
 
     def __init__(
         self,
@@ -257,8 +256,7 @@ class FlightclubLaunchTrajectoryTarget(Target):
 
     @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
     def get_position(self, t: Time) -> TargetPosition:
-        """Get apparent position of this target"""
-
+        """Get apparent position of this target."""
         # use linear interpolation between available trajectory data points
         time_from_t0 = (t - self.time_t0).to_value('sec')
         position_az = np.interp(time_from_t0, self.times_from_t0, self.az)
@@ -270,12 +268,12 @@ class FlightclubLaunchTrajectoryTarget(Target):
 
 
 class PyEphemTarget(Target):
-    """A target using the PyEphem package"""
+    """A target using the PyEphem package."""
 
     def __init__(
         self, target, location: EarthLocation, mount_model: MountModel, meridian_side: MeridianSide
     ):
-        """Init a PyEphem target
+        """Init a PyEphem target.
 
         This target type uses PyEphem, the legacy package for ephemeris calculations.
 
@@ -286,7 +284,6 @@ class PyEphemTarget(Target):
             mount_model: An instance of class MountModel for coordinate system conversions.
             meridian_side: Desired side of mount-relative meridian.
         """
-
         self.target = target
 
         # Create a PyEphem Observer object for the given location
@@ -300,7 +297,7 @@ class PyEphemTarget(Target):
 
     @lru_cache(maxsize=128)  # cache results to avoid re-computing unnecessarily
     def get_position(self, t: Time) -> TargetPosition:
-        """Get apparent position of this target"""
+        """Get apparent position of this target."""
         self.observer.date = ephem.Date(t.datetime)
         self.target.compute(self.observer)
         position_topo = SkyCoord(self.target.az * u.rad, self.target.alt * u.rad, frame='altaz')
@@ -325,7 +322,7 @@ class CameraTarget(Target):
         telem_logger: TelemLogger | None = None,
         separation_callback: Callable[[Angle], None] | None = None,
     ):
-        """Construct an instance of CameraTarget
+        """Construct an instance of CameraTarget.
 
         Args:
             camera: Camera from which to capture imagery.
@@ -370,7 +367,7 @@ class CameraTarget(Target):
         target_y: Angle,
         mount_meridian_side: MeridianSide,
     ) -> tuple[Angle, Angle]:
-        """Transform from a position in camera frame to a magnitude and position angle
+        """Transform from a position in camera frame to a magnitude and position angle.
 
         Args:
             target_x: Target position in camera's x-axis
@@ -382,7 +379,6 @@ class CameraTarget(Target):
             A tuple containing the target position offset magnitude and angle in the mount-relative
             frame, as would be passed to `SkyCoord.directional_offset_by()`.
         """
-
         # position of target relative to center of camera frame
         target_position_cam = target_x + 1j * target_y
 
@@ -404,7 +400,7 @@ class CameraTarget(Target):
         target_x: Angle,
         target_y: Angle,
     ) -> UnitSphericalRepresentation:
-        """Transform from target position in camera frame to position in mount frame
+        """Transform from target position in camera frame to position in mount frame.
 
         Args:
             target_x: Target position in camera's x-axis
@@ -413,7 +409,6 @@ class CameraTarget(Target):
         Returns:
             Target position in mount frame
         """
-
         # Mount position is not queried at the exact same time that the camera frame was obtained.
         # The unknown time offset contributes to error in the transformation.
         mount_enc_positions = self.mount.get_position()
@@ -584,7 +579,7 @@ class CameraTarget(Target):
 
 
 class SensorFusionTarget(Target):
-    """Uses sensor fusion to combine data from a `CameraTarget` and another `Target`"""
+    """Uses sensor fusion to combine data from a `CameraTarget` and another `Target`."""
 
     def __init__(
         self,
@@ -598,7 +593,7 @@ class SensorFusionTarget(Target):
         telem_logger: TelemLogger | None = None,
         spiral_search: bool = False,
     ):
-        """Construct an instance of SensorFusionTarget
+        """Construct an instance of SensorFusionTarget.
 
         Args:
             blind_target: A `Target` that is not `CameraTarget`. This should predict the position
@@ -614,7 +609,6 @@ class SensorFusionTarget(Target):
                 value to prevent it from growing excessively large.
             spiral_search: Do a spiral search until a target is found in the camera.
         """
-
         self.blind_target = blind_target
         self.camera_target = camera_target
         self.mount = mount
@@ -649,7 +643,6 @@ class SensorFusionTarget(Target):
         Raises:
             IndeterminatePosition if the target position cannot be determined.
         """
-
         # Only the topocentric position of the target is needed here since the mount encoder
         # positions will be re-computed later in this method. A potential optimization is to find
         # a way to prevent the blind target from generating this unused output.
@@ -678,7 +671,7 @@ class SensorFusionTarget(Target):
         )
 
     def _post_telemetry(self) -> None:
-        """Post telemetry points"""
+        """Post telemetry points."""
         if self.telem_logger is not None:
             p = Point('sensor_fusion')
             p.field('blind_target_bias_mag', np.abs(self.blind_target_bias))
@@ -736,7 +729,7 @@ class SensorFusionTarget(Target):
 
 
 class TargetType(enum.Flag):
-    """All supported target types"""
+    """All supported target types."""
 
     NONE = 0
     FLIGHTCLUB = enum.auto()
@@ -750,7 +743,7 @@ class TargetType(enum.Flag):
 
     @classmethod
     def all(cls):
-        """Returns the union of all target types"""
+        """Returns the union of all target types."""
         retval = cls.NONE
         for member in cls.__members__.values():
             retval |= member

@@ -231,7 +231,7 @@ class MountModel:
     """
 
     def __init__(self, model_param_set: ModelParamSet):
-        """Construct an instance of MountModel
+        """Construct an instance of MountModel.
 
         Args:
             model_param_set: Set of model parameters to use in calculations.
@@ -366,7 +366,6 @@ class MountModel:
             mount axis 0 and latitude corresponds to mount axis 1, and the second element is the
             meridian side this position lies on.
         """
-
         # apply encoder offsets
         encoder_positions = MountEncoderPositions(
             Longitude(encoder_positions[0] - self.model_params.axis_0_offset),
@@ -400,7 +399,6 @@ class MountModel:
         Returns:
             The meridian side corresponding to the encoder positions.
         """
-
         # apply encoder offset
         encoder_1_position = Longitude(encoder_positions[1] - self.model_params.axis_1_offset)
 
@@ -411,7 +409,7 @@ class MountModel:
         coord: UnitSphericalRepresentation,
         meridian_side: MeridianSide = MeridianSide.EAST,
     ) -> MountEncoderPositions:
-        """Convert from mount-relative spherical coordinates to mount encoder positions
+        """Convert from mount-relative spherical coordinates to mount encoder positions.
 
         See docstring of `encoders_to_spherical`, which is the inverse of this method.
 
@@ -517,7 +515,6 @@ class MountModel:
         Raises:
             TypeError if frame of sky_coord is not AltAz.
         """
-
         if not isinstance(sky_coord.frame, AltAz):
             raise TypeError('frame of sky_coord must be AltAz')
 
@@ -529,7 +526,7 @@ class MountModel:
 
 
 def ha_to_ra(hour_angle: Longitude, longitude: Longitude, t: Time) -> Longitude:
-    """Converts hour angle to right ascension
+    """Converts hour angle to right ascension.
 
     Args:
         hour_angle: The hour angle to be converted.
@@ -543,7 +540,7 @@ def ha_to_ra(hour_angle: Longitude, longitude: Longitude, t: Time) -> Longitude:
 
 
 def ra_to_ha(ra_angle: Longitude, longitude: Longitude, t: Time) -> Longitude:
-    """Converts right ascension to hour angle
+    """Converts right ascension to hour angle.
 
     Args:
         ra_angle: The right ascension angle to be converted.
@@ -561,7 +558,7 @@ def residual(
     observation: pd.Series,
     model_params: ModelParameters,
 ) -> pd.Series:
-    """Compute the residual (error) between observed and modeled positions
+    """Compute the residual (error) between observed and modeled positions.
 
     Args:
         observation: A single observation.
@@ -645,7 +642,6 @@ def solve_model(observations: pd.DataFrame) -> tuple[ModelParameters, OptimizeRe
     Raises:
         NoSolutionException if a solution could not be found.
     """
-
     # best starting guess for parameters
     init_values = ModelParameters(
         axis_0_offset=Angle(0 * u.deg),
@@ -691,7 +687,7 @@ def solve_model(observations: pd.DataFrame) -> tuple[ModelParameters, OptimizeRe
 
 
 class StaleParametersException(Exception):
-    """Raised when model parameters are stale and potentially invalid"""
+    """Raised when model parameters are stale and potentially invalid."""
 
 
 def save_default_param_set(model_param_set: ModelParamSet) -> None:

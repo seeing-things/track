@@ -14,7 +14,6 @@ from track import mounts
 
 def main():
     """Apply step functions of varying magnitudes to a mount axis and plot the responses."""
-
     parser = ArgParser()
     mounts.add_program_arguments(parser)
     parser.add_argument(

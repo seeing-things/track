@@ -87,7 +87,6 @@ def run_program(args: list[str]) -> None:
 
 def main():
     """See module docstring."""
-
     parser = ArgParser()
     logs.add_program_arguments(parser)
     gps_client.add_program_arguments(parser)

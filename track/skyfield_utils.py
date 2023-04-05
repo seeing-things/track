@@ -1,4 +1,4 @@
-"""Skyfield utilities"""
+"""Skyfield utilities."""
 
 
 import logging

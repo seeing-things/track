@@ -139,7 +139,6 @@ def make_sky_plot() -> matplotlib.axes.Axes:
     (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     """
-
     plt.style.use('dark_background')
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
     fig.canvas.manager.set_window_title('Skyplot')
@@ -193,7 +192,6 @@ def plot_tle(
     time_stop: datetime,
 ) -> tuple[datetime, datetime]:
     """Plot the trajectory of the first above-horizon pass within a specified time window."""
-
     tle = []
     with open(tle_filename) as tlefile:
         for line in tlefile:
@@ -380,7 +378,6 @@ def plot_mount_motion(
         time_start: Beginning of time interval to plot.
         time_stop: End of time interval to plot.
     """
-
     client = telem.open_client()
     query_api = client.query_api()
     df = query_api.query_data_frame(
@@ -402,8 +399,7 @@ def plot_mount_motion(
 
 
 def main():
-    """See module docstring at the top of this file"""
-
+    """See module docstring at the top of this file."""
     parser = ArgParser(description='Make a plot of the sky to plan and evaluate tracking')
     parser.add_argument('--tle', help='filename of two-line element (TLE) target ephemeris')
     parser.add_argument(

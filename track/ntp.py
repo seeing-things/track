@@ -13,7 +13,7 @@ from track.config import ArgParser
 
 
 class NTPCheckFailure(Exception):
-    """Raised when NTP status check fails"""
+    """Raised when NTP status check fails."""
 
 
 def check_ntp_status(
@@ -36,7 +36,6 @@ def check_ntp_status(
     Raises:
         NTPCheckFailure if any of the criteria are not met.
     """
-
     # The implementation relies on parsing the console output of the ntpq program since no obvious
     # alternative method was found. This unfortunately means that the implementation relies on
     # some specifics of the formatting of the peers table printed by ntpq.

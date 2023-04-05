@@ -44,7 +44,6 @@ def plate_solve(frame: np.ndarray, camera_width: float | None = None) -> tuple[W
         NoSolutionException when a solution could not be found.
         subprocess.CalledProcessError if astrometry.net has a non-zero exit code.
     """
-
     # Must pass frame to astrometry.net as a file and read results from files, so do this in a
     # unique temporary directory that is deleted as soon as we are done using it
     with tempfile.TemporaryDirectory() as tempdir:

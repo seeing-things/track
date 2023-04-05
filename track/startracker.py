@@ -17,7 +17,6 @@ from track.plate_solve import plate_solve, NoSolutionException
 
 def main():
     """Repeatedly prints coordinates of camera frame center found by plate solving."""
-
     parser = ArgParser()
     parser.add_argument('--skip-solve', help='skip plate solving', action='store_true')
     cameras.add_program_arguments(parser)

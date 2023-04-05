@@ -84,7 +84,7 @@ class TelescopeMount(ABC):
     @property
     @abstractmethod
     def slew_accel(self) -> float:
-        """Expected acceleration of when changing slew rate in degrees per second squared"""
+        """Expected acceleration of when changing slew rate in degrees per second squared."""
         raise NotImplementedError
 
     @abstractmethod
@@ -291,13 +291,13 @@ class NexStarMount(TelescopeMount):
     """
 
     class AxisName(IntEnum):
-        """Mapping from axis index to/from names"""
+        """Mapping from axis index to/from names."""
 
         AZIMUTH = 0
         ALTITUDE = 1
 
         def short_name(self) -> str:
-            """Abbreviated axis name"""
+            """Abbreviated axis name."""
             return 'az' if self == self.AZIMUTH else 'alt'
 
     # pylint: disable=too-many-arguments
@@ -487,13 +487,13 @@ class LosmandyGeminiMount(TelescopeMount):
     """
 
     class AxisName(IntEnum):
-        """Mapping from axis index to/from names"""
+        """Mapping from axis index to/from names."""
 
         RIGHT_ASCENSION = 0
         DECLINATION = 1
 
         def short_name(self) -> str:
-            """Axis names as used by the point package API for this mount"""
+            """Axis names as used by the point package API for this mount."""
             return 'ra' if self == self.RIGHT_ASCENSION else 'dec'
 
     # pylint: disable=too-many-arguments

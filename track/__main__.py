@@ -65,7 +65,7 @@ def make_camera_separation_callback(
 
 
 def main():
-    """See module docstring"""
+    """See module docstring."""
 
     def gamepad_callback(_unused: Tracker) -> bool:
         """Callback for gamepad control.

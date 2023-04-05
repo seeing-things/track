@@ -173,7 +173,7 @@ class Gamepad(TelemSource):
         self.callbacks[event_code] = callback
 
     def _update_analog(self, stick: str) -> None:
-        """Convert integer analog stick values to floating point"""
+        """Convert integer analog stick values to floating point."""
         if stick == 'left':
             raw_vector = self.state['ABS_X'] - 1j * self.state['ABS_Y']
         elif stick == 'right':
@@ -200,8 +200,7 @@ class Gamepad(TelemSource):
             self.right_y = scaled_vector.imag
 
     def __get_input(self):
-        """Thread for reading input from gamepad"""
-
+        """Thread for reading input from gamepad."""
         # Make sure this thread does not have realtime priority
         os.sched_setscheduler(0, os.SCHED_OTHER, os.sched_param(0))
 
@@ -249,7 +248,6 @@ class Gamepad(TelemSource):
         integrators can continue running even when the input thread is blocked
         waiting for new events from the controller.
         """
-
         # Make sure this thread does not have realtime priority
         os.sched_setscheduler(0, os.SCHED_OTHER, os.sched_param(0))
 
@@ -275,7 +273,6 @@ class Gamepad(TelemSource):
 
     def get_telem_points(self) -> list[Point]:
         """Called by telemetry logger. See `TelemSource` abstract base class."""
-
         point = Point('gamepad')
         # attributes of this object to be captured as fields in the telemetry measurement
         names = ['left_x', 'left_y', 'right_x', 'right_y', 'int_x', 'int_y', 'integrator_mode']
@@ -295,8 +292,7 @@ class Gamepad(TelemSource):
 
 
 def main():
-    """Prints all gamepad events received"""
-
+    """Prints all gamepad events received."""
     logging.basicConfig(
         level=logging.DEBUG,
         format='%(message)s',

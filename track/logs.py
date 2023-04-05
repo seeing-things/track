@@ -1,4 +1,4 @@
-"""Configure logging for the package"""
+"""Configure logging for the package."""
 
 from enum import IntEnum
 from importlib import metadata
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class LogLevel(IntEnum):
-    """Define an enum for common levels since the logging module doesn't"""
+    """Define an enum for common levels since the logging module doesn't."""
 
     CRITICAL = logging.CRITICAL
     ERROR = logging.ERROR
@@ -82,7 +82,6 @@ def setup(
         file_level: Log level for the file handler.
         enable_console_logging: Enable logging to the console (stdout).
     """
-
     log_filename = os.path.join(LOG_PATH, f'{program_name}.log')
 
     root_logger = logging.getLogger(__package__)
@@ -173,7 +172,7 @@ def add_program_arguments(parser: ArgParser) -> None:
 
 
 def setup_logging_from_args(args: Namespace, program_name: str) -> None:
-    """Setup logging using program arguments"""
+    """Setup logging using program arguments."""
     setup(
         program_name,
         console_level=LogLevel[args.console_log_level.upper()],

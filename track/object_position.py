@@ -13,7 +13,6 @@ from track import gps_client
 
 def main():
     """See module docstring at the top of this file."""
-
     parser = ArgParser()
     parser.add_argument('--timestamp', required=False, help='UNIX timestamp', type=float)
 

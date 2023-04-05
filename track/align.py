@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 
 class Position(Destination):
-    """A position for use in alignment procedure"""
+    """A position for use in alignment procedure."""
 
     def __init__(
         self,
@@ -59,7 +59,7 @@ class Position(Destination):
         self.mount = mount
 
     def distance_to(self, other_destination: "Position") -> int:
-        """Returns the cost of moving the mount from this position to another position
+        """Returns the cost of moving the mount from this position to another position.
 
         Assumes that the slew rate is the same for all mount axes.
 
@@ -178,7 +178,6 @@ def attempt_plate_solving(
     Returns:
         True on success, False on failure.
     """
-
     # Make all physical measurements (clock, camera, mount encoders) near same time
     timestamp = time.time()
     frame = camera.get_frame()
@@ -223,7 +222,6 @@ def remove_empty_dir(directory: str) -> None:
 
 def main():
     """Run the alignment procedure! See module docstring for a description."""
-
     parser = ArgParser(additional_config_files=[os.path.join(CONFIG_PATH, 'align.cfg')])
     align_group = parser.add_argument_group(
         title='Alignment Configuration',

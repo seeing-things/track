@@ -60,7 +60,7 @@ def smallest_allowed_error(
     target_enc_position: float | np.ndarray,
     no_cross_position: float | None = None,
 ) -> np.ndarray:
-    """Compute error term for a single axis taking into account no-cross positions
+    """Compute error term for a single axis taking into account no-cross positions.
 
     The shortest path on an axis is just the difference between the target and mount encoder
     positions wrapped to [-180, +180] degrees. However the shortest path is not always allowed
@@ -81,7 +81,6 @@ def smallest_allowed_error(
     Returns:
         The error term(s) for this axis in degrees.
     """
-
     # shortest path to target
     prelim_error = (target_enc_position - mount_enc_position + 180) % 360 - 180
 
@@ -156,7 +155,7 @@ class ModelPredictiveController:
         prediction_horizon: float,
         control_cycle_period: float,
     ):
-        """Construct an instance of ModelPredictiveController
+        """Construct an instance of ModelPredictiveController.
 
         Args:
             target: The target being tracked.
@@ -183,7 +182,7 @@ class ModelPredictiveController:
 
     @property
     def target(self) -> Target:
-        """Get target"""
+        """Get target."""
         return self._target
 
     @target.setter
@@ -192,14 +191,13 @@ class ModelPredictiveController:
         self._init_prediction_arrays(Time.now() + 2 * self.control_cycle_period)
 
     def _init_prediction_arrays(self, time_start: Time) -> None:
-        """Initialize arrays of predicted target positions and slew rates out to prediction horizon
+        """Initialize arrays of predicted target positions and slew rates out to prediction horizon.
 
         Args:
             time_start: The first target position in the arrays will correspond to this absolute
                 time. The arrays will be populated with predictions that start at this time and end
                 at this time plus the prediction horizon.
         """
-
         num_items = int(self.prediction_horizon / self.control_cycle_period)
         times_from_start = TimeDelta(self.control_cycle_period * np.arange(num_items), format='sec')
 
@@ -216,7 +214,7 @@ class ModelPredictiveController:
         self.slew_rates_predicted = {axis: np.zeros(num_items) for axis in self.axes}
 
     def _refresh_target_positions(self) -> None:
-        """Refresh all of the elements of the predicted target position arrays
+        """Refresh all of the elements of the predicted target position arrays.
 
         Can't assume for all target types that predicted positions will remain unchanged as time
         progresses. For example, a prediction ten seconds into the future may have low confidence
@@ -278,7 +276,6 @@ class ModelPredictiveController:
             be sent. The caller should wait until that time to send the commands rather than
             sending them immediately.
         """
-
         # refresh arrays of predicted target positions looking into the future
         while True:
             time_next_cmd = self._advance_prediction_arrays()
@@ -361,7 +358,6 @@ class ModelPredictiveController:
         Returns:
             The predicted mean error magnitude over the prediction window.
         """
-
         # predict mount axis position in the future assuming this set of slew rate commands
         positions_mount, _ = self.mount.predict(
             times_from_start, slew_rate_commands, position_axis_start, slew_rate_start
@@ -448,7 +444,7 @@ class Tracker:
 
     @property
     def target(self) -> Target:
-        """Get target"""
+        """Get target."""
         return self._target
 
     @target.setter
@@ -544,7 +540,6 @@ class Tracker:
         callback_override: bool = False,
     ) -> "Tracker.StopReason":
         """Final tasks to perform at the end of each control cycle."""
-
         # list of telemetry points to be populated
         points = []
 

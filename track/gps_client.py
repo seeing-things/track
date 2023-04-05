@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 class GPSFixType(IntEnum):
-    """Improved enum-ized version of the 'MODE_' constants from the gps module"""
+    """Improved enum-ized version of the 'MODE_' constants from the gps module."""
 
     ZERO = 0
     NO_FIX = 1
@@ -277,7 +277,6 @@ class GPS:
         Returns:
             An instance of FailureReason with flags set to indicate checks that failed.
         """
-
         fail_reasons = self.FailureReason.NONE
 
         min_fix = GPSFixType.FIX_3D if need_3d else GPSFixType.FIX_2D
@@ -426,7 +425,6 @@ def main():
     Note that the ERR_MAX and MARGINS values in this function are extremely lax, allowing almost
     any 3D fix to pass muster. Adjust these to be more restrictive as desired.
     """
-
     # parameters
     timeout = 10.0
     need_3d = True

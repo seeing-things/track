@@ -21,7 +21,7 @@ VB_DATE_TICKS_PER_SEC = 10_000_000
 
 
 class SERColorID(IntEnum):
-    """ColorID field of the SER file header"""
+    """ColorID field of the SER file header."""
 
     MONO = 0
     BAYER_RGGB = 8
@@ -37,13 +37,13 @@ class SERColorID(IntEnum):
 
 
 class SEREndianness(IntEnum):
-    """Endianness of multi-byte pixel values"""
+    """Endianness of multi-byte pixel values."""
 
     BIG_ENDIAN = 0
     LITTLE_ENDIAN = 1
 
     def dtype_char(self) -> str:
-        """Get the endian character ('<' or '>') to use with `numpy.dtype`"""
+        """Get the endian character ('<' or '>') to use with `numpy.dtype`."""
         return '<' if self == self.LITTLE_ENDIAN else '>'
 
 
@@ -262,7 +262,6 @@ class SERReader:
         Args:
             filename: Filename of SER file to read.
         """
-
         # pylint: disable=consider-using-with
         self.file = open(filename, 'rb')
 
@@ -308,7 +307,6 @@ class SERReader:
         Returns:
             The frame data as a numpy array.
         """
-
         if frame_index < 0 or frame_index >= self._header.frame_count:
             raise ValueError('Invalid frame index')
 
@@ -394,7 +392,6 @@ class SERWriter:
 
     def close(self) -> None:
         """Write header and trailer (if enabled) and close file."""
-
         # write the header
         self.file.seek(0, SEEK_SET)
         self.file.write(self.header.buffer)

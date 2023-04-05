@@ -1,4 +1,4 @@
-"""Package configuration utilities
+"""Package configuration utilities.
 
 * Defines paths to configuration and data files.
 * Specifies the filename of the default shared configuration file used by all programs.
