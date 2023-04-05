@@ -4,7 +4,7 @@ import logging
 import os
 import pickle
 import time
-from typing import NamedTuple, Optional, Tuple
+from typing import NamedTuple
 import numpy as np
 import pandas as pd
 import scipy.optimize
@@ -136,7 +136,7 @@ class ModelParamSet(NamedTuple):
     model_params: ModelParameters
     guide_cam_orientation: Longitude
     location: EarthLocation
-    timestamp: Optional[float]
+    timestamp: float | None
     guide_cam_align_error: Angle = Angle(0 * u.deg)
 
 
@@ -336,7 +336,7 @@ class MountModel:
 
     def encoders_to_spherical(
         self, encoder_positions: MountEncoderPositions
-    ) -> Tuple[UnitSphericalRepresentation, MeridianSide]:
+    ) -> tuple[UnitSphericalRepresentation, MeridianSide]:
         """Convert from mount encoder positions to mount-relative spherical coordinates.
 
         The mount-relative spherical coordinate system is a defined such that the positive Z-axis,
@@ -628,7 +628,7 @@ class NoSolutionException(Exception):
     """Raised when optimization algorithm to solve for mount model parameters fails."""
 
 
-def solve_model(observations: pd.DataFrame) -> Tuple[ModelParameters, OptimizeResult]:
+def solve_model(observations: pd.DataFrame) -> tuple[ModelParameters, OptimizeResult]:
     """Solves for mount model parameters using a set of observations.
 
     Finds a least-squares solution to the mount model parameters. The solution can then be used
@@ -706,7 +706,7 @@ def save_default_param_set(model_param_set: ModelParamSet) -> None:
         pickle.dump(model_param_set, f, pickle.HIGHEST_PROTOCOL)
 
 
-def load_stored_param_set(max_age: Optional[float] = 12 * 3600) -> ModelParamSet:
+def load_stored_param_set(max_age: float | None = 12 * 3600) -> ModelParamSet:
     """Loads the model parameter set from disk at the default location.
 
     Args:
@@ -731,7 +731,7 @@ def load_stored_param_set(max_age: Optional[float] = 12 * 3600) -> ModelParamSet
     return model_param_set
 
 
-def load_stored_model(max_age: Optional[float] = 12 * 3600) -> MountModel:
+def load_stored_model(max_age: float | None = 12 * 3600) -> MountModel:
     """Loads the model parameter set from disk and returns a MountModel instance.
 
     Args:
@@ -752,7 +752,7 @@ def load_default_model(
     mount_pole_az: Longitude = Longitude(0 * u.deg),
     mount_pole_alt: Latitude = Latitude(90 * u.deg),
     guide_cam_orientation: Longitude = Longitude(0 * u.deg),
-    location: Optional[EarthLocation] = None,
+    location: EarthLocation | None = None,
 ) -> MountModel:
     """Returns a MountModel instance initialized with a set of default parameters.
 

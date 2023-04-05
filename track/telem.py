@@ -7,7 +7,6 @@ import os
 import pathlib
 import time
 import threading
-from typing import Dict, List, Optional
 import toml
 from configargparse import Namespace
 from influxdb_client import InfluxDBClient, Point
@@ -49,7 +48,7 @@ class TelemSource(ABC):
     """
 
     @abstractmethod
-    def get_telem_points(self) -> List[Point]:
+    def get_telem_points(self) -> list[Point]:
         """Get telemetry points.
 
         Gets zero or more telemetry points from this object for the purpose of writing them to the
@@ -90,8 +89,8 @@ class TelemLogger:
         self,
         influx_config_filename: str,
         bucket: str = 'telem',
-        period: Optional[float] = None,
-        sources: Optional[Dict[str, TelemSource]] = None,
+        period: float | None = None,
+        sources: dict[str, TelemSource] | None = None,
     ):
         """Inits a TelemLogger object.
 
@@ -144,7 +143,7 @@ class TelemLogger:
 
     def __exit__(self, exc_type, exc_value, traceback) -> bool:
         self.stop()
-        if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+        if isinstance(exc_value, KeyboardInterrupt | SystemExit):
             logger.info(f'Handling {type(exc_value).__name__}')
             return True  # prevent exception propagation
         return False
@@ -172,7 +171,7 @@ class TelemLogger:
         else:
             raise RuntimeError('No period was defined')
 
-    def register_sources(self, sources: Dict[str, TelemSource]) -> None:
+    def register_sources(self, sources: dict[str, TelemSource]) -> None:
         """Register one or more telemetry source object such that it is polled by this logger.
 
         Note that this adds to any sources already registered. Existing sources are not removed
@@ -193,7 +192,7 @@ class TelemLogger:
                 point.tag('class', type(source).__name__)
                 self.write_api.write(bucket=self.bucket, record=point)
 
-    def post_points(self, points: List[Point]) -> None:
+    def post_points(self, points: list[Point]) -> None:
         """Write points to the database.
 
         Args:
@@ -247,9 +246,7 @@ def add_program_arguments(parser: ArgParser) -> None:
     )
 
 
-def make_telem_logger_from_args(
-    args: Namespace, sources: Optional[dict] = None
-) -> Optional[TelemLogger]:
+def make_telem_logger_from_args(args: Namespace, sources: dict | None = None) -> TelemLogger | None:
     """Construct a TelemLogger based on the program arguments provided.
 
     Args:

@@ -1,11 +1,10 @@
 """Computer vision algorithms for identifying targets in a camera frame"""
 
-from typing import List, Optional, Tuple
 import numpy as np
 import cv2
 
 
-def find_features(frame: np.ndarray) -> List[cv2.KeyPoint]:
+def find_features(frame: np.ndarray) -> list[cv2.KeyPoint]:
     """Find bright features in a camera frame.
 
     Args:
@@ -67,7 +66,7 @@ class PreviewWindow:
         frame_width: int,
         frame_height: int,
         crosshairs_gap_to_height: float = 0.1,
-        target_position_desired: Optional[Tuple[float, float]] = None,
+        target_position_desired: tuple[float, float] | None = None,
         window_title: str = 'track: Guidescope Camera',
     ):
         """Constructs an instance of PreviewWindow.
@@ -99,8 +98,8 @@ class PreviewWindow:
     def show_annotated_frame(
         self,
         frame: np.ndarray,
-        keypoints: Optional[List[cv2.KeyPoint]] = None,
-        target_keypoint: Optional[cv2.KeyPoint] = None,
+        keypoints: list[cv2.KeyPoint] | None = None,
+        target_keypoint: cv2.KeyPoint | None = None,
     ) -> None:
         """Displays camera frame in a window with features circled and crosshairs.
 

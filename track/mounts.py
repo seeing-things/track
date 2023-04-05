@@ -17,7 +17,7 @@ from abc import ABC, abstractmethod
 import enum
 from enum import IntEnum
 import logging
-from typing import NamedTuple, Tuple
+from typing import NamedTuple
 import time
 import numpy as np
 from astropy import units as u
@@ -76,7 +76,7 @@ class TelescopeMount(ABC):
     def __exit__(self, exc_type, exc_value, traceback) -> bool:
         """Stop mount motion and disconnect."""
         self.shutdown()
-        if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+        if isinstance(exc_value, KeyboardInterrupt | SystemExit):
             logger.info(f'Handling {type(exc_value).__name__}')
             return True  # prevent exception propagation
         return False
@@ -196,7 +196,7 @@ class TelescopeMount(ABC):
         rate_commands: np.ndarray,
         position_axis_start: float,
         slew_rate_start: float,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Predict future axis positions based on a set of future commands.
 
         Note that the slew rate commands are assumed to be issued at the *start* of each time

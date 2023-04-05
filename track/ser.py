@@ -10,7 +10,6 @@ from datetime import datetime, timedelta, timezone
 from enum import IntEnum
 from io import SEEK_END, SEEK_SET
 import struct
-from typing import Optional, Union
 import numpy as np
 
 
@@ -98,7 +97,7 @@ class SERHeader:
         return self._buffer
 
     @buffer.setter
-    def buffer(self, value: Union[bytearray, bytes]) -> None:
+    def buffer(self, value: bytearray | bytes) -> None:
         """Set the entire raw buffer to a new value."""
         if len(value) != 178:
             raise ValueError('Buffer is not 178 bytes long')
@@ -410,7 +409,7 @@ class SERWriter:
     def add_frame(
         self,
         frame: np.ndarray,
-        timestamp: Optional[Union[datetime, int]] = None,
+        timestamp: datetime | int | None = None,
     ) -> None:
         """Add new frame to the file.
 

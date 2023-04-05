@@ -11,7 +11,7 @@ import logging
 import os
 import signal
 import sys
-from typing import Callable
+from collections.abc import Callable
 import click
 import astropy.units as u
 from astropy.coordinates import Angle, Longitude

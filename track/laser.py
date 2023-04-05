@@ -8,7 +8,6 @@ The details of that electrical interface are not specified.
 
 from __future__ import annotations
 import logging
-from typing import Optional
 from pyftdi.ftdi import Ftdi
 from configargparse import Namespace
 from track.config import ArgParser
@@ -46,7 +45,7 @@ class LaserPointer:
     def __init__(
         self,
         ftdi_pid: str = '232r',
-        serial_num: Optional[str] = None,
+        serial_num: str | None = None,
         laser_pin: int = PIN_CTS,
     ):
         """Inits LaserPointer object.
@@ -85,7 +84,7 @@ class LaserPointer:
         # make sure laser is disabled by default
         self.set(False)
 
-    def __enter__(self) -> Optional[LaserPointer]:
+    def __enter__(self) -> LaserPointer | None:
         """Support usage of this class in `with` statements.
 
         Returns:
@@ -98,7 +97,7 @@ class LaserPointer:
         if self.connected:
             self.set(False)
             self.ftdi.close()
-        if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+        if isinstance(exc_value, KeyboardInterrupt | SystemExit):
             logger.info(f'Handling {type(exc_value).__name__}')
             return True  # prevent exception propagation
         return False

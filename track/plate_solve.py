@@ -7,7 +7,6 @@ import os
 import warnings
 import tempfile
 import subprocess
-from typing import Optional, Tuple
 import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
@@ -24,7 +23,7 @@ class NoSolutionException(Exception):
     """Raised when plate solving fails to find a solution."""
 
 
-def plate_solve(frame: np.ndarray, camera_width: Optional[float] = None) -> Tuple[WCS, SkyCoord]:
+def plate_solve(frame: np.ndarray, camera_width: float | None = None) -> tuple[WCS, SkyCoord]:
     """Perform plate solving on a camera frame using Astrometry.net software.
 
     This function requires astrometry.net software to be installed and the solve-field binary to be

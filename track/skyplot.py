@@ -9,7 +9,6 @@ completed (or even in-progress) pass.
 """
 
 import logging
-from typing import Tuple, Optional
 from datetime import datetime, timedelta
 from configargparse import ArgParser
 import dateutil
@@ -65,8 +64,8 @@ def plot_trajectory(
     ax: matplotlib.axes.Axes,
     az: np.ndarray,
     alt: np.ndarray,
-    color: Optional[str] = None,
-    label: Optional[str] = None,
+    color: str | None = None,
+    label: str | None = None,
 ) -> None:
     """Plot a curve with an arrow indicating direction of motion."""
     line = ax.plot(np.radians(az), 90.0 - alt, color=color, label=label)[0]
@@ -94,7 +93,7 @@ def fill_to_zenith(
     az: np.ndarray,
     alt: np.ndarray,
     alpha: float = 1.0,
-    color: Optional[str] = None,
+    color: str | None = None,
 ) -> None:
     """Fill the region between a curve and zenith."""
     ax.fill_between(
@@ -192,7 +191,7 @@ def plot_tle(
     location: EarthLocation,
     time_start: datetime,
     time_stop: datetime,
-) -> Tuple[datetime, datetime]:
+) -> tuple[datetime, datetime]:
     """Plot the trajectory of the first above-horizon pass within a specified time window."""
 
     tle = []

@@ -8,7 +8,6 @@ typically more reliable, and certainly less frustrating than focusing the camera
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import time
-from typing import Optional
 import serial
 from configargparse import Namespace
 from track.config import ArgParser
@@ -146,7 +145,7 @@ class MoonliteFocuser(Focuser):
         self._max_position = max_position
         self._serial = serial.Serial(device, baudrate=9600, timeout=read_timeout)
 
-    def _send_command(self, command: bytearray, response_len: int) -> Optional[bytearray]:
+    def _send_command(self, command: bytearray, response_len: int) -> bytearray | None:
         """Sends a command to the focuser and reads back the response.
 
         Args:

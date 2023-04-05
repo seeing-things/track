@@ -1,6 +1,5 @@
 """Travelling salesman solver for optimizing route to set of multiple positions."""
 
-from typing import List
 from abc import ABC, abstractmethod
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
@@ -23,7 +22,7 @@ class Destination(ABC):
         """
 
 
-def solve_route(destinations: List[Destination]) -> List[Destination]:
+def solve_route(destinations: list[Destination]) -> list[Destination]:
     """Travelling salesman problem solver
 
     Takes a list of destinations and sorts them such that the total time taken to visit each one is

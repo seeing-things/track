@@ -6,7 +6,8 @@ The classes in this module implement the core control system algorithms.
 from datetime import datetime
 import time
 from enum import Flag, auto
-from typing import Callable, NamedTuple, Tuple, Optional, Union
+from typing import NamedTuple
+from collections.abc import Callable
 import numpy as np
 from scipy.optimize import minimize
 import astropy.units as u
@@ -55,9 +56,9 @@ def separation(sc1: SkyCoord, sc2: SkyCoord) -> Angle:
 
 
 def smallest_allowed_error(
-    mount_enc_position: Union[float, np.ndarray],
-    target_enc_position: Union[float, np.ndarray],
-    no_cross_position: Optional[float] = None,
+    mount_enc_position: float | np.ndarray,
+    target_enc_position: float | np.ndarray,
+    no_cross_position: float | None = None,
 ) -> np.ndarray:
     """Compute error term for a single axis taking into account no-cross positions
 
@@ -134,7 +135,7 @@ class MountState(NamedTuple):
 
     time_queried: Time
     position: MountEncoderPositions
-    rates: Tuple
+    rates: tuple
 
 
 class ModelPredictiveController:
@@ -336,7 +337,7 @@ class ModelPredictiveController:
         positions_target: np.ndarray,
         position_axis_start: float,
         slew_rate_start: float,
-        no_cross_position: Optional[float] = None,
+        no_cross_position: float | None = None,
     ) -> float:
         """The objective (cost) function that the optimizer attempts to minimize.
 
@@ -398,8 +399,8 @@ class Tracker:
                 criterion is met.
         """
 
-        timeout: Optional[float]
-        error_threshold: Optional[Angle]
+        timeout: float | None
+        error_threshold: Angle | None
 
     class StopReason(Flag):
         """Tracker `run()` method return value indicating stop reason or reasons."""
@@ -414,7 +415,7 @@ class Tracker:
         mount_model: MountModel,
         target: Target,
         control_loop_period: float = 0.1,
-        telem_logger: Optional[TelemLogger] = None,
+        telem_logger: TelemLogger | None = None,
     ):
         """Constructs a Tracker object.
 
@@ -470,7 +471,7 @@ class Tracker:
         """
         self.callback = callback
 
-    def run(self, stopping_conditions: Optional[StoppingConditions] = None) -> "Tracker.StopReason":
+    def run(self, stopping_conditions: StoppingConditions | None = None) -> "Tracker.StopReason":
         """Run the control loop.
 
         Starts the control loop. This function is blocking and will not return until an error
@@ -536,10 +537,10 @@ class Tracker:
 
     def _finish_control_cycle(
         self,
-        cycle_period: Optional[float],
+        cycle_period: float | None,
         mount_state: MountState,
-        rate_command: Optional[SlewRateCommand] = None,
-        rate_command_time_error: Optional[float] = None,
+        rate_command: SlewRateCommand | None = None,
+        rate_command_time_error: float | None = None,
         callback_override: bool = False,
     ) -> "Tracker.StopReason":
         """Final tasks to perform at the end of each control cycle."""
@@ -648,7 +649,7 @@ class Tracker:
         return stop_reason
 
     def _check_stopping_conditions(
-        self, error_magnitude: Optional[Angle] = None
+        self, error_magnitude: Angle | None = None
     ) -> "Tracker.StopReason":
         """Checks if any set stopping conditions are satisfied.
 

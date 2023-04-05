@@ -3,7 +3,8 @@
 import enum
 import logging
 from math import inf
-from typing import Callable, List, Optional, Tuple, NamedTuple
+from typing import NamedTuple
+from collections.abc import Callable
 from abc import abstractmethod, ABC
 from functools import lru_cache
 from datetime import datetime
@@ -120,7 +121,7 @@ class FixedMountEncodersTarget(Target):
         self.position_enc = enc
         self.position_topo = mount_model.encoders_to_topocentric(enc)
 
-    def get_position(self, t: Optional[Time] = None) -> TargetPosition:
+    def get_position(self, t: Time | None = None) -> TargetPosition:
         """Since the position is fixed the t argument is ignored"""
         return TargetPosition(t, self.position_topo, self.position_enc)
 
@@ -146,7 +147,7 @@ class FixedTopocentricTarget(Target):
         self.position_topo = coord
         self.position_enc = mount_model.topocentric_to_encoders(coord, meridian_side)
 
-    def get_position(self, t: Optional[Time] = None) -> TargetPosition:
+    def get_position(self, t: Time | None = None) -> TargetPosition:
         """Since the topocentric position is fixed the t argument is ignored"""
         return TargetPosition(t, self.position_topo, self.position_enc)
 
@@ -162,7 +163,7 @@ class AcceleratingMountAxisTarget(Target):
         self,
         mount_model: MountModel,
         initial_encoder_positions: MountEncoderPositions,
-        axis_accelerations: Tuple[float, float],
+        axis_accelerations: tuple[float, float],
     ):
         """Construct an AcceleratingMountAxisTarget.
 
@@ -319,10 +320,10 @@ class CameraTarget(Target):
         camera: Camera,
         mount: TelescopeMount,
         mount_model: MountModel,
-        meridian_side: Optional[MeridianSide] = None,
+        meridian_side: MeridianSide | None = None,
         camera_timeout: float = inf,
-        telem_logger: Optional[TelemLogger] = None,
-        separation_callback: Optional[Callable[[Angle], None]] = None,
+        telem_logger: TelemLogger | None = None,
+        separation_callback: Callable[[Angle], None] | None = None,
     ):
         """Construct an instance of CameraTarget
 
@@ -368,7 +369,7 @@ class CameraTarget(Target):
         target_x: Angle,
         target_y: Angle,
         mount_meridian_side: MeridianSide,
-    ) -> Tuple[Angle, Angle]:
+    ) -> tuple[Angle, Angle]:
         """Transform from a position in camera frame to a magnitude and position angle
 
         Args:
@@ -436,7 +437,7 @@ class CameraTarget(Target):
 
         return target_coord
 
-    def _get_keypoint_xy(self, keypoint: cv2.KeyPoint) -> Tuple[float, float]:
+    def _get_keypoint_xy(self, keypoint: cv2.KeyPoint) -> tuple[float, float]:
         """Get the x/y coordinates of a keypoint in the camera frame.
 
         Transform keypoint position to a Cartesian coordinate system defined such that (0,0) is the
@@ -456,7 +457,7 @@ class CameraTarget(Target):
         keypoint_y_px = self.frame_center_px[1] - keypoint.pt[1]
         return keypoint_x_px, keypoint_y_px
 
-    def _select_one_keypoint(self, keypoints: List[cv2.KeyPoint]) -> cv2.KeyPoint:
+    def _select_one_keypoint(self, keypoints: list[cv2.KeyPoint]) -> cv2.KeyPoint:
         """Find the keypoint closest to the desired target position from a list of keypoints.
 
         The simplifying assumption here is that when multiple keypoints are identified, the target
@@ -506,7 +507,7 @@ class CameraTarget(Target):
             raise self.IndeterminatePosition('No target detected in most recent frame')
         return self.target_position
 
-    def process_camera_frame(self) -> Tuple[Time, Angle, Angle]:
+    def process_camera_frame(self) -> tuple[Time, Angle, Angle]:
         """Get frame from camera and find target using computer vision.
 
         Returns:
@@ -594,7 +595,7 @@ class SensorFusionTarget(Target):
         meridian_side: MeridianSide,
         filter_gain: float = 5e-2,
         bias_mag_limit: Angle = Angle(1.0 * u.deg),
-        telem_logger: Optional[TelemLogger] = None,
+        telem_logger: TelemLogger | None = None,
         spiral_search: bool = False,
     ):
         """Construct an instance of SensorFusionTarget
@@ -850,8 +851,8 @@ def make_target_from_args(
     mount: TelescopeMount,
     mount_model: MountModel,
     meridian_side: MeridianSide,
-    telem_logger: Optional[TelemLogger] = None,
-    camera_separation_callback: Optional[Callable[[Angle], None]] = None,
+    telem_logger: TelemLogger | None = None,
+    camera_separation_callback: Callable[[Angle], None] | None = None,
 ) -> Target:
     """Construct the appropriate target based on the program arguments provided.
 

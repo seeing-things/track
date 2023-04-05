@@ -11,7 +11,6 @@ import subprocess
 import sys
 import os
 import time
-from typing import Optional, Tuple
 import imageio.v2 as iio
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_circular_mask(
-    width: int, height: int, radius: float, center: Tuple[float, float]
+    width: int, height: int, radius: float, center: tuple[float, float]
 ) -> np.ndarray:
     """Create a circular mask.
 
@@ -47,9 +46,7 @@ def create_circular_mask(
     return dist_from_center_squared <= radius_squared
 
 
-def estimate_hfr(
-    image: np.ndarray, hfr_max: Optional[float] = None, tolerance: float = 0.1
-) -> float:
+def estimate_hfr(image: np.ndarray, hfr_max: float | None = None, tolerance: float = 0.1) -> float:
     """Estimates the half flux radius (HFR) of a star.
 
     Args:
@@ -180,7 +177,7 @@ def autofocus(
     focuser: focusers.Focuser,
     focuser_steps: np.ndarray,
     skip_final_move: bool = False,
-    output_dir: Optional[str] = None,
+    output_dir: str | None = None,
     show_plot: bool = False,
 ) -> int:
     """Automatically focus the camera.

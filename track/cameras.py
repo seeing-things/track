@@ -10,7 +10,6 @@ from __future__ import annotations
 from abc import abstractmethod
 from contextlib import AbstractContextManager
 import logging
-from typing import Tuple
 from math import inf
 import enum
 import os
@@ -68,7 +67,7 @@ class Camera(AbstractContextManager):
 
     @property
     @abstractmethod
-    def field_of_view(self) -> Tuple[float, float]:
+    def field_of_view(self) -> tuple[float, float]:
         """Field of view of the camera.
 
         This is a function of the camera physical sensor size and the focal length of the optical
@@ -80,7 +79,7 @@ class Camera(AbstractContextManager):
 
     @property
     @abstractmethod
-    def frame_shape(self) -> Tuple[int, int]:
+    def frame_shape(self) -> tuple[int, int]:
         """Dimensions of the frame in pixels.
 
         This should be identical to the .shape property of the arrays returned by get_frame(). It
@@ -224,7 +223,7 @@ class ASICamera(Camera):
         )
 
     @staticmethod
-    def from_program_args(args: Namespace) -> 'ASICamera':
+    def from_program_args(args: Namespace) -> ASICamera:
         """Factory to make a WebCam instance from program arguments
 
         Args:
@@ -298,7 +297,7 @@ class ASICamera(Camera):
         if hasattr(self, 'info') and self.info is not None:
             ASICheck(asi.ASICloseCamera(self.info.CameraID))
             logger.info(f'Closed camera {self.info.Name}')
-        if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+        if isinstance(exc_value, KeyboardInterrupt | SystemExit):
             logger.info(f'Handling {type(exc_value).__name__}')
             return True  # prevent exception propagation
         return False
@@ -321,12 +320,12 @@ class ASICamera(Camera):
         return self._binning
 
     @property
-    def frame_shape(self) -> Tuple[int, int]:
+    def frame_shape(self) -> tuple[int, int]:
         """Shape of array returned by get_frame()"""
         return self._frame_shape
 
     @property
-    def field_of_view(self) -> Tuple[float, float]:
+    def field_of_view(self) -> tuple[float, float]:
         """Field of view of the camera (height, width) in degrees."""
         return (self._pixel_scale * self.info.MaxHeight, self._pixel_scale * self.info.MaxWidth)
 
@@ -481,7 +480,7 @@ class WebCam(Camera):
         )
 
     @staticmethod
-    def from_program_args(args: Namespace) -> 'WebCam':
+    def from_program_args(args: Namespace) -> WebCam:
         """Factory to make a WebCam instance from program arguments"""
         return WebCam(
             dev_path=args.webcam_dev,
@@ -532,17 +531,17 @@ class WebCam(Camera):
         if self.dev_fd != -1:
             os.close(self.dev_fd)
         logger.info('Closed webcam.')
-        if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+        if isinstance(exc_value, KeyboardInterrupt | SystemExit):
             logger.info(f'Handling {type(exc_value).__name__}')
             return True  # prevent exception propagation
         return False
 
     @property
-    def frame_shape(self) -> Tuple[int, int]:
+    def frame_shape(self) -> tuple[int, int]:
         return self._frame_shape
 
     @property
-    def field_of_view(self) -> Tuple[float, float]:
+    def field_of_view(self) -> tuple[float, float]:
         # pylint: disable=consider-using-generator
         return tuple([self._pixel_scale * side for side in self._frame_shape])
 
@@ -687,7 +686,7 @@ class WebCam(Camera):
             idx += 1
         return results
 
-    def _verify_capabilities(self) -> Tuple[int, int]:
+    def _verify_capabilities(self) -> tuple[int, int]:
         fmt = v4l2.v4l2_format(type=v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE)
         self._v4l2_ioctl(v4l2.VIDIOC_G_FMT, fmt)
 
@@ -721,7 +720,7 @@ class WebCam(Camera):
             v4l2.VIDIOC_S_JPEGCOMP, jpegcomp, 'failed to set JPEG compression quality'
         )
 
-    def _set_format(self, shape_wanted: Tuple[int, int], fourcc) -> Tuple[int, int]:
+    def _set_format(self, shape_wanted: tuple[int, int], fourcc) -> tuple[int, int]:
         """roughly equivalent to v4l2capture's set_format"""
         assert not self.started
 

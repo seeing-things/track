@@ -11,7 +11,7 @@ import os
 import signal
 import threading
 import time
-from typing import Callable, List, Optional
+from collections.abc import Callable
 import selectors
 import inputs
 import numpy as np
@@ -114,7 +114,7 @@ class Gamepad(TelemSource):
 
         logger.info('Gamepad found and registered.')
 
-    def __enter__(self) -> Optional[Gamepad]:
+    def __enter__(self) -> Gamepad | None:
         """Support usage of this class in `with` statements.
 
         Returns:
@@ -128,7 +128,7 @@ class Gamepad(TelemSource):
             self.stop()
             self.sel.unregister(self.gamepad._character_device)
             self.gamepad = None
-        if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+        if isinstance(exc_value, KeyboardInterrupt | SystemExit):
             logger.info(f'Handling {type(exc_value).__name__}')
             return True  # prevent exception propagation
         return False
@@ -157,7 +157,7 @@ class Gamepad(TelemSource):
             return self.get_proportional()
 
     def register_callback(
-        self, event_code: Optional[str] = None, callback: Optional[Callable[[int], None]] = None
+        self, event_code: str | None = None, callback: Callable[[int], None] | None = None
     ):
         """Register a callback function to be called when a particular gamepad event occurs.
 
@@ -273,7 +273,7 @@ class Gamepad(TelemSource):
             if time_sleep > 0:
                 time.sleep(time_sleep)
 
-    def get_telem_points(self) -> List[Point]:
+    def get_telem_points(self) -> list[Point]:
         """Called by telemetry logger. See `TelemSource` abstract base class."""
 
         point = Point('gamepad')

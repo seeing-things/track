@@ -8,7 +8,6 @@ import os
 import subprocess
 import sys
 import time
-from typing import Optional
 import appdirs
 import coloredlogs
 from configargparse import Namespace
@@ -30,7 +29,7 @@ class LogLevel(IntEnum):
     DEBUG = logging.DEBUG
 
 
-def get_git_commit_hash() -> Optional[str]:
+def get_git_commit_hash() -> str | None:
     """Returns the git commit hash if a git repository.
 
     Returns:
