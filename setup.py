@@ -57,6 +57,7 @@ setup(
         'pandas',
         'point @ https://github.com/seeing-things/point/tarball/master',
         'pyftdi>=0.49',  # for laser pointer control
+        'pytest>=8.0',
         'requests',
         'scipy',
         'skyfield',
