@@ -6,6 +6,8 @@ preview = true
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -14,9 +16,7 @@ select = [
     "D",  # pydocstyle
     "C",  # mccabe complexity
 ]
-
-[tool.ruff.pydocstyle]
-convention = "google"
+pydocstyle.convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 # Ignore missing docstrings in tests
